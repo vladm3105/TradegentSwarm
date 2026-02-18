@@ -786,6 +786,58 @@ Check next_run_at: `SELECT name, next_run_at FROM nexus.schedules WHERE is_enabl
 **High API costs:**
 Reduce `max_daily_analyses`. Use `dry_run_mode = true` when not actively monitoring. Set a spending cap in the Anthropic Console.
 
+**Git push fails with `OpenSSL version mismatch`:**
+If you use conda, its `LD_LIBRARY_PATH` loads a newer OpenSSL that conflicts with system SSH. Fix:
+
+```bash
+# Option 1: Clear LD_LIBRARY_PATH for SSH during git operations
+GIT_SSH_COMMAND="LD_LIBRARY_PATH= /usr/bin/ssh" git push
+
+# Option 2: Add a git alias (one-time setup)
+git config --global alias.pushs '!GIT_SSH_COMMAND="LD_LIBRARY_PATH= /usr/bin/ssh" git push'
+# Then use: git pushs
+
+# Option 3: Deactivate conda before git operations
+conda deactivate
+git push
+```
+
+**Git authentication fails (HTTPS):**
+This project uses SSH authentication. Ensure your remote is set to SSH:
+
+```bash
+git remote set-url origin git@github.com:vladm3105/trading_light_pilot.git
+```
+
+Requires `~/.ssh/config` entry:
+```
+Host github.com
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/github-vladm3105
+    IdentitiesOnly yes
+```
+
+---
+
+## Development Workflow
+
+```bash
+# Clone
+git clone git@github.com:vladm3105/trading_light_pilot.git
+cd trading_light_pilot
+
+# Setup
+cp .env.template .env
+# Edit .env with your credentials
+bash setup.sh
+
+# After making changes
+git add -A
+git commit -m "description of change"
+GIT_SSH_COMMAND="LD_LIBRARY_PATH= /usr/bin/ssh" git push
+```
+
 ---
 
 *Nexus Light Trading Platform v2.1 — Database-driven. Uninterrupted. Hot-reloadable.*
