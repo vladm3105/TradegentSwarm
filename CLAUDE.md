@@ -186,9 +186,17 @@ Access Interactive Brokers TWS/Gateway for market data, portfolio, and trading.
 |------|----------|
 | `search_symbols` | Search for symbols |
 | `get_contract_details` | Contract specifications |
+| `run_scanner` | Run market scanner |
 | `get_scanner_params` | Available scanner parameters |
 | `get_news_providers` | News provider list |
 | `get_news_headlines` | Recent news headlines |
+
+**Options Analytics**:
+| Tool | Purpose |
+|------|----------|
+| `calc_implied_volatility` | Calculate implied volatility |
+| `calc_option_price` | Calculate theoretical option price |
+| `what_if_order` | Simulate order impact on margin/P&L |
 
 **System**:
 | Tool | Purpose |
