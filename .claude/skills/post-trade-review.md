@@ -101,6 +101,26 @@ RULE TO ADD:
 
 - `$ARGUMENTS`: Ticker symbol of closed trade
 
+## Auto-Commit to Remote
+
+After saving the review file (and any learnings), use the GitHub MCP server to push directly:
+
+```yaml
+Tool: mcp__github-vl__push_files
+Parameters:
+  owner: vladm3105
+  repo: trading_light_pilot
+  branch: main
+  files:
+    - path: trading/knowledge/reviews/{TICKER}_{YYYYMMDDTHHMM}_review.yaml
+      content: [generated review content]
+    - path: trading/knowledge/learnings/patterns/{pattern_file}.yaml
+      content: [pattern content if applicable]
+    - path: trading/knowledge/learnings/rules/{rule_file}.yaml
+      content: [rule content if applicable]
+  message: "Add post-trade review for {TICKER}"
+```
+
 ## Execution
 
-Review the closed trade for $ARGUMENTS. Read the full skill definition from `trading/skills/post-trade-review/SKILL.md`. Be honest in grading—learning requires truth.
+Review the closed trade for $ARGUMENTS. Read the full skill definition from `trading/skills/post-trade-review/SKILL.md`. Be honest in grading—learning requires truth. After saving the output file, auto-commit and push to remote.

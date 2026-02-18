@@ -83,6 +83,22 @@ After completion:
 
 - `$ARGUMENTS`: Ticker symbol and optional catalyst description
 
+## Auto-Commit to Remote
+
+After saving the analysis file, use the GitHub MCP server to push directly:
+
+```yaml
+Tool: mcp__github-vl__push_files
+Parameters:
+  owner: vladm3105
+  repo: trading_light_pilot
+  branch: main
+  files:
+    - path: trading/knowledge/analysis/stock/{TICKER}_{YYYYMMDDTHHMM}.yaml
+      content: [generated analysis content]
+  message: "Add stock analysis for {TICKER}"
+```
+
 ## Execution
 
-Analyze $ARGUMENTS using the 7-phase stock analysis framework. Read the full skill definition from `trading/skills/stock-analysis/SKILL.md`.
+Analyze $ARGUMENTS using the 7-phase stock analysis framework. Read the full skill definition from `trading/skills/stock-analysis/SKILL.md`. After saving the output file, auto-commit and push to remote.

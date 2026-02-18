@@ -69,6 +69,22 @@ After completion:
 
 - `$ARGUMENTS`: Research topic (e.g., "AI_CapEx_Cycle", "Rate_Cut_Impact", "Semiconductor_Cycle")
 
+## Auto-Commit to Remote
+
+After saving the research file, use the GitHub MCP server to push directly:
+
+```yaml
+Tool: mcp__github-vl__push_files
+Parameters:
+  owner: vladm3105
+  repo: trading_light_pilot
+  branch: main
+  files:
+    - path: trading/knowledge/analysis/research/{TOPIC}_{YYYYMMDDTHHMM}.yaml
+      content: [generated research content]
+  message: "Add research: {TOPIC}"
+```
+
 ## Execution
 
-Research $ARGUMENTS using the structured research framework. Read the full skill definition from `trading/skills/research-analysis/SKILL.md`.
+Research $ARGUMENTS using the structured research framework. Read the full skill definition from `trading/skills/research-analysis/SKILL.md`. After saving the output file, auto-commit and push to remote.

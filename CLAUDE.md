@@ -68,7 +68,7 @@ Example: `NVDA_20250120T0900.yaml`
 ### Skill → Knowledge Mapping
 
 | Skill | Output Location |
-|-------|-----------------|
+|-------|------------------|
 | earnings-analysis | `knowledge/analysis/earnings/` |
 | stock-analysis | `knowledge/analysis/stock/` |
 | research-analysis | `knowledge/analysis/research/` |
@@ -116,7 +116,36 @@ docker compose logs -f            # View logs
 - Use existing patterns in `orchestrator.py` and `db_layer.py`
 - All SQL queries go through `db_layer.py`
 
-## Git Workflow
+## GitHub MCP Server (Preferred)
+
+Use the `github-vl` MCP server for pushing skill outputs directly to GitHub. This avoids conda/SSH issues and provides atomic commits.
+
+### Auto-Commit Skill Outputs
+
+When skills save to `trading/knowledge/`, use:
+
+```yaml
+Tool: mcp__github-vl__push_files
+Parameters:
+  owner: vladm3105
+  repo: trading_light_pilot
+  branch: main
+  files:
+    - path: trading/knowledge/{output_path}
+      content: [generated content]
+  message: "Add {skill_name} for {TICKER}"
+```
+
+### Available MCP Tools
+
+| Tool | Purpose |
+|------|----------|
+| `mcp__github-vl__push_files` | Push multiple files in single commit |
+| `mcp__github-vl__create_or_update_file` | Create/update single file |
+| `mcp__github-vl__get_file_contents` | Read file from repo |
+| `mcp__github-vl__list_commits` | View commit history |
+
+## Git Workflow (Fallback)
 
 ### Pushing Changes
 
@@ -126,7 +155,7 @@ This project uses SSH authentication. The remote is configured as:
 git remote set-url origin git@github.com:vladm3105/trading_light_pilot.git
 ```
 
-**Standard workflow:**
+**Standard workflow (when MCP unavailable):**
 
 ```bash
 git add -A

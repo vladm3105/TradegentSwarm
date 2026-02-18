@@ -103,6 +103,22 @@ WEEKLY:
 
 - `$ARGUMENTS`: Ticker symbol and action (add/review/remove), or "review all"
 
+## Auto-Commit to Remote
+
+After saving or updating watchlist files, use the GitHub MCP server to push directly:
+
+```yaml
+Tool: mcp__github-vl__push_files
+Parameters:
+  owner: vladm3105
+  repo: trading_light_pilot
+  branch: main
+  files:
+    - path: trading/knowledge/watchlist/{TICKER}_{YYYYMMDDTHHMM}.yaml
+      content: [generated watchlist content]
+  message: "Update watchlist: {TICKER} {add|update|remove}"
+```
+
 ## Execution
 
-Manage watchlist for $ARGUMENTS. Read the full skill definition from `trading/skills/watchlist/SKILL.md`.
+Manage watchlist for $ARGUMENTS. Read the full skill definition from `trading/skills/watchlist/SKILL.md`. After saving changes, auto-commit and push to remote.

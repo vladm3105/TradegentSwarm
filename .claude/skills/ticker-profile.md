@@ -72,6 +72,22 @@ Quarterly refresh:
 
 - `$ARGUMENTS`: Ticker symbol
 
+## Auto-Commit to Remote
+
+After saving the profile file, use the GitHub MCP server to push directly:
+
+```yaml
+Tool: mcp__github-vl__push_files
+Parameters:
+  owner: vladm3105
+  repo: trading_light_pilot
+  branch: main
+  files:
+    - path: trading/knowledge/analysis/ticker-profiles/{TICKER}_{YYYYMMDDTHHMM}.yaml
+      content: [generated profile content]
+  message: "Update ticker profile for {TICKER}"
+```
+
 ## Execution
 
-Create or update the ticker profile for $ARGUMENTS. Read the full skill definition from `trading/skills/ticker-profile/SKILL.md`. Check for existing profile first.
+Create or update the ticker profile for $ARGUMENTS. Read the full skill definition from `trading/skills/ticker-profile/SKILL.md`. Check for existing profile first. After saving the output file, auto-commit and push to remote.

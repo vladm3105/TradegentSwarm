@@ -39,7 +39,7 @@ Use this skill to systematically identify trading opportunities using scanner co
 
 ### Daily Scanners (`trading/knowledge/scanners/daily/`)
 | Scanner | Time | Purpose |
-|---------|------|---------|
+|---------|------|----------|
 | market-regime | 09:35 | Classify market environment |
 | premarket-gap | 08:30 | Gaps with catalysts |
 | news-catalyst | 07:00/12:00/18:00 | Material news |
@@ -50,13 +50,13 @@ Use this skill to systematically identify trading opportunities using scanner co
 
 ### Intraday Scanners (`trading/knowledge/scanners/intraday/`)
 | Scanner | Purpose |
-|---------|---------|
+|---------|----------|
 | options-flow | Unusual options activity |
 | unusual-volume | Volume spikes |
 
 ### Weekly Scanners (`trading/knowledge/scanners/weekly/`)
 | Scanner | Time | Purpose |
-|---------|------|---------|
+|---------|------|----------|
 | earnings-calendar | Sun 07:00 | Week ahead earnings |
 | institutional-activity | Mon/Fri 18:00 | 13F filings, insiders |
 
@@ -123,6 +123,24 @@ CLOSE (15:30-16:15):
 
 - `$ARGUMENTS`: Scanner name (optional), or "daily", "weekly", "all"
 
+## Auto-Commit to Remote
+
+After adding candidates to watchlist, use the GitHub MCP server to push directly:
+
+```yaml
+Tool: mcp__github-vl__push_files
+Parameters:
+  owner: vladm3105
+  repo: trading_light_pilot
+  branch: main
+  files:
+    - path: trading/knowledge/watchlist/{TICKER1}_{YYYYMMDDTHHMM}.yaml
+      content: [watchlist entry content]
+    - path: trading/knowledge/watchlist/{TICKER2}_{YYYYMMDDTHHMM}.yaml
+      content: [watchlist entry content]
+  message: "Scanner results: {scanner_name} - {count} candidates"
+```
+
 ## Execution
 
-Run market scanning for $ARGUMENTS. Read the full skill definition from `trading/skills/market-scanning/SKILL.md`. Load scanner configs from `trading/knowledge/scanners/`.
+Run market scanning for $ARGUMENTS. Read the full skill definition from `trading/skills/market-scanning/SKILL.md`. Load scanner configs from `trading/knowledge/scanners/`. After adding watchlist candidates, auto-commit and push to remote.

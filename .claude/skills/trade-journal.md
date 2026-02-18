@@ -81,6 +81,22 @@ Before entry, verify:
 
 - `$ARGUMENTS`: Ticker symbol and action (entry/exit/update)
 
+## Auto-Commit to Remote
+
+After saving the trade journal file, use the GitHub MCP server to push directly:
+
+```yaml
+Tool: mcp__github-vl__push_files
+Parameters:
+  owner: vladm3105
+  repo: trading_light_pilot
+  branch: main
+  files:
+    - path: trading/knowledge/trades/{TICKER}_{YYYYMMDDTHHMM}.yaml
+      content: [generated trade journal content]
+  message: "Add trade journal: {TICKER} {entry|exit|update}"
+```
+
 ## Execution
 
-Document the trade for $ARGUMENTS. Read the full skill definition from `trading/skills/trade-journal/SKILL.md`. Use actual fill prices, not intended prices.
+Document the trade for $ARGUMENTS. Read the full skill definition from `trading/skills/trade-journal/SKILL.md`. Use actual fill prices, not intended prices. After saving the output file, auto-commit and push to remote.
