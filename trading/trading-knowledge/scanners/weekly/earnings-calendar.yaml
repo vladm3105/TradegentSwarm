@@ -1,0 +1,500 @@
+# ═══════════════════════════════════════════════════════════════
+# EARNINGS CALENDAR TRACKER
+# Comprehensive earnings tracking beyond basic scanning
+# Integrates with earnings-analysis skill for systematic approach
+# ═══════════════════════════════════════════════════════════════
+
+_meta:
+  id: SCANNER-EARNINGS-CALENDAR-001
+  type: scanner-config
+  version: 1
+  created: "2025-01-25T09:00:00Z"
+  updated: "2025-01-25T09:00:00Z"
+  status: active
+  run_frequency: weekly
+  last_run: null
+  
+scanner_config:
+  name: "Earnings Calendar Tracker"
+  description: "Full quarter earnings calendar with history, estimates, and optimal timing"
+  category: earnings
+  priority: 3
+  
+  schedule:
+    run_at: "07:00"  # Pre-market
+    run_days: [sun]  # Weekly on Sunday for week ahead
+    daily_update: "16:30"  # After-hours update
+    skip_dates: []
+    
+  limits:
+    max_results: 200  # Full quarter coverage
+    max_api_calls: 50
+    timeout_seconds: 120
+
+# ═══════════════════════════════════════════════════════════════
+# SCANNER DEFINITION
+# ═══════════════════════════════════════════════════════════════
+
+scanner:
+  source: multi
+  
+  # Earnings calendar sources
+  calendar_sources:
+    - source: "earnings_whispers"
+      priority: 1
+      has_whisper: true
+      
+    - source: "nasdaq_calendar"
+      priority: 2
+      official: true
+      
+    - source: "yahoo_finance"
+      priority: 3
+      accessible: true
+      
+  # Historical data
+  historical_data:
+    quarters_back: 8
+    data_points:
+      - actual_eps
+      - estimated_eps
+      - surprise_pct
+      - stock_reaction_1d
+      - stock_reaction_5d
+      - guidance_direction
+      
+  # Web search for estimates
+  web_search:
+    queries:
+      - "{TICKER} earnings estimate"
+      - "{TICKER} whisper number"
+      - "{TICKER} earnings preview"
+      - "{TICKER} guidance expectations"
+    sources:
+      - earningswhispers.com
+      - estimize.com
+      - seekingalpha.com
+      - zacks.com
+    recency: "7d"
+
+# ═══════════════════════════════════════════════════════════════
+# CALENDAR STRUCTURE
+# ═══════════════════════════════════════════════════════════════
+
+calendar_structure:
+  # Time horizons
+  horizons:
+    this_week:
+      description: "Earnings in next 7 days"
+      action: "Active monitoring, position decisions"
+      
+    next_week:
+      description: "Earnings 8-14 days out"
+      action: "Prepare analysis, set alerts"
+      
+    two_weeks_out:
+      description: "Earnings 15-21 days out"
+      action: "Initial screening"
+      
+    full_quarter:
+      description: "All confirmed earnings this quarter"
+      action: "Planning and watchlist building"
+      
+  # Data captured per earnings
+  per_earnings_data:
+    basic:
+      - ticker
+      - company_name
+      - earnings_date
+      - earnings_time  # BMO (before market open) / AMC (after market close)
+      - fiscal_quarter
+      - fiscal_year
+      
+    estimates:
+      - consensus_eps
+      - whisper_eps
+      - consensus_revenue
+      - high_estimate
+      - low_estimate
+      - number_of_analysts
+      - estimate_revisions_30d
+      
+    historical:
+      - beat_streak
+      - beat_rate_8q
+      - avg_surprise_pct
+      - avg_move_on_beat
+      - avg_move_on_miss
+      - guidance_history  # raise/maintain/lower
+      
+    options:
+      - implied_move_pct
+      - iv_percentile
+      - atm_straddle_price
+      
+    analysis_status:
+      - has_full_analysis  # Link to EA document
+      - customer_demand_signal
+      - recommendation
+      - position_status
+
+# ═══════════════════════════════════════════════════════════════
+# HISTORICAL PATTERNS DATABASE
+# ═══════════════════════════════════════════════════════════════
+
+historical_patterns:
+  # Tracking per ticker
+  per_ticker_patterns:
+    beat_patterns:
+      - metric: "Beat rate"
+        calculation: "Beats / Total quarters"
+        threshold_good: 0.75  # 6/8 or better
+        
+      - metric: "Beat streak"
+        calculation: "Consecutive beats"
+        threshold_notable: 4
+        
+      - metric: "Average surprise magnitude"
+        calculation: "Avg (Actual - Estimate) / Estimate"
+        interpretation: "Consistent beaters vs estimate gamers"
+        
+    reaction_patterns:
+      - metric: "Average move on beat"
+        typical_range: [2, 8]  # percent
+        
+      - metric: "Average move on miss"
+        typical_range: [-8, -2]  # percent
+        
+      - metric: "Gap fill tendency"
+        calculation: "% of gaps that fill within 5 days"
+        
+      - metric: "Continuation rate"
+        calculation: "% that continue in gap direction"
+        
+    guidance_patterns:
+      - metric: "Guidance raise frequency"
+        bullish_threshold: 0.5  # Raises guidance >50% of time
+        
+      - metric: "Guidance impact"
+        description: "How much guidance moves stock vs EPS"
+        
+  # IV crush patterns
+  iv_crush_analysis:
+    typical_crush_pct:
+      low_iv_stocks: 20  # IV drops ~20%
+      high_iv_stocks: 40  # IV drops ~40%
+      
+    post_earnings_iv:
+      description: "IV typically returns to pre-run levels"
+      timeframe: "1-3 days post earnings"
+      
+    crush_adjusted_breakeven:
+      calculation: |
+        Required move = Straddle price * (1 + expected_crush)
+        Example: 8% straddle, 30% crush = need 10.4% move to profit
+
+# ═══════════════════════════════════════════════════════════════
+# OPTIMAL TIMING FRAMEWORK
+# ═══════════════════════════════════════════════════════════════
+
+timing_framework:
+  # Entry timing relative to earnings
+  entry_windows:
+    - window: "10-14 days before"
+      description: "Early entry for anticipated run-up"
+      pros: ["Lower IV", "More time for thesis"]
+      cons: ["Longer exposure", "Run-up may not occur"]
+      best_for: ["High conviction", "Stock positions"]
+      
+    - window: "5-7 days before"
+      description: "Sweet spot for most earnings plays"
+      pros: ["Balanced IV vs theta", "Thesis more clear"]
+      cons: ["IV starting to rise"]
+      best_for: ["Options plays", "Spread strategies"]
+      
+    - window: "2-4 days before"
+      description: "Late entry"
+      pros: ["More information", "Clear setup"]
+      cons: ["High IV", "Less time"]
+      best_for: ["High conviction only", "Day before for stock"]
+      
+    - window: "Day of (pre-announcement)"
+      description: "Same day entry"
+      pros: ["Maximum information"]
+      cons: ["Highest IV", "Binary outcome"]
+      best_for: ["Very high conviction", "Scalping the move"]
+      
+  # Exit timing
+  exit_windows:
+    pre_earnings:
+      - window: "Morning of announcement"
+        description: "Exit before binary event"
+        rationale: "Take profit on run-up, avoid binary risk"
+        
+    post_earnings:
+      - window: "Gap reaction"
+        description: "Trade the initial gap"
+        rationale: "Momentum follow-through"
+        
+      - window: "Day 2-3"
+        description: "After dust settles"
+        rationale: "Clearer picture, analyst revisions"
+        
+      - window: "5-day hold"
+        description: "Full reaction period"
+        rationale: "Capture full move, avoid noise"
+
+# ═══════════════════════════════════════════════════════════════
+# CUSTOMER DEMAND SIGNAL TRACKING
+# ═══════════════════════════════════════════════════════════════
+
+customer_demand_tracking:
+  # Per earnings-analysis skill - 50% weight
+  
+  description: |
+    Customer demand signals are the most predictive indicator
+    for earnings outcomes. Track and validate these signals
+    for continuous improvement.
+    
+  signal_sources:
+    hyperscalers:
+      for_tickers: [NVDA, AMD, AVGO, MRVL]
+      customers:
+        - name: "Microsoft"
+          signal: "Azure CapEx guidance"
+          
+        - name: "Google"
+          signal: "GCP spending"
+          
+        - name: "Amazon"
+          signal: "AWS CapEx"
+          
+        - name: "Meta"
+          signal: "AI infrastructure spending"
+          
+    enterprise_software:
+      for_tickers: [CRM, NOW, WDAY]
+      signals:
+        - "IT spending surveys"
+        - "CIO sentiment"
+        - "Digital transformation budgets"
+        
+    consumer:
+      for_tickers: [AMZN, WMT, TGT]
+      signals:
+        - "Consumer confidence"
+        - "Retail sales data"
+        - "Credit card spending data"
+        
+  # Signal accuracy tracking
+  accuracy_tracking:
+    log_per_trade:
+      - signal_direction
+      - signal_confidence
+      - actual_outcome
+      - correct_prediction
+      
+    metrics:
+      - "Customer demand accuracy rate"
+      - "Accuracy by signal type"
+      - "Accuracy by sector"
+
+# ═══════════════════════════════════════════════════════════════
+# QUALITY FILTERS
+# ═══════════════════════════════════════════════════════════════
+
+quality_filters:
+  liquidity:
+    min_market_cap_m: 1000
+    min_avg_volume: 500000
+    min_options_volume: 500
+    
+  data_quality:
+    min_analyst_coverage: 3
+    require_confirmed_date: true
+    
+  tradeable:
+    min_implied_move_pct: 3
+    max_implied_move_pct: 30
+    min_options_liquidity: true
+    
+  exclusions:
+    exclude_tickers: []
+    exclude_sectors: []
+
+# ═══════════════════════════════════════════════════════════════
+# SCORING CRITERIA
+# ═══════════════════════════════════════════════════════════════
+
+scoring:
+  criteria:
+    - name: beat_history
+      weight: 0.25
+      calculation: |
+        10: 8/8 beats, strong magnitudes
+        8: 7/8 or 6/8 with high magnitude
+        6: 5/8 or 6/8 moderate
+        4: 4/8
+        2: <4/8
+        
+    - name: reaction_consistency
+      weight: 0.20
+      calculation: |
+        10: Consistent direction on beat/miss
+        7: Mostly consistent
+        5: Mixed reactions
+        3: Inconsistent
+        1: Random reactions
+        
+    - name: setup_quality
+      weight: 0.20
+      calculation: |
+        10: Perfect setup (momentum, IV reasonable, clear catalyst)
+        7: Good setup
+        5: Acceptable setup
+        3: Poor setup
+        1: No tradeable setup
+        
+    - name: iv_attractiveness
+      weight: 0.15
+      calculation: |
+        10: IV percentile 30-50 (cheap)
+        7: IV percentile 50-65
+        5: IV percentile 65-80
+        3: IV percentile 80-90
+        1: IV percentile >90 (expensive)
+        
+    - name: estimate_dispersion
+      weight: 0.10
+      calculation: |
+        10: Tight estimates, whisper clear
+        7: Reasonable dispersion
+        5: Wide dispersion
+        3: Very wide, unclear
+        
+    - name: customer_demand_signal
+      weight: 0.10
+      calculation: |
+        10: Strong bullish signal, high confidence
+        7: Moderate bullish signal
+        5: Neutral / no signal
+        3: Moderate bearish signal
+        1: Strong bearish signal
+        
+  min_total_score: 5.0
+  auto_analyze_threshold: 7.0
+
+# ═══════════════════════════════════════════════════════════════
+# OUTPUT FORMAT
+# ═══════════════════════════════════════════════════════════════
+
+output:
+  format: report
+  
+  report_sections:
+    - section: "This Week's Earnings"
+      content: "Full details for earnings in next 7 days"
+      
+    - section: "High Priority Setups"
+      content: "Score >= 7, worth full analysis"
+      
+    - section: "Next Week Preview"
+      content: "Upcoming earnings to prepare for"
+      
+    - section: "Historical Patterns"
+      content: "Notable patterns for this week's names"
+      
+    - section: "Customer Demand Signals"
+      content: "Relevant signals for upcoming earnings"
+      
+  capture_fields:
+    - ticker
+    - earnings_date
+    - earnings_time
+    - days_to_earnings
+    - consensus_eps
+    - whisper_eps
+    - consensus_revenue
+    - beat_streak
+    - beat_rate_8q
+    - avg_move_beat
+    - avg_move_miss
+    - implied_move_pct
+    - iv_percentile
+    - customer_demand_signal
+    - score
+    - has_analysis
+    - recommendation
+    
+  storage:
+    report_path: "reports/{YYYY}/{MM}/earnings-calendar/"
+    calendar_path: "calendar/{YYYY}/Q{N}/"
+    log_path: "scanner-logs/{YYYY}/{MM}/earnings-calendar/"
+    
+  notifications:
+    on_high_priority: true  # Score >= 7
+    on_earnings_week: true
+    on_customer_signal: true
+
+# ═══════════════════════════════════════════════════════════════
+# AI AGENT INSTRUCTIONS
+# ═══════════════════════════════════════════════════════════════
+
+agent_instructions:
+  weekly_workflow:
+    sunday:
+      1: "Pull full week's earnings calendar"
+      2: "Get estimates and whisper numbers"
+      3: "Pull 8-quarter history for each"
+      4: "Calculate historical patterns"
+      5: "Get current IV and implied moves"
+      6: "Score each earnings event"
+      7: "Identify high-priority setups (score >= 7)"
+      8: "Check for customer demand signals"
+      9: "Generate weekly earnings report"
+      10: "Flag earnings needing full analysis"
+      
+  daily_workflow:
+    1: "Update any changed earnings dates"
+    2: "Refresh estimates if revised"
+    3: "Update IV levels"
+    4: "Check for new customer demand signals"
+    5: "Generate daily update for tomorrow's earnings"
+    
+  post_earnings_workflow:
+    1: "Record actual results vs estimates"
+    2: "Record stock reaction (1D, 5D)"
+    3: "Update historical database"
+    4: "Log customer demand accuracy"
+    5: "Update beat streak"
+    6: "Trigger post-trade review if position taken"
+    
+  integration_with_skill: |
+    When score >= 7, trigger full earnings-analysis:
+    1. Create EA-{TICKER}-Q{N}-{YYYY} document
+    2. Run 8-phase analysis
+    3. Apply customer demand weighting (50%)
+    4. Check do-nothing gate
+    5. Generate recommendation
+    
+  common_mistakes_to_avoid:
+    - "Ignoring whisper vs consensus difference"
+    - "Not adjusting for historical IV crush"
+    - "Trading all earnings equally"
+    - "Missing customer demand signals"
+    - "Not logging outcomes for learning"
+
+_graph:
+  entities:
+    - [scanner, SCANNER-EARNINGS-CALENDAR-001]
+    - [category, earnings]
+    - [skill, earnings-analysis]
+  relations:
+    - [this, tracks, earnings-calendar]
+    - [this, integrates_with, earnings-analysis-skill]
+
+_links:
+  skill_reference: "/mnt/skills/user/earnings-analysis/SKILL.md"
+  related_scanners:
+    - "scanners/daily/earnings-momentum.yaml"
+  output_template: "reference/templates/earnings-analysis.yaml"

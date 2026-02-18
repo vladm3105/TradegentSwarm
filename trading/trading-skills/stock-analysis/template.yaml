@@ -1,0 +1,208 @@
+# Stock Analysis Template
+# Output: trading-knowledge/analysis/stock/{TICKER}_{YYYYMMDDHHMM}.yaml
+
+_meta:
+  id: "{TICKER}_{YYYYMMDDHHMM}"
+  type: stock-analysis
+  version: 1
+  created: "{ISO_DATETIME}"
+  status: "active"
+
+ticker: "{TICKER}"
+current_price: 0.00
+analysis_date: "{YYYY-MM-DD}"
+analysis_type: "technical|value|momentum|post_earnings|catalyst"
+
+# Phase 1: Catalyst
+catalyst:
+  type: "technical|fundamental|event|momentum"
+  description: ""
+  specificity: "high|medium|low"
+  timing: "immediate|near_term|longer_term"
+  catalyst_score: 0  # 1-10
+
+# Phase 2: Market Environment
+market_environment:
+  regime: "strong_bull|bull|bull_pullback|sideways|bear_bounce|bear|bear_crisis"
+  sector: "{SECTOR}"
+  sector_trend: "leading|neutral|lagging"
+  vix_level: 0.00
+  vix_environment: "low|normal|high|extreme"
+  environment_score: 0  # 1-10
+
+# Phase 3: Technical Analysis
+technical:
+  trend:
+    primary_weekly: "up|sideways|down"
+    intermediate_daily: "up|sideways|down"
+    short_term: "up|sideways|down"
+    
+  moving_averages:
+    vs_20d: "above|below"
+    vs_50d: "above|below"
+    vs_200d: "above|below"
+    alignment: "bullish|neutral|bearish"
+    
+  patterns:
+    pattern_identified: ""
+    completion_status: "complete|forming|none"
+    measured_target: 0.00
+    
+  key_levels:
+    immediate_support: 0.00
+    immediate_resistance: 0.00
+    major_support: 0.00
+    major_resistance: 0.00
+    
+  volume:
+    trend: "increasing|stable|decreasing"
+    vs_average: "above|at|below"
+    
+  momentum:
+    rsi: 0
+    rsi_trend: "rising|flat|falling"
+    relative_strength_vs_spy: "outperforming|inline|underperforming"
+    
+  technical_score: 0  # 1-10
+
+# Phase 4: Fundamentals
+fundamentals:
+  valuation:
+    pe_ratio: 0.00
+    pe_vs_peers: "cheap|fair|expensive"
+    pe_vs_history: "cheap|fair|expensive"
+    ps_ratio: 0.00
+    
+  growth:
+    revenue_growth_yoy: 0.00
+    earnings_growth_yoy: 0.00
+    trajectory: "accelerating|stable|decelerating"
+    
+  quality:
+    profit_margin: 0.00
+    roe: 0.00
+    free_cash_flow: 0.00
+    debt_to_equity: 0.00
+    
+  insider_activity:
+    recent_buys: 0
+    recent_sells: 0
+    net_direction: "buying|neutral|selling"
+    
+  red_flags:
+    declining_revenue: false
+    rising_debt: false
+    insider_selling: false
+    accounting_concerns: false
+    
+  fundamental_score: 0  # 1-10
+
+# Phase 5: Sentiment
+sentiment:
+  analyst:
+    buy: 0
+    hold: 0
+    sell: 0
+    avg_target: 0.00
+    recent_changes: "upgrades|downgrades|mixed|none"
+    
+  short_interest:
+    pct_float: 0.00
+    days_to_cover: 0.0
+    trend: "increasing|stable|decreasing"
+    
+  options:
+    put_call_ratio: 0.00
+    unusual_flow: "bullish|bearish|none"
+    
+  contrarian_signal: false
+  sentiment_score: 0  # 1-10
+
+# Phase 6: Scenarios
+scenarios:
+  bull_case:
+    probability: 0.00
+    description: ""
+    target_price: 0.00
+    return_pct: 0.00
+    timeline_days: 0
+    key_driver: ""
+    
+  base_case:
+    probability: 0.00
+    description: ""
+    target_price: 0.00
+    return_pct: 0.00
+    timeline_days: 0
+    key_driver: ""
+    
+  bear_case:
+    probability: 0.00
+    description: ""
+    target_price: 0.00
+    return_pct: 0.00
+    timeline_days: 0
+    key_driver: ""
+    
+  expected_value: 0.00
+
+# Phase 7: Risk Management
+risk_management:
+  entry:
+    trigger: ""
+    price: 0.00
+    order_type: "limit|stop|market"
+    
+  stop_loss:
+    price: 0.00
+    basis: "technical_level|percentage|atr"
+    type: "hard|mental|trailing"
+    distance_pct: 0.00
+    
+  position_size:
+    account_risk_pct: 0.00
+    dollar_risk: 0.00
+    shares: 0
+    position_value: 0.00
+    portfolio_pct: 0.00
+    
+  risk_reward:
+    risk_dollars: 0.00
+    risk_pct: 0.00
+    reward_dollars: 0.00
+    reward_pct: 0.00
+    ratio: 0.0
+    
+  targets:
+    target_1: 0.00
+    target_1_sell_pct: 0
+    target_2: 0.00
+    target_2_sell_pct: 0
+    
+  time_stop:
+    days: 0
+    action: ""
+
+# Scoring & Recommendation
+scoring:
+  catalyst_score: 0.00
+  environment_score: 0.00
+  technical_score: 0.00
+  risk_reward_score: 0.00
+  sentiment_score: 0.00
+  
+  weighted_total: 0.00  # Out of 10
+  
+recommendation: "STRONG_BUY|BUY|WATCH|AVOID|SELL|STRONG_SELL"
+
+rationale: |
+  {2-3 sentence summary}
+
+# If WATCH, specify trigger
+watchlist_trigger: ""
+
+# Links
+_links:
+  trade_journal: ""
+  post_review: ""
+  ticker_profile: ""

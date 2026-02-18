@@ -1,0 +1,421 @@
+# ═══════════════════════════════════════════════════════════════
+# NEWS CATALYST SCANNER
+# Web-based scanner for identifying actionable news catalysts
+# ═══════════════════════════════════════════════════════════════
+
+_meta:
+  id: SCANNER-NEWS-CATALYST-001
+  type: scanner-config
+  version: 1
+  created: "2025-01-25T09:00:00Z"
+  updated: "2025-01-25T09:00:00Z"
+  status: active
+  run_frequency: daily
+  last_run: null
+  
+scanner_config:
+  name: "News Catalyst Scanner"
+  description: "Identifies stocks with material news catalysts via web search"
+  category: news
+  priority: 2
+  
+  schedule:
+    run_at: ["07:00", "12:00", "18:00"]  # Pre-market, midday, after-hours
+    run_days: [mon, tue, wed, thu, fri, sat, sun]  # Weekend for Monday prep
+    skip_dates: []
+    
+  limits:
+    max_results: 30
+    max_api_calls: 25
+    timeout_seconds: 60
+
+# ═══════════════════════════════════════════════════════════════
+# WEB SEARCH CONFIGURATION
+# ═══════════════════════════════════════════════════════════════
+
+scanner:
+  source: web_search
+
+web_search:
+  # Search engines and sources
+  sources:
+    primary:
+      - benzinga.com
+      - marketwatch.com
+      - reuters.com
+      - bloomberg.com
+      - wsj.com
+    secondary:
+      - seekingalpha.com
+      - finance.yahoo.com
+      - cnbc.com
+      - thefly.com
+      - streetinsider.com
+    specialized:
+      - biopharmcatalyst.com  # Biotech/FDA
+      - prnewswire.com  # Press releases
+      - sec.gov  # Filings
+      
+  # Search queries by catalyst type
+  queries:
+    earnings:
+      - "earnings beat stock today"
+      - "company raises guidance"
+      - "quarterly results better than expected"
+      - "earnings surprise stock"
+      
+    fda:
+      - "FDA approval stock"
+      - "FDA breakthrough designation"
+      - "clinical trial results positive"
+      - "drug approval news"
+      
+    ma:
+      - "acquisition announcement stock"
+      - "merger news today"
+      - "company buyout offer"
+      - "takeover bid premium"
+      
+    upgrades:
+      - "analyst upgrade stock today"
+      - "price target raised"
+      - "rating upgrade overweight"
+      - "analyst initiates buy rating"
+      
+    downgrades:
+      - "analyst downgrade stock today"
+      - "price target cut"
+      - "rating downgrade underweight"
+      - "analyst initiates sell rating"
+      
+    management:
+      - "CEO change announcement"
+      - "management shakeup"
+      - "executive departure"
+      - "activist investor stake"
+      
+    products:
+      - "new product launch"
+      - "major contract win"
+      - "partnership announcement"
+      - "product recall"
+      
+    macro:
+      - "sector catalyst today"
+      - "industry regulation news"
+      - "tariff impact stocks"
+      - "government contract awarded"
+      
+  # Recency filters
+  recency:
+    primary: "24h"  # Last 24 hours
+    extended: "7d"  # For pattern recognition
+
+# ═══════════════════════════════════════════════════════════════
+# CATALYST CLASSIFICATION
+# ═══════════════════════════════════════════════════════════════
+
+catalyst_classification:
+  # Material catalysts (high priority)
+  material:
+    - type: earnings_beat
+      typical_move_pct: [5, 15]
+      duration: "1-5 days"
+      tradeable: true
+      
+    - type: earnings_miss
+      typical_move_pct: [-15, -5]
+      duration: "1-5 days"
+      tradeable: true
+      
+    - type: fda_approval
+      typical_move_pct: [10, 50]
+      duration: "1-3 days"
+      tradeable: true
+      
+    - type: fda_rejection
+      typical_move_pct: [-50, -20]
+      duration: "1-3 days"
+      tradeable: true
+      
+    - type: acquisition_target
+      typical_move_pct: [15, 40]
+      duration: "Immediate"
+      tradeable: "Usually gaps, hard to trade"
+      
+    - type: guidance_raise
+      typical_move_pct: [3, 10]
+      duration: "1-3 days"
+      tradeable: true
+      
+    - type: guidance_cut
+      typical_move_pct: [-10, -3]
+      duration: "1-3 days"
+      tradeable: true
+      
+  # Moderate catalysts (medium priority)
+  moderate:
+    - type: analyst_upgrade
+      typical_move_pct: [2, 5]
+      duration: "1-2 days"
+      tradeable: "Selective"
+      
+    - type: analyst_downgrade
+      typical_move_pct: [-5, -2]
+      duration: "1-2 days"
+      tradeable: "Selective"
+      
+    - type: major_contract
+      typical_move_pct: [3, 10]
+      duration: "1-2 days"
+      tradeable: true
+      
+    - type: management_change
+      typical_move_pct: [-5, 5]
+      duration: "Variable"
+      tradeable: "Context dependent"
+      
+  # Minor catalysts (low priority)
+  minor:
+    - type: product_launch
+      typical_move_pct: [1, 3]
+      duration: "1 day"
+      tradeable: "Usually not"
+      
+    - type: conference_presentation
+      typical_move_pct: [0, 2]
+      duration: "1 day"
+      tradeable: "Usually not"
+
+# ═══════════════════════════════════════════════════════════════
+# NEWS QUALITY ASSESSMENT
+# ═══════════════════════════════════════════════════════════════
+
+news_quality:
+  # Source reliability
+  source_tiers:
+    tier1:
+      sources: [reuters.com, bloomberg.com, wsj.com]
+      reliability: 0.95
+      
+    tier2:
+      sources: [cnbc.com, marketwatch.com, benzinga.com]
+      reliability: 0.85
+      
+    tier3:
+      sources: [seekingalpha.com, finance.yahoo.com]
+      reliability: 0.70
+      
+    tier4:
+      sources: [social_media, forums]
+      reliability: 0.30
+      
+  # Verification requirements
+  verification:
+    material_catalyst:
+      min_sources: 2
+      require_tier1_or_tier2: true
+      
+    moderate_catalyst:
+      min_sources: 1
+      require_tier1_or_tier2: false
+      
+  # Red flags
+  red_flags:
+    - "Sponsored content"
+    - "Single source only"
+    - "Anonymous tip"
+    - "Rumor/speculation"
+    - "Old news repackaged"
+
+# ═══════════════════════════════════════════════════════════════
+# QUALITY FILTERS
+# ═══════════════════════════════════════════════════════════════
+
+quality_filters:
+  # Stock filters
+  liquidity:
+    min_avg_volume: 500000
+    min_market_cap_m: 300
+    max_spread_pct: 1.0
+    
+  # News recency
+  recency:
+    max_age_hours: 24
+    prefer_under_hours: 6
+    
+  # Already moved filter
+  price_action:
+    if_moved_more_than_pct: 10
+    action: "Flag as potentially already priced in"
+    
+  exclusions:
+    exclude_tickers: []
+    exclude_penny_stocks: true
+    exclude_otc: true
+
+# ═══════════════════════════════════════════════════════════════
+# SCORING CRITERIA
+# ═══════════════════════════════════════════════════════════════
+
+scoring:
+  criteria:
+    - name: catalyst_materiality
+      weight: 0.35
+      calculation: |
+        10: Material catalyst (earnings, FDA, M&A)
+        7: Moderate catalyst (upgrade, contract)
+        4: Minor catalyst (product, conference)
+        1: Immaterial news
+        
+    - name: source_quality
+      weight: 0.20
+      calculation: |
+        10: Multiple Tier 1 sources
+        8: Single Tier 1 or multiple Tier 2
+        6: Single Tier 2
+        4: Tier 3 sources
+        2: Tier 4 / unverified
+        
+    - name: timing
+      weight: 0.20
+      calculation: |
+        10: Breaking now / pre-market
+        8: Within last 2 hours
+        6: Within last 6 hours
+        4: Within last 12 hours
+        2: 12-24 hours old
+        
+    - name: price_action_opportunity
+      weight: 0.15
+      calculation: |
+        10: News just breaking, hasn't moved
+        7: Early move, continuation likely
+        5: Moderate move, uncertain continuation
+        3: Large move, may be priced in
+        1: Fully priced in
+        
+    - name: trade_setup
+      weight: 0.10
+      calculation: |
+        10: Clear entry, stop, target
+        7: Good setup visible
+        5: Moderate setup
+        3: Poor setup
+        1: No tradeable setup
+        
+  min_total_score: 6.0
+  auto_analyze_threshold: 7.5
+
+# ═══════════════════════════════════════════════════════════════
+# TRADING STRATEGIES BY CATALYST
+# ═══════════════════════════════════════════════════════════════
+
+strategies:
+  earnings_beat:
+    if_pre_market: "Gap and go if holds, fade if fails"
+    if_regular_hours: "Buy first pullback to VWAP"
+    stop: "Below reaction low"
+    target: "Prior high or measured move"
+    
+  fda_approval:
+    approach: "Usually gaps too much, wait for pullback"
+    entry: "First touch of 10-day MA or 50% retrace"
+    risk: "Biotech very volatile, size accordingly"
+    
+  acquisition_target:
+    approach: "Usually cant trade - gaps to deal price"
+    exception: "If deal uncertainty, may trade spread"
+    
+  analyst_upgrade:
+    approach: "Trade only if stock wasn't already extended"
+    entry: "First pullback if upgrade confirmed breakout"
+    caution: "Many upgrades are lagging indicators"
+    
+  guidance_raise:
+    approach: "Similar to earnings beat"
+    entry: "On reaction to news"
+    target: "Analyst price target revisions follow"
+
+# ═══════════════════════════════════════════════════════════════
+# OUTPUT FORMAT
+# ═══════════════════════════════════════════════════════════════
+
+output:
+  format: watchlist
+  
+  capture_fields:
+    - ticker
+    - headline
+    - catalyst_type
+    - source
+    - source_tier
+    - timestamp
+    - price_at_news
+    - current_price
+    - move_since_news_pct
+    - volume_reaction
+    - score
+    - recommended_strategy
+    - links
+    
+  storage:
+    watchlist_path: "watchlist/{YYYY}/{MM}/news-catalysts/"
+    log_path: "scanner-logs/{YYYY}/{MM}/news/"
+    
+  notifications:
+    on_material_catalyst: true
+    on_high_score: true
+    on_fda_news: true
+
+# ═══════════════════════════════════════════════════════════════
+# AI AGENT INSTRUCTIONS
+# ═══════════════════════════════════════════════════════════════
+
+agent_instructions:
+  execution_steps:
+    1: "Run web searches for each catalyst type query"
+    2: "Extract ticker, headline, source, timestamp from results"
+    3: "Classify catalyst type and materiality"
+    4: "Verify with secondary sources for material catalysts"
+    5: "Get current price and calculate move since news"
+    6: "Check red flags for news quality"
+    7: "Score each result"
+    8: "Match to trading strategy"
+    9: "Generate watchlist sorted by score"
+    
+  verification_protocol: |
+    For MATERIAL catalysts:
+    1. Confirm news from at least 2 sources
+    2. Check company press release / SEC filing if available
+    3. Verify timing - is this actually new?
+    4. Check if price has already moved significantly
+    
+  fake_news_detection:
+    - "Check multiple sources before acting"
+    - "Verify official company announcement exists"
+    - "Be skeptical of social media sources"
+    - "Watch for pump and dump patterns"
+    - "Old news repackaged as new - check dates carefully"
+    
+  common_mistakes_to_avoid:
+    - "Acting on unverified single-source news"
+    - "Chasing stocks that have already moved 20%+"
+    - "Trading on rumor without confirmation"
+    - "Missing the timing window - stale news"
+    - "Overweighting analyst upgrades/downgrades"
+
+_graph:
+  entities:
+    - [scanner, SCANNER-NEWS-CATALYST-001]
+    - [category, news]
+    - [source, web-search]
+  relations:
+    - [this, scans_for, news-catalysts]
+    - [this, uses, web-search]
+
+_links:
+  related_scanners:
+    - "scanners/daily/premarket-gap.yaml"
+    - "scanners/daily/earnings-momentum.yaml"
+  output_template: "reference/templates/watchlist.yaml"

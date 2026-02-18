@@ -1,0 +1,422 @@
+_meta:
+  id: EA-NFLX-Q4-2024
+  type: earnings-analysis
+  version: 1
+  created: "2025-01-15T10:00:00Z"
+  updated: "2025-01-15T10:00:00Z"
+  status: pre-earnings
+  skill_version: "earnings-analysis-v2.0"
+
+ticker: NFLX
+earnings_date: "2025-01-21"
+quarter: Q4-2024
+analysis_date: "2025-01-15"
+days_to_earnings: 6
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 1: PRE-ANALYSIS PREPARATION
+# ═══════════════════════════════════════════════════════════════
+
+phase1_preparation:
+  current_price: 875.50
+  current_iv: 58
+  implied_move_pct: 9.5
+  consensus_eps: 4.20
+  consensus_revenue_b: 10.1
+  beat_history:
+    last_8_quarters: [1, 1, 1, 1, 1, 1, 0, 1]  # 7/8 beats
+    streak: 6
+    avg_beat_pct: 8.5
+  key_metric: subscriber_growth
+  key_metric_consensus: 6500000  # 6.5M net adds expected
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 2: FUNDAMENTAL ANALYSIS
+# ═══════════════════════════════════════════════════════════════
+
+phase2_fundamentals:
+  
+  business_performance:
+    revenue_trend_8q:
+      - {quarter: Q1-2024, revenue_b: 9.37, yoy_pct: 15}
+      - {quarter: Q2-2024, revenue_b: 9.56, yoy_pct: 17}
+      - {quarter: Q3-2024, revenue_b: 9.82, yoy_pct: 15}
+      - {quarter: Q4-2024E, revenue_b: 10.10, yoy_pct: 14}
+    margin_trend:
+      operating_margin_current: 28.0
+      operating_margin_prior_year: 22.0
+      trend: expanding
+      inflection_notes: "Margin expansion from ad tier scale and password sharing crackdown"
+    management_guidance_accuracy:
+      last_4_quarters: [beat, beat, beat, beat]
+      avg_upside_to_guide_pct: 5.0
+      credibility: high
+
+  competitive_context:
+    comparison_note: "Scale advantage over streaming competitors"
+    nflx_subscribers: 283000000  # 283M
+    disney_plus_subscribers: 152000000  # 152M
+    hbo_max_subscribers: 97000000  # 97M
+    scale_advantage: "NFLX has 1.86x Disney+ subs, creating content cost advantage"
+
+  recent_developments:
+    - date: "2025-01-10"
+      age_days: 5
+      weight: half
+      event: "NFL Christmas Day games drew 65M viewers combined"
+      impact: bullish
+    - date: "2025-01-08"
+      age_days: 7
+      weight: half
+      event: "Squid Game Season 2 breaks viewing records"
+      impact: bullish
+    - date: "2024-12-20"
+      age_days: 26
+      weight: likely_priced_in
+      event: "Price increase announced for ad-free tiers"
+      impact: priced_in
+
+  customer_demand:
+    weight: 0.50
+    methodology: "Analyze engagement metrics, app download trends, content performance"
+    
+    signals:
+      - source: "App Annie Data"
+        metric: "App downloads Q4"
+        value: "+18% YoY"
+        signal: bullish
+        
+      - source: "Squid Game S2 Performance"
+        metric: "Viewership"
+        value: "152M households in first 11 days"
+        signal: very_bullish
+        
+      - source: "NFL Christmas Games"
+        metric: "Average viewership"
+        value: "24M per game, exceeds internal projections"
+        signal: bullish
+        
+      - source: "Ad Tier Growth"
+        metric: "Ad tier subscribers"
+        value: "Expected 70M+ by Q4 (40% of new subs)"
+        signal: bullish
+
+    aggregate:
+      signal: bullish
+      confidence: 0.75
+      rationale: "Strong content slate + NFL success + ad tier growth = subscriber beat likely"
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 3: TECHNICAL ANALYSIS (FOR TIMING ONLY - 5% weight)
+# ═══════════════════════════════════════════════════════════════
+
+phase3_technical:
+  weight: 0.05
+  purpose: "Entry TIMING only, not directional prediction"
+  
+  support_levels:
+    - price: 850
+      significance: "20-day MA"
+      distance_pct: -2.9
+    - price: 800
+      significance: "50-day MA, psychological"
+      distance_pct: -8.6
+      
+  resistance_levels:
+    - price: 900
+      significance: "All-time high area"
+    - price: 950
+      significance: "Measured move target"
+      
+  indicators:
+    bullish_count: 7
+    bearish_count: 2
+    alignment_pct: 78
+    
+  recent_price_action:
+    rally_from_low_pct: 85  # From $475 2022 low
+    days_in_uptrend: 180
+    
+  key_insight: "Extended but strong; near ATH suggests high expectations"
+  entry_signal: "Already extended; small position or wait for pullback"
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 4: SENTIMENT AND POSITIONING
+# ═══════════════════════════════════════════════════════════════
+
+phase4_sentiment:
+  
+  analyst_consensus:
+    buy_pct: 78
+    hold_pct: 18
+    sell_pct: 4
+    avg_price_target: 950
+    upside_to_target_pct: 8.5
+    
+  institutional_ownership:
+    current_pct: 82
+    change_last_quarter_pct: 1.5
+    direction: accumulation
+    
+  short_interest:
+    current_pct: 2.1
+    days_to_cover: 1.2
+    trend: decreasing
+    squeeze_potential: low
+    
+  media_sentiment:
+    positive_mentions: 52
+    negative_mentions: 12
+    ratio: 4.3
+    dominant_narrative: "Streaming winner, ad-tier success, live sports expansion"
+    
+  bias_check:
+    note: "High expectations = high bar to beat"
+    media_vs_fundamentals: "Sentiment extremely bullish; risk is 'priced for perfection'"
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 5: PROBABILITY-WEIGHTED ASSESSMENT
+# ═══════════════════════════════════════════════════════════════
+
+phase5_probability:
+  
+  scenarios:
+    - name: strong_beat
+      description: "Subscribers >7M, revenue beat, strong 2025 guide"
+      probability: 0.35
+      key_metric_outcome: ">7M net adds"
+      expected_move_pct: 10
+      contribution_to_ev: 3.5
+      triggers:
+        - "Net adds >7M (vs 6.5M consensus)"
+        - "Ad tier subs >75M"
+        - "2025 revenue guide >$43B"
+        
+    - name: modest_beat
+      description: "Meet expectations, solid execution"
+      probability: 0.40
+      key_metric_outcome: "6-7M net adds"
+      expected_move_pct: 2
+      contribution_to_ev: 0.8
+      triggers:
+        - "Net adds in line at 6-7M"
+        - "Margins hold at 28%"
+        - "Guidance in line"
+        
+    - name: miss_disappoint
+      description: "Subs miss or weak 2025 guide"
+      probability: 0.25
+      key_metric_outcome: "<6M net adds or weak guide"
+      expected_move_pct: -12
+      contribution_to_ev: -3.0
+      triggers:
+        - "Net adds <6M"
+        - "Ad tier slower than expected"
+        - "Content spend concern"
+        
+  expected_value_pct: 1.3  # 3.5 + 0.8 - 3.0 = 1.3
+  probability_sum_check: 1.0
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 6: RISK ASSESSMENT AND BIAS CHECK
+# ═══════════════════════════════════════════════════════════════
+
+phase6_risk_and_bias:
+  
+  bias_checks:
+    recency:
+      status: warning
+      check: "Am I overweighting recent news?"
+      analysis: "NFL games and Squid Game success are fresh; may be overweighting. Content success doesn't always translate to subs."
+      
+    confirmation:
+      status: pass
+      check: "Have I sought contradicting evidence?"
+      analysis: "Bear case: Valuation at 45x, near ATH, password sharing gains may slow, price increases could hurt retention."
+      
+    timing_conservatism:
+      status: noted
+      check: "Am I waiting for 'confirmation' when conviction >70%?"
+      analysis: "Stock near ATH. Not a clear timing conservatism situation - caution is warranted here."
+      
+    anchoring:
+      status: pass
+      check: "Am I fixated on arbitrary price targets?"
+      analysis: "Using $850 support (20-day MA) not arbitrary level. Stop at $800 based on 50-day MA."
+      
+  steel_man:
+    bear_case: |
+      STRONGEST argument against bullish thesis:
+      
+      1. VALUATION: Trading at 45x forward P/E near all-time highs. Any disappointment 
+         could trigger significant correction. Market expects perfection.
+         
+      2. PASSWORD SHARING TAILWIND ENDING: 2024 benefited from password crackdown. 
+         This one-time boost won't repeat in 2025. Organic growth will be harder.
+         
+      3. CONTENT COSTS: Live sports (NFL, WWE) are expensive. Margins may not expand 
+         as much as bulls expect if content costs accelerate.
+         
+      4. COMPETITION: Disney+ with ESPN integration, Amazon Prime with NFL, Apple TV+ 
+         all improving. Streaming wars not over.
+         
+    can_argue_both_sides: true
+    bias_assessment: "Can articulate bear case. Bullish but not blindly so."
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 7: FINAL DECISION FRAMEWORK
+# ═══════════════════════════════════════════════════════════════
+
+phase7_decision:
+  
+  do_nothing_gate:
+    expected_value_above_5pct:
+      threshold: 5
+      actual: 1.3
+      status: fail  # EV below 5%
+      
+    confidence_above_60pct:
+      threshold: 60
+      actual: 68
+      status: pass
+      
+    risk_reward_above_2to1:
+      target_move_pct: 10
+      stop_loss_pct: 8.6  # Entry $875 to stop $800
+      ratio: 1.16
+      status: fail  # Below 2:1
+      
+    edge_not_priced_in:
+      implied_move_pct: 9.5
+      expected_move_pct: 10
+      status: warning  # Edge barely exceeds implied
+      
+    gate_result: pass_with_reduced_size
+    gate_notes: "EV only 1.3% and R:R 1.16:1 fails thresholds. High expectations already priced in. Very small position or PASS."
+
+  position_determination:
+    confidence: 0.68
+    action_per_framework: "Reduced size or spreads (confidence 55-70%)"
+    adjustment: "Further reduce due to poor R:R and low EV"
+    
+  entry_strategy:
+    rule: "Stock near ATH, not declining - no timing conservatism opportunity"
+    current_situation: "Extended, high expectations"
+    action: "Small position or defined-risk options play"
+    
+  entry_levels:
+    primary_entry: 875
+    primary_entry_note: "Current price"
+    scale_entry: 850
+    scale_entry_note: "Add only on pullback to 20-day MA"
+    stop_loss: 800
+    stop_loss_note: "Below 50-day MA"
+    risk_reward_at_primary: 1.16
+    
+  position_structure:
+    conviction: 0.68
+    iv_percentile: 75  # >60%
+    recommended_structure: "Bull call spreads or small shares"
+    rationale: "High IV + modest conviction = sell premium via spreads"
+    
+  recommendation:
+    direction: long
+    confidence: 0.68
+    entry_price: 875
+    entry_zone: [850, 880]
+    target_price: 950
+    stop_loss: 800
+    position_size_pct: 1.5  # Small due to gate failures
+    structure: bull_call_spread
+    expiration: "February monthly (post-earnings)"
+    specific_trade: "Buy $880 call, sell $920 call, Feb expiry"
+    max_loss_pct: 0.5
+    
+  falsification:
+    thesis_wrong_if:
+      - "Net subscriber adds <5M"
+      - "2025 guidance <$41B revenue"
+      - "Operating margin guide <26%"
+      - "Major content miss or cancellation"
+    exit_immediately_if:
+      - "Close below $800"
+      - "Pre-earnings thesis falsification"
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 8: POST-EARNINGS REVIEW
+# ═══════════════════════════════════════════════════════════════
+
+phase8_post_earnings:
+  status: pending
+  review_scheduled: "2025-01-22"
+  outcome: null
+  error_analysis: null
+  entry_timing: null
+  data_source_review: null
+
+# ═══════════════════════════════════════════════════════════════
+# SUMMARY
+# ═══════════════════════════════════════════════════════════════
+
+summary:
+  header: "NFLX EARNINGS ANALYSIS | 2025-01-15 | Earnings: 2025-01-21 | 6 days"
+    
+  current_setup:
+    price: 875.50
+    iv_pct: 58
+    implied_move_pct: 9.5
+    beat_history: "7/8 (6 streak)"
+    key_metric: "Subscriber Growth"
+    
+  probability_assessment:
+    strong_beat: {prob_pct: 35, move_pct: 10}
+    modest_beat: {prob_pct: 40, move_pct: 2}
+    miss: {prob_pct: 25, move_pct: -12}
+    expected_value_pct: 1.3
+    
+  recommendation:
+    direction: BULLISH
+    confidence_pct: 68
+    
+  position:
+    entry: 875
+    entry_note: "current level or pullback to 850"
+    target: 950
+    stop_loss: 800
+    size_pct: 1.5
+    structure: "Bull call spread ($880/$920 Feb)"
+    
+  falsification: "Thesis wrong if subs <5M, guide <$41B, or margin <26%"
+  
+  biases_checked:
+    recency: warning
+    confirmation: pass
+    timing_conservatism: noted
+    both_sides_argued: true
+    
+  post_earnings_review: "2025-01-22"
+
+_graph:
+  entities:
+    - [ticker, NFLX]
+    - [event, NFLX-Q4-2024-Earnings]
+    - [metric, Subscriber-Growth]
+    - [strategy, bull-call-spread]
+  relations:
+    - [this, analyzes, NFLX]
+    - [this, for_event, NFLX-Q4-2024-Earnings]
+    - [NFLX, key_metric, Subscriber-Growth]
+
+# Top-level recommendation (required by schema)
+recommendation:
+  direction: long
+  confidence: 0.68
+  entry_price: 875
+  entry_zone: [850, 880]
+  target_price: 950
+  stop_loss: 800
+  position_size_pct: 1.5
+  structure: bull_call_spread
+
+_links:
+  strategy: strategies/earnings-momentum.yaml

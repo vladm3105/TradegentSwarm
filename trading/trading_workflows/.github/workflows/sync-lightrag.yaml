@@ -1,0 +1,74 @@
+name: Sync to LightRAG
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'earnings/**'
+      - 'analysis/**'
+      - 'trades/**'
+      - 'strategies/**'
+      - 'tickers/**'
+      - 'learnings/**'
+      - 'research/**'
+      - 'watchlist/**'
+      - 'scanners/**'
+      - 'reviews/**'
+  workflow_dispatch:
+    inputs:
+      full_sync:
+        description: 'Force full re-sync of all documents'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  validate-and-sync:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # For detecting changed files
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install pyyaml jsonschema httpx python-frontmatter
+
+      - name: Detect changed files
+        id: changes
+        run: |
+          if [ "${{ github.event.inputs.full_sync }}" == "true" ]; then
+            FILES=$(find . -name '*.yaml' -not -path './.lightrag/*' -not -path './.github/*' | tr '\n' ' ')
+          else
+            FILES=$(git diff --name-only HEAD~1 HEAD -- '*.yaml' | grep -v '^\.lightrag/' | grep -v '^\.github/' | tr '\n' ' ')
+          fi
+          echo "files=$FILES" >> $GITHUB_OUTPUT
+          echo "Changed files: $FILES"
+
+      - name: Validate documents
+        if: steps.changes.outputs.files != ''
+        run: |
+          python .github/scripts/validate.py ${{ steps.changes.outputs.files }}
+
+      - name: Sync to LightRAG
+        if: steps.changes.outputs.files != ''
+        env:
+          LIGHTRAG_API_URL: ${{ secrets.LIGHTRAG_API_URL }}
+          LIGHTRAG_API_KEY: ${{ secrets.LIGHTRAG_API_KEY }}
+        run: |
+          python .github/scripts/sync.py ${{ steps.changes.outputs.files }}
+
+      - name: Update sync status
+        if: always()
+        run: |
+          echo "last_sync: $(date -u +%Y-%m-%dT%H:%M:%SZ)" > .lightrag/sync-status.yaml
+          echo "commit: ${{ github.sha }}" >> .lightrag/sync-status.yaml
+          echo "status: ${{ job.status }}" >> .lightrag/sync-status.yaml

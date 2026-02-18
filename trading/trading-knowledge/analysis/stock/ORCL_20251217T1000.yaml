@@ -1,0 +1,422 @@
+_meta:
+  id: SA-ORCL-2025-001
+  type: stock-analysis
+  version: 1
+  created: "2025-12-17T10:00:00Z"
+  updated: "2025-12-17T10:00:00Z"
+  status: active
+  skill_version: "stock-analysis-v1.0"
+
+ticker: ORCL
+analysis_date: "2025-12-17"
+catalyst_type: news  # Post-earnings + financing concerns
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 1: CATALYST & THESIS IDENTIFICATION
+# ═══════════════════════════════════════════════════════════════
+
+phase1_catalyst:
+  
+  catalyst:
+    type: news
+    name: "Post-earnings collapse + Blue Owl financing withdrawal"
+    description: |
+      ORCL has declined 45% from September high of $329.50 driven by:
+      - Dec 10: Q2 FY2026 earnings miss on revenue despite EPS beat → -11% after-hours
+      - Dec 11-16: Continued selling, breach of $200, $190, $185 support
+      - Dec 17 (TODAY): Blue Owl Capital withdrew from $10B Michigan data center financing
+    
+  thesis:
+    summary: "Panic oversold on financing news creates contrarian opportunity"
+    detailed: |
+      Oracle has massive RPO backlog ($523B, +438% YoY) indicating strong demand.
+      Current selloff is driven by financing concerns, not fundamental weakness.
+      If financing is secured from alternative sources, stock recovers significantly.
+      Risk: Value trap if financing issues persist or fundamentals deteriorate.
+      
+  timeframe:
+    expected_duration: "2-4 weeks"
+    catalyst_date: "December 17-31 (holiday period)"
+    
+  invalidation:
+    thesis_wrong_if:
+      - "Additional financing partner withdrawals"
+      - "Credit rating downgrade"
+      - "Breaks below $165 (Fibonacci 61.8%)"
+      - "Analyst downgrades below $200"
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 2: MARKET ENVIRONMENT ASSESSMENT
+# ═══════════════════════════════════════════════════════════════
+
+phase2_market_environment:
+  
+  broader_market:
+    spx_trend: uptrend
+    spx_distance_from_high_pct: -1.2
+    vix_level: 16.5
+    vix_percentile: 35
+    market_regime: "Tech rotation, holiday thin volume"
+    
+  sector_performance:
+    sector: Technology
+    sector_vs_spx_30d_pct: -1.5
+    subsector: Enterprise Software
+    subsector_trend: "Mixed - cloud names under pressure"
+    
+  correlation_dynamics:
+    orcl_nvda_correlation_30d: 0.55
+    orcl_spx_correlation_30d: 0.68
+    implication: "Moderate correlation; ORCL-specific news dominates"
+    
+  environment_assessment:
+    supports_thesis: neutral
+    headwinds: 
+      - "Year-end tax loss selling"
+      - "Thin holiday volume exaggerates moves"
+      - "Tech sector rotation"
+    tailwinds:
+      - "Year-end bargain hunting possible"
+      - "Oversold conditions in quality name"
+    overall: "Environment neutral; stock-specific factors dominate"
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 3: TECHNICAL ANALYSIS & SETUP QUALITY
+# ═══════════════════════════════════════════════════════════════
+
+phase3_technical:
+  
+  price_action:
+    current_price: 179.69
+    52w_high: 329.50
+    52w_low: 99.26
+    distance_from_52w_high_pct: -45.4
+    
+  recent_crash:
+    dec_10_close: 217.48
+    dec_11_close: 192.91  # -11.3%
+    dec_11_volume: 78800000  # 4x average
+    dec_17_close: 179.69  # -4.7% additional
+    total_decline_pct: -17.4  # From Dec 10 to Dec 17
+    
+  support_resistance:
+    key_resistance:
+      - price: 185
+        significance: "Breakdown zone"
+      - price: 190
+        significance: "Psychological"
+      - price: 200
+        significance: "Major broken support"
+    key_support:
+      - price: 180
+        significance: "Current level"
+      - price: 175
+        significance: "Next support"
+      - price: 170
+        significance: "Major support"
+      - price: 165
+        significance: "Fibonacci 61.8%, critical"
+        
+  volume_analysis:
+    avg_volume_50d: 19500000
+    dec_11_volume: 78800000  # Capitulation signal
+    volume_spike_ratio: 4.0
+    accumulation_distribution: distribution
+    
+  technical_indicators:
+    rsi_14: 22
+    rsi_interpretation: "Extremely oversold"
+    macd_signal: bearish
+    macd_interpretation: "Still negative, needs time to recover"
+    moving_averages:
+      above_20d: false
+      above_50d: false
+      above_200d: false
+      ma_alignment: "Bearish (crash through all MAs)"
+      
+  setup_quality:
+    score: 3  # Poor for immediate entry
+    scoring_breakdown:
+      pattern_clarity: 4  # Crash, no base yet
+      volume_confirmation: 6  # Capitulation volume good
+      ma_alignment: 2  # All bearish
+      timeframe_alignment: 2  # All bearish
+      risk_reward_setup: 5  # Could be good at right entry
+    notes: "Too early to enter. Wait for base building or capitulation at $165-170."
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 4: FUNDAMENTAL CONTEXT & VALUATION
+# ═══════════════════════════════════════════════════════════════
+
+phase4_fundamentals:
+  
+  business_overview:
+    description: "Enterprise software and cloud infrastructure provider"
+    key_segments:
+      - name: Cloud Services
+        growth_driver: "OCI growth +68% YoY"
+      - name: License Support
+        growth_driver: "Recurring maintenance"
+      - name: Hardware
+        growth_driver: "Data center buildout"
+        
+  key_metrics:
+    rpo_b: 523  # Remaining Performance Obligations
+    rpo_yoy_growth_pct: 438  # Massive backlog
+    cloud_revenue_growth_pct: 34
+    cloud_infrastructure_growth_pct: 68
+    free_cash_flow_q2_b: -10  # Worse than -$5.2B expected
+    fy2026_capex_guidance_b: 50  # Up from $35B
+    total_debt_plus_leases_b: 124  # Leverage concern
+      
+  valuation:
+    pe_forward: 22
+    pe_vs_5yr_avg: below  # Historical ~25-30
+    valuation_assessment: "Cheaper than recent history but capex concerns"
+    
+  what_is_priced_in:
+    priced_in:
+      - "Q2 revenue miss"
+      - "General execution concerns"
+    not_priced_in:
+      - "Blue Owl withdrawal full implications"
+      - "Alternative financing secured"
+      - "Massive RPO conversion to revenue"
+      
+  potential_surprises:
+    positive:
+      - "Alternative financing announced"
+      - "Major cloud contract win"
+      - "OpenAI partnership expansion"
+    negative:
+      - "Additional financing partners withdraw"
+      - "Credit downgrade"
+      - "Capex funding issues persist"
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 5: SENTIMENT & POSITIONING ANALYSIS
+# ═══════════════════════════════════════════════════════════════
+
+phase5_sentiment:
+  
+  analyst_sentiment:
+    buy_pct: 60
+    hold_pct: 35
+    sell_pct: 5
+    avg_price_target: 312
+    high_target: 422
+    low_target: 180
+    upside_to_avg_target_pct: 73.7
+    recent_revisions: "Multiple downgrades post-earnings"
+    
+  institutional_positioning:
+    institutional_ownership_pct: 45
+    direction: "Heavy distribution"
+    
+  short_interest:
+    short_pct_float: 2.8
+    days_to_cover: 2.1
+    trend: increasing
+    squeeze_potential: low
+    
+  positioning_assessment:
+    crowded_trade: false
+    contrarian_opportunity: potential
+    positioning: "Extreme fear; potential capitulation"
+    
+  trade_type:
+    classification: "Potential contrarian bounce"
+    description: "Wait for capitulation, then bounce trade"
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 6: PROBABILITY-WEIGHTED SCENARIOS (2-WEEK)
+# ═══════════════════════════════════════════════════════════════
+
+phase6_scenarios:
+  
+  bull_case:
+    name: "Financing resolved, relief rally"
+    probability: 0.10
+    price_target: 205
+    upside_pct: 14
+    timeframe: "2 weeks"
+    triggers:
+      - "Oracle announces alternative financing"
+      - "Analyst upgrades"
+      - "Major positive news"
+    contribution_to_ev: 1.4
+    
+  base_case_positive:
+    name: "Stabilization and minor bounce"
+    probability: 0.40
+    price_target: 190
+    upside_pct: 5.7
+    timeframe: "2 weeks"
+    triggers:
+      - "Blue Owl news digests"
+      - "Holiday volume contraction"
+      - "Short covering"
+    contribution_to_ev: 2.28
+    
+  base_case_negative:
+    name: "Slow grind lower"
+    probability: 0.35
+    price_target: 175
+    downside_pct: -2.6
+    timeframe: "2 weeks"
+    triggers:
+      - "No catalyst"
+      - "Tax loss selling continues"
+      - "Tests support"
+    contribution_to_ev: -0.91
+    
+  bear_case:
+    name: "Capitulation to Fibonacci support"
+    probability: 0.15
+    price_target: 165
+    downside_pct: -8.2
+    timeframe: "2 weeks"
+    triggers:
+      - "Additional bad news"
+      - "Panic selling"
+      - "Tests $165 Fibonacci"
+    contribution_to_ev: -1.23
+    
+  expected_value:
+    ev_pct: 1.54  # 1.4 + 2.28 - 0.91 - 1.23 = 1.54
+    probability_sum_check: 1.0
+    ev_threshold_per_skill: 8.0
+    ev_assessment: "EV of 1.54% well below 8% threshold - WAIT, don't enter now"
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 7: RISK MANAGEMENT & POSITION FRAMEWORK
+# ═══════════════════════════════════════════════════════════════
+
+phase7_risk_management:
+  
+  bias_checks:
+    recency_bias:
+      check: "Am I overreacting to the crash?"
+      status: pass
+      analysis: "Recognizing that catching falling knives is dangerous. Waiting for setup."
+      
+    confirmation_bias:
+      check: "Have I sought contradicting evidence?"
+      status: pass
+      analysis: "Bear case clear: financing issues real, capex concerns, leverage rising."
+      
+    anchoring_bias:
+      check: "Am I anchored to $329 high?"
+      status: pass
+      analysis: "Not targeting old highs. Looking for bounce to $185-195 initially."
+      
+    loss_aversion:
+      check: "Am I afraid to buy the dip?"
+      status: noted
+      analysis: "Healthy fear here. Setup quality 3/10 says WAIT."
+      
+    overconfidence:
+      check: "Am I assuming V-shaped recovery?"
+      status: pass
+      analysis: "Not expecting quick recovery. Patient approach."
+
+# ═══════════════════════════════════════════════════════════════
+# TRADE SELECTION GATE
+# ═══════════════════════════════════════════════════════════════
+
+trade_selection:
+  
+  pass_criteria_check:
+    setup_quality_above_6:
+      threshold: 6
+      actual: 3
+      status: fail
+    ev_above_5pct:
+      threshold: 5
+      actual: 1.54
+      status: fail
+      
+  final_decision: WATCH
+  decision_rationale: |
+    Setup quality 3/10 and EV 1.54% both fail minimum thresholds.
+    Stock is in freefall with no base established.
+    WAIT for:
+    - Capitulation at $165-170 with volume spike
+    - Base building pattern at higher level ($175-180)
+    - Positive catalyst (financing announcement)
+    
+    Better risk-reward entry exists; patience required.
+
+# ═══════════════════════════════════════════════════════════════
+# RECOMMENDATION
+# ═══════════════════════════════════════════════════════════════
+
+recommendation:
+  action: WATCH
+  ticker: ORCL
+  
+  do_not_enter_now: true
+  reason: "Setup quality 3/10, no base, falling knife"
+  
+  potential_entry_setups:
+    setup_a:
+      name: "Capitulation entry"
+      trigger: "Price touches $165-172 with volume spike 3x average"
+      entry_price: 170
+      stop_loss: 158
+      target: 190
+      risk_reward: 2.7
+      
+    setup_b:
+      name: "Positive catalyst"
+      trigger: "Oracle announces financing partner secured"
+      entry_price: "At news (likely gap up)"
+      stop_loss: "Gap fill level"
+      target: 210
+      
+    setup_c:
+      name: "Base building"
+      trigger: "2+ weeks of consolidation at $175-185 with declining volume"
+      entry_price: 180
+      stop_loss: 170
+      target: 200
+      
+  risk_metrics:
+    current_ev_pct: 1.54
+    required_ev_pct: 8.0
+    gap: "Need 6.46% more EV for valid trade"
+    
+  forecast_2_weeks:
+    expected_price: 186
+    range_low: 170
+    range_high: 195
+    
+  monitoring:
+    check_daily: true
+    key_levels: [165, 170, 175, 185, 200]
+    next_reassessment: "December 23-24"
+
+# ═══════════════════════════════════════════════════════════════
+# POST-TRADE PROTOCOL
+# ═══════════════════════════════════════════════════════════════
+
+post_trade:
+  status: watching  # Not traded yet
+  outcome: null
+  review: null
+
+# ═══════════════════════════════════════════════════════════════
+# GRAPH & LINKS
+# ═══════════════════════════════════════════════════════════════
+
+_graph:
+  entities:
+    - [ticker, ORCL]
+    - [analysis, SA-ORCL-2025-001]
+    - [catalyst, financing-concerns]
+    - [sector, Technology]
+  relations:
+    - [this, analyzes, ORCL]
+    - [this, catalyst_type, financing-concerns]
+
+_links: {}

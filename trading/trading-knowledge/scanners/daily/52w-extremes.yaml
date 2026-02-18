@@ -1,0 +1,417 @@
+# ═══════════════════════════════════════════════════════════════
+# 52-WEEK HIGH/LOW SCANNER
+# Identifies stocks at key annual extremes for breakout/breakdown plays
+# ═══════════════════════════════════════════════════════════════
+
+_meta:
+  id: SCANNER-52W-EXTREMES-001
+  type: scanner-config
+  version: 1
+  created: "2025-01-25T09:00:00Z"
+  updated: "2025-01-25T09:00:00Z"
+  status: active
+  run_frequency: daily
+  last_run: null
+  
+scanner_config:
+  name: "52-Week High/Low Scanner"
+  description: "Finds stocks making new 52-week highs/lows with volume confirmation"
+  category: technical
+  priority: 4
+  
+  schedule:
+    run_at: "15:45"  # Near close to capture daily results
+    run_days: [mon, tue, wed, thu, fri]
+    skip_dates: []
+    
+  limits:
+    max_results: 50
+    max_api_calls: 10
+    timeout_seconds: 30
+
+# ═══════════════════════════════════════════════════════════════
+# SCANNER DEFINITION
+# ═══════════════════════════════════════════════════════════════
+
+scanner:
+  source: ib
+  
+  # 52-week high scanner
+  ib_scanner_highs:
+    scan_code: HIGH_VS_52W_HL
+    instrument: STK
+    location: STK.US.MAJOR
+    
+    filters:
+      above_price: 10
+      below_price: 500
+      above_volume: 500000
+      
+  # 52-week low scanner
+  ib_scanner_lows:
+    scan_code: LOW_VS_52W_HL
+    instrument: STK
+    location: STK.US.MAJOR
+    
+    filters:
+      above_price: 5  # Lower threshold for lows
+      below_price: 500
+      above_volume: 500000
+      
+  # Also check 13-week levels for earlier signals
+  ib_scanner_13w_high:
+    scan_code: HIGH_VS_13W_HL
+    instrument: STK
+    location: STK.US.MAJOR
+    
+  ib_scanner_13w_low:
+    scan_code: LOW_VS_13W_HL
+    instrument: STK
+    location: STK.US.MAJOR
+
+# ═══════════════════════════════════════════════════════════════
+# 52-WEEK HIGH CRITERIA
+# ═══════════════════════════════════════════════════════════════
+
+high_criteria:
+  # What makes a quality 52-week high
+  
+  breakout_quality:
+    - name: "Volume confirmation"
+      required: true
+      threshold: "RVOL >= 1.5"
+      weight: 0.25
+      
+    - name: "Clean breakout"
+      description: "Close in upper 25% of range"
+      weight: 0.20
+      
+    - name: "No resistance overhead"
+      description: "All-time high or multi-year breakout"
+      weight: 0.15
+      
+    - name: "Trend alignment"
+      description: "Above all major MAs (20, 50, 200)"
+      weight: 0.20
+      
+    - name: "Sector strength"
+      description: "Sector also showing strength"
+      weight: 0.10
+      
+    - name: "Not extended"
+      description: "Not > 15% above 20-day MA"
+      weight: 0.10
+      
+  # Classification of breakouts
+  breakout_types:
+    - type: "All-Time High Breakout"
+      significance: highest
+      typical_continuation: 0.65
+      description: "Blue sky territory, no overhead supply"
+      
+    - type: "Multi-Year High Breakout"
+      significance: high
+      typical_continuation: 0.60
+      description: "Breaking through years of resistance"
+      
+    - type: "52-Week High (within range)"
+      significance: medium
+      typical_continuation: 0.55
+      description: "New annual high but still below ATH"
+      
+    - type: "False Breakout Risk"
+      significance: low
+      criteria: "Low volume, extended from MAs, sector weak"
+      typical_continuation: 0.35
+
+# ═══════════════════════════════════════════════════════════════
+# 52-WEEK LOW CRITERIA
+# ═══════════════════════════════════════════════════════════════
+
+low_criteria:
+  # 52-week lows are different - potential reversals or value traps
+  
+  low_types:
+    - type: "Capitulation Low"
+      description: "Extreme volume, oversold, potential bottom"
+      signals:
+        - "RSI < 30"
+        - "Volume > 3x average"
+        - "Price down > 5%"
+      action: "Watch for reversal, potential long"
+      
+    - type: "Value Opportunity"
+      description: "Quality company at discount"
+      signals:
+        - "Strong fundamentals still intact"
+        - "Dividend yield increased significantly"
+        - "Insider buying"
+      action: "Research for value play"
+      
+    - type: "Falling Knife"
+      description: "Fundamental deterioration, avoid"
+      signals:
+        - "Multiple negative catalysts"
+        - "Analyst downgrades"
+        - "Guidance cuts"
+      action: "Avoid - could go lower"
+      
+    - type: "Short Candidate"
+      description: "Breakdown from support, continuation"
+      signals:
+        - "Breaking major support level"
+        - "Sector also weak"
+        - "No catalyst for reversal"
+      action: "Potential short setup"
+
+# ═══════════════════════════════════════════════════════════════
+# QUALITY FILTERS
+# ═══════════════════════════════════════════════════════════════
+
+quality_filters:
+  liquidity:
+    min_avg_volume: 500000
+    min_dollar_volume_m: 5
+    max_spread_pct: 0.5
+    
+  fundamentals:
+    exclude_sectors: []
+    min_market_cap_m: 500
+    # For lows, additional filters
+    for_lows_only:
+      prefer_profitable: true
+      check_dividend_cut: true
+    
+  technicals:
+    # For highs
+    for_highs:
+      max_distance_from_20d_ma_pct: 15
+      require_above_50d_ma: true
+    # For lows
+    for_lows:
+      check_rsi_oversold: true
+      oversold_threshold: 30
+    
+  exclusions:
+    exclude_tickers: []
+    exclude_if_held: false
+    exclude_recent_trades_days: 7
+
+# ═══════════════════════════════════════════════════════════════
+# SCORING CRITERIA
+# ═══════════════════════════════════════════════════════════════
+
+scoring:
+  # Different scoring for highs vs lows
+  
+  high_scoring:
+    criteria:
+      - name: volume_confirmation
+        weight: 0.25
+        calculation: |
+          10: RVOL > 2x on breakout day
+          7: RVOL 1.5-2x
+          5: RVOL 1.2-1.5x
+          3: Normal volume
+          1: Below average volume
+          
+      - name: breakout_quality
+        weight: 0.25
+        calculation: |
+          10: Close at high of day, above prior resistance
+          7: Close in upper 25% of range
+          5: Close mid-range but above breakout level
+          3: Close in lower half
+          1: Closed back below breakout level
+          
+      - name: trend_strength
+        weight: 0.20
+        calculation: |
+          10: All MAs rising, aligned bullish
+          7: Above all MAs, 20 > 50 > 200
+          5: Above 50 and 200, mixed shorter term
+          3: Only above 200
+          1: Below 200
+          
+      - name: extension_risk
+        weight: 0.15
+        calculation: |
+          10: <5% above 20D MA
+          7: 5-10% above 20D MA
+          5: 10-15% above 20D MA
+          3: 15-20% above 20D MA
+          1: >20% above 20D MA (extended)
+          
+      - name: sector_confirmation
+        weight: 0.15
+        calculation: |
+          10: Sector at 52-week high too
+          7: Sector strong, outperforming
+          5: Sector neutral
+          3: Sector weak
+          1: Stock diverging from weak sector
+          
+  low_scoring:
+    criteria:
+      - name: capitulation_signals
+        weight: 0.30
+        calculation: |
+          10: Extreme volume (3x+), RSI<25, sharp drop
+          7: High volume (2x+), RSI<30
+          5: Above average volume, oversold
+          3: Normal volume decline
+          1: Grinding lower on low volume
+          
+      - name: fundamental_support
+        weight: 0.30
+        calculation: |
+          10: Strong company, temporary issue
+          7: Good fundamentals, concerning trend
+          5: Mixed fundamentals
+          3: Deteriorating fundamentals
+          1: Fundamental breakdown
+          
+      - name: reversal_potential
+        weight: 0.25
+        calculation: |
+          10: Clear support level, positive divergence
+          7: Near support, some bullish signals
+          5: No clear support, mixed signals
+          3: Breaking support, bearish
+          1: Free fall, no support
+          
+      - name: risk_reward
+        weight: 0.15
+        calculation: |
+          10: Defined risk, 3:1+ reward potential
+          7: 2:1 reward potential
+          5: 1:1 reward potential
+          3: Poor risk/reward
+          1: Undefined risk
+          
+  min_total_score: 6.0
+  auto_analyze_threshold: 7.5
+
+# ═══════════════════════════════════════════════════════════════
+# TRADING STRATEGIES
+# ═══════════════════════════════════════════════════════════════
+
+strategies:
+  # For 52-week highs
+  high_strategies:
+    - name: "Breakout Entry"
+      description: "Buy on confirmed breakout with volume"
+      criteria:
+        - "RVOL >= 1.5"
+        - "Close in upper 25%"
+        - "Score >= 7"
+      entry: "On close or next day open"
+      stop: "Below breakout level"
+      target: "Prior ATH or measured move"
+      
+    - name: "Pullback to Breakout"
+      description: "Buy pullback test of breakout level"
+      criteria:
+        - "Initial breakout with volume"
+        - "Pullback on lower volume"
+        - "Holds breakout level"
+      entry: "On test of breakout level"
+      stop: "Below breakout level by 1 ATR"
+      target: "New highs"
+      
+  # For 52-week lows
+  low_strategies:
+    - name: "Capitulation Reversal"
+      description: "Buy after extreme selling exhausts"
+      criteria:
+        - "Capitulation volume (3x+)"
+        - "RSI < 25"
+        - "Bullish reversal candle"
+      entry: "On reversal confirmation"
+      stop: "Below low"
+      target: "20-day MA"
+      
+    - name: "Value Buy"
+      description: "Accumulate quality at discount"
+      criteria:
+        - "Strong fundamentals intact"
+        - "Dividend yield attractive"
+        - "Score >= 6.5"
+      entry: "Scale in over time"
+      stop: "Trailing 25% or fundamental change"
+      target: "Fair value"
+
+# ═══════════════════════════════════════════════════════════════
+# OUTPUT FORMAT
+# ═══════════════════════════════════════════════════════════════
+
+output:
+  format: watchlist
+  
+  capture_fields:
+    - ticker
+    - direction  # high or low
+    - price
+    - distance_from_extreme_pct
+    - volume
+    - relative_volume
+    - prior_52w_high_low
+    - all_time_high
+    - ma_alignment
+    - sector_performance
+    - score
+    - classification
+    - recommended_strategy
+    
+  storage:
+    watchlist_path: "watchlist/{YYYY}/{MM}/52w-extremes/"
+    log_path: "scanner-logs/{YYYY}/{MM}/52w-extremes/"
+    
+  notifications:
+    on_high_score: true
+    on_all_time_high: true
+    on_capitulation: true
+
+# ═══════════════════════════════════════════════════════════════
+# AI AGENT INSTRUCTIONS
+# ═══════════════════════════════════════════════════════════════
+
+agent_instructions:
+  execution_steps:
+    1: "Run IB HIGH_VS_52W_HL scanner"
+    2: "Run IB LOW_VS_52W_HL scanner"
+    3: "For each high, check if also all-time high"
+    4: "Calculate volume confirmation and MA alignment"
+    5: "Apply appropriate scoring (high vs low)"
+    6: "Classify each result (breakout type or low type)"
+    7: "Match to recommended strategy"
+    8: "Generate separate watchlists for highs and lows"
+    
+  key_insights:
+    - "52-week highs tend to continue - strength begets strength"
+    - "52-week lows need careful analysis - falling knife vs value"
+    - "Volume confirmation is crucial for both"
+    - "All-time highs have no overhead resistance - best breakouts"
+    
+  common_mistakes_to_avoid:
+    - "Chasing extended highs (>15% above 20D MA)"
+    - "Bottom fishing without capitulation signals"
+    - "Ignoring sector context"
+    - "Trading low volume breakouts"
+    - "Missing the retest opportunity for safer entry"
+
+_graph:
+  entities:
+    - [scanner, SCANNER-52W-EXTREMES-001]
+    - [category, technical]
+    - [signal, breakout]
+    - [signal, breakdown]
+  relations:
+    - [this, scans_for, 52-week-extremes]
+    - [this, identifies, breakouts]
+    - [this, identifies, breakdowns]
+
+_links:
+  related_scanners:
+    - "scanners/intraday/unusual-volume.yaml"
+  output_template: "reference/templates/watchlist.yaml"

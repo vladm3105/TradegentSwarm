@@ -1,0 +1,532 @@
+_meta:
+  id: SA-AMD-2025-001
+  type: stock-analysis
+  version: 1
+  created: "2025-01-22T09:00:00Z"
+  updated: "2025-01-22T09:00:00Z"
+  status: active
+  skill_version: "stock-analysis-v1.0"
+
+ticker: AMD
+analysis_date: "2025-01-22"
+catalyst_type: technical  # technical | news | sector | momentum | squeeze | other
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 1: CATALYST & THESIS IDENTIFICATION
+# ═══════════════════════════════════════════════════════════════
+
+phase1_catalyst:
+  
+  catalyst:
+    type: technical
+    name: "Breakout from 3-month consolidation"
+    description: "AMD has consolidated between $115-135 for 3 months. Now testing upper resistance with increasing volume."
+    
+  thesis:
+    summary: "AMD breakout above $135 resistance with AI datacenter tailwinds"
+    detailed: |
+      AMD is positioned for a technical breakout driven by:
+      1. 3-month consolidation creating clear resistance at $135
+      2. Increasing volume on recent tests of resistance
+      3. Sector tailwind from AI infrastructure spending cycle
+      4. Relative underperformance vs NVDA creating catch-up potential
+      
+  timeframe:
+    expected_duration: "2-4 weeks"
+    catalyst_date: "Imminent (breakout setup)"
+    
+  invalidation:
+    thesis_wrong_if:
+      - "Fails to break $135 on 3rd test"
+      - "Closes below $120 (breakdown)"
+      - "NVDA sells off >10% (sector drag)"
+      - "Volume dries up on breakout attempt"
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 2: MARKET ENVIRONMENT ASSESSMENT
+# ═══════════════════════════════════════════════════════════════
+
+phase2_market_environment:
+  
+  broader_market:
+    spx_trend: uptrend
+    spx_distance_from_high_pct: -2.1
+    vix_level: 14.5
+    vix_percentile: 25  # Low volatility environment
+    market_regime: "Risk-on, low volatility"
+    
+  sector_performance:
+    sector: Technology
+    sector_vs_spx_30d_pct: 3.2  # Outperforming
+    subsector: Semiconductors
+    subsector_vs_sector_30d_pct: 5.1  # Strong outperformance
+    soxx_trend: uptrend
+    
+  correlation_dynamics:
+    amd_nvda_correlation_30d: 0.78
+    amd_soxx_correlation_30d: 0.85
+    amd_spx_correlation_30d: 0.62
+    implication: "High correlation to semis; sector strength supports thesis"
+    
+  environment_assessment:
+    supports_thesis: true
+    headwinds: 
+      - "General market extended"
+      - "Valuation concerns in tech"
+    tailwinds:
+      - "AI infrastructure theme strong"
+      - "Sector momentum positive"
+      - "Low VIX supports risk-taking"
+    overall: "Environment favorable for breakout trades"
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 3: TECHNICAL ANALYSIS & SETUP QUALITY
+# ═══════════════════════════════════════════════════════════════
+
+phase3_technical:
+  
+  price_action:
+    current_price: 132.50
+    52w_high: 187.50
+    52w_low: 102.30
+    distance_from_52w_high_pct: -29.3
+    
+  consolidation_pattern:
+    pattern: "Rectangle/Range"
+    duration_days: 92
+    range_low: 115
+    range_high: 135
+    range_width_pct: 17.4
+    current_position: "Upper third, testing resistance"
+    
+  support_resistance:
+    key_resistance:
+      - price: 135
+        significance: "3-month range high, major resistance"
+        tests: 3
+      - price: 145
+        significance: "Next resistance after breakout"
+      - price: 160
+        significance: "August high, measured move target"
+    key_support:
+      - price: 125
+        significance: "20-day MA, minor support"
+      - price: 120
+        significance: "Range midpoint, moderate support"
+      - price: 115
+        significance: "Range low, major support"
+        
+  volume_analysis:
+    avg_volume_50d: 42000000
+    recent_volume_vs_avg: 1.35  # 35% above average
+    volume_on_up_days_ratio: 1.8  # Volume higher on up days
+    accumulation_distribution: accumulation
+    
+  technical_indicators:
+    rsi_14: 58
+    rsi_interpretation: "Neutral, room to run"
+    macd_signal: bullish_crossover
+    macd_interpretation: "Recent bullish crossover"
+    moving_averages:
+      above_20d: true
+      above_50d: true
+      above_200d: true
+      ma_alignment: "Bullish (price > 20 > 50 > 200)"
+      
+  multiple_timeframe:
+    daily: bullish
+    weekly: neutral_to_bullish
+    monthly: neutral
+    alignment: "Partial alignment (2/3 bullish)"
+    
+  setup_quality:
+    score: 7  # Out of 10 (per skill: 7+ = trade)
+    scoring_breakdown:
+      pattern_clarity: 8  # Clear consolidation
+      volume_confirmation: 7  # Good but not exceptional
+      ma_alignment: 8  # All MAs aligned bullish
+      timeframe_alignment: 6  # Only 2/3 aligned
+      risk_reward_setup: 7  # Clear levels
+    notes: "Clean setup with clear invalidation. Not perfect but tradeable."
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 4: FUNDAMENTAL CONTEXT & VALUATION
+# ═══════════════════════════════════════════════════════════════
+
+phase4_fundamentals:
+  
+  business_overview:
+    description: "AMD designs CPUs, GPUs, and data center accelerators"
+    key_segments:
+      - name: Data Center
+        revenue_pct: 45
+        growth_driver: "AI accelerators (MI300), server CPUs"
+      - name: Client (PC)
+        revenue_pct: 30
+        growth_driver: "PC refresh cycle"
+      - name: Gaming
+        revenue_pct: 15
+        growth_driver: "Console cycle"
+      - name: Embedded
+        revenue_pct: 10
+        growth_driver: "Industrial, automotive"
+        
+  recent_developments:
+    - date: "2025-01-15"
+      event: "CES announcements - new MI350 AI accelerator"
+      impact: bullish
+      priced_in: partially
+    - date: "2025-01-10"
+      event: "Raised 2025 AI revenue guidance to $5B+"
+      impact: bullish
+      priced_in: mostly
+      
+  valuation:
+    pe_forward: 28
+    pe_vs_5yr_avg: below  # Historical avg ~35
+    pe_vs_nvda: discount  # NVDA at 35
+    ps_ratio: 8.5
+    peg_ratio: 1.2
+    valuation_assessment: "Reasonable; not stretched relative to growth"
+    
+  what_is_priced_in:
+    priced_in:
+      - "AI revenue growth to $5B in 2025"
+      - "Continued data center share gains"
+      - "PC market stabilization"
+    not_priced_in:
+      - "Potential upside to AI guidance"
+      - "Market share gains from Intel"
+      - "Margin expansion from mix shift"
+      
+  potential_surprises:
+    positive:
+      - "AI revenue exceeds $5B guidance"
+      - "Major hyperscaler design win"
+      - "Intel continues stumbling"
+    negative:
+      - "MI300 competitive issues vs NVDA"
+      - "PC market weakens further"
+      - "Pricing pressure in data center"
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 5: SENTIMENT & POSITIONING ANALYSIS
+# ═══════════════════════════════════════════════════════════════
+
+phase5_sentiment:
+  
+  analyst_sentiment:
+    buy_pct: 72
+    hold_pct: 24
+    sell_pct: 4
+    avg_price_target: 165
+    high_target: 200
+    low_target: 120
+    upside_to_avg_target_pct: 24.5
+    recent_revisions: "3 upgrades, 1 downgrade in past 30 days"
+    
+  institutional_positioning:
+    institutional_ownership_pct: 74
+    change_last_quarter_pct: 1.8
+    direction: accumulation
+    notable_moves:
+      - "Fidelity added 2.1M shares"
+      - "Vanguard increased position 5%"
+      
+  short_interest:
+    short_pct_float: 3.2
+    days_to_cover: 1.5
+    trend: stable
+    squeeze_potential: low
+    
+  retail_sentiment:
+    wsb_mentions_trend: increasing
+    social_sentiment: bullish
+    google_trends: stable
+    
+  positioning_assessment:
+    crowded_trade: false
+    contrarian_opportunity: false
+    positioning: "Moderately positioned; not crowded"
+    
+  trade_type:
+    classification: momentum_continuation
+    description: "Going with institutional accumulation and sector momentum"
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 6: PROBABILITY-WEIGHTED SCENARIOS
+# ═══════════════════════════════════════════════════════════════
+
+phase6_scenarios:
+  
+  bull_case:
+    name: "Breakout and run"
+    probability: 0.45
+    price_target: 155
+    upside_pct: 17
+    timeframe: "2-4 weeks"
+    triggers:
+      - "Clean break above $135 on volume"
+      - "Sector continues outperforming"
+      - "No negative NVDA news"
+    contribution_to_ev: 7.65  # 0.45 × 17
+    
+  base_case:
+    name: "Breakout stalls"
+    probability: 0.35
+    price_target: 140
+    upside_pct: 5.7
+    timeframe: "2-4 weeks"
+    triggers:
+      - "Breaks $135 but stalls at $140-145"
+      - "Consolidates at higher level"
+    contribution_to_ev: 2.0  # 0.35 × 5.7
+    
+  bear_case:
+    name: "Failed breakout"
+    probability: 0.20
+    price_target: 118
+    downside_pct: -11
+    timeframe: "1-2 weeks"
+    triggers:
+      - "Rejection at $135 resistance"
+      - "Breakdown below $125"
+      - "Sector rotation out of semis"
+    contribution_to_ev: -2.2  # 0.20 × -11
+    
+  expected_value:
+    ev_pct: 7.45  # Sum: 7.65 + 2.0 - 2.2 = 7.45
+    probability_sum_check: 1.0  # 0.45 + 0.35 + 0.20 = 1.0 ✓
+    ev_threshold_per_skill: 8.0  # Skill says >8% to trade
+    ev_assessment: "Slightly below 8% threshold but close"
+
+# ═══════════════════════════════════════════════════════════════
+# PHASE 7: RISK MANAGEMENT & POSITION FRAMEWORK
+# ═══════════════════════════════════════════════════════════════
+
+phase7_risk_management:
+  
+  # Bias Detection (per skill - 5 primary biases)
+  bias_checks:
+    recency_bias:
+      check: "Am I extrapolating recent price action?"
+      status: pass
+      analysis: "Not chasing after move. Waiting for breakout confirmation, not assuming it."
+      
+    confirmation_bias:
+      check: "Have I sought contradicting evidence?"
+      status: pass
+      analysis: "Bear case documented: failed breakout, sector rotation, MI300 competition. Have considered."
+      
+    anchoring_bias:
+      check: "Am I fixated on arbitrary price levels?"
+      status: pass
+      analysis: "Entry at $136 based on breakout confirmation, not arbitrary. Stop at $128 based on pattern invalidation."
+      
+    loss_aversion:
+      check: "Will I follow exit rules regardless of emotion?"
+      status: noted
+      analysis: "Pre-committing to stop at $128. Will not move stop down."
+      
+    overconfidence:
+      check: "Am I oversizing based on conviction?"
+      status: pass
+      analysis: "Position size 3% despite high conviction. Not oversizing."
+      
+  # Entry Criteria
+  entry:
+    trigger: "Break and close above $135 on above-average volume"
+    entry_price: 136  # Just above breakout level
+    entry_type: "Breakout confirmation"
+    volume_requirement: ">50M shares on breakout day"
+    wait_for: "Daily close above $135, not intraday"
+    
+  # Position Sizing
+  position_sizing:
+    account_risk_per_trade_pct: 1.5
+    stop_distance_pct: 5.9  # ($136 - $128) / $136
+    position_size_pct: 3.0  # Skill allows up to 5% but being conservative
+    max_loss_dollars_example: 900  # On $30K portfolio
+    rationale: "Setup quality 7/10, EV slightly below threshold, sizing conservatively"
+    
+  # Stop Loss
+  stop_loss:
+    price: 128
+    type: "Pattern invalidation"
+    rationale: "Below breakout level and 50-day MA. If falls here, breakout failed."
+    trailing_stop: "Move to breakeven after +5% gain"
+    
+  # Profit Targets
+  profit_targets:
+    target_1:
+      price: 145
+      action: "Sell 40%"
+      rationale: "Next resistance level"
+    target_2:
+      price: 155
+      action: "Sell 40%"
+      rationale: "Measured move target"
+    remainder:
+      action: "Trail stop on final 20%"
+      trailing_method: "10-day MA"
+      
+  # Risk-Reward Calculation
+  risk_reward:
+    entry: 136
+    stop: 128
+    target_1: 145
+    target_2: 155
+    risk_pct: 5.9
+    reward_to_t1_pct: 6.6
+    reward_to_t2_pct: 14.0
+    rr_to_t1: 1.12  # Marginal
+    rr_to_t2: 2.37  # Good
+    blended_rr: 1.75  # Acceptable
+    
+  # Success Metrics
+  success_metrics:
+    trade_successful_if:
+      - "Reaches first target ($145)"
+      - "Risk-reward played out as expected"
+      - "Followed entry/exit rules"
+    trade_failed_if:
+      - "Stopped out at $128"
+      - "Breakout failed to materialize"
+    learning_opportunity_regardless: true
+
+# ═══════════════════════════════════════════════════════════════
+# TRADE SELECTION GATE (per skill)
+# ═══════════════════════════════════════════════════════════════
+
+trade_selection:
+  
+  pass_criteria_check:
+    setup_quality_above_6: 
+      threshold: 6
+      actual: 7
+      status: pass
+    ev_above_5pct:
+      threshold: 5
+      actual: 7.45
+      status: pass
+    ev_above_8pct_ideal:
+      threshold: 8
+      actual: 7.45
+      status: warning
+    no_conflicting_signals:
+      status: pass
+      analysis: "Technical, fundamental, sentiment aligned"
+    passes_risk_management:
+      status: pass
+    fewer_than_2_biases:
+      detected: 0
+      status: pass
+      
+  trade_criteria_check:
+    setup_quality_7_plus:
+      threshold: 7
+      actual: 7
+      status: pass
+    clear_catalyst_defined_timeframe:
+      status: pass
+    technical_sentiment_alignment:
+      status: pass
+    bias_checks_passed:
+      status: pass
+      
+  final_decision: TRADE
+  decision_rationale: |
+    Setup quality 7/10 meets threshold. EV at 7.45% slightly below ideal 8% but above 
+    minimum 5%. All bias checks pass. Clear entry trigger, stop, and targets defined.
+    Proceeding with conservative position size (3% vs potential 5%) given EV slightly 
+    below ideal.
+
+# ═══════════════════════════════════════════════════════════════
+# RECOMMENDATION SUMMARY
+# ═══════════════════════════════════════════════════════════════
+
+recommendation:
+  action: BUY_ON_BREAKOUT
+  ticker: AMD
+  
+  entry:
+    trigger: "Close above $135 on volume >50M"
+    price: 136
+    order_type: "Limit buy at $136 after breakout confirmation"
+    
+  position:
+    size_pct: 3.0
+    structure: shares  # Could also use calls given clear stop
+    
+  exit_plan:
+    stop_loss: 128
+    target_1: 145
+    target_1_action: "Sell 40%"
+    target_2: 155
+    target_2_action: "Sell 40%"
+    remainder: "Trail with 10-day MA"
+    
+  risk_metrics:
+    max_loss_pct: 1.8  # 3% position × 5.9% stop distance
+    expected_value_pct: 7.45
+    risk_reward: 1.75
+    
+  timeframe: "2-4 weeks"
+  
+  monitoring:
+    check_daily: true
+    key_levels_to_watch: [128, 135, 145]
+    invalidation_events:
+      - "NVDA drops >8%"
+      - "VIX spikes >25"
+      - "Breaks below $128"
+
+# ═══════════════════════════════════════════════════════════════
+# POST-TRADE PROTOCOL (to be filled after trade closes)
+# ═══════════════════════════════════════════════════════════════
+
+post_trade:
+  status: pending
+  
+  outcome: null
+  # outcome:
+  #   entry_date:
+  #   entry_price:
+  #   exit_date:
+  #   exit_price:
+  #   pnl_pct:
+  #   pnl_dollars:
+  #   holding_days:
+  #   result: # win | loss | breakeven
+  
+  review: null
+  # review:
+  #   scenario_that_played_out:
+  #   prediction_accuracy:
+  #   entry_timing_grade: # optimal | good | poor
+  #   exit_timing_grade:
+  #   biases_detected_post:
+  #   what_worked:
+  #   what_failed:
+  #   framework_updates:
+  #   lessons_learned:
+
+# ═══════════════════════════════════════════════════════════════
+# GRAPH & LINKS
+# ═══════════════════════════════════════════════════════════════
+
+_graph:
+  entities:
+    - [ticker, AMD]
+    - [analysis, SA-AMD-2025-001]
+    - [catalyst, technical-breakout]
+    - [sector, Semiconductors]
+  relations:
+    - [this, analyzes, AMD]
+    - [this, catalyst_type, technical-breakout]
+    - [AMD, in_sector, Semiconductors]
+    - [AMD, correlated_with, NVDA]
+
+_links:
+  related_research: analysis/research/AI_CAPEX_20250110T0800.yaml
+  correlated_analysis: analysis/earnings/NVDA_20250120T0900.yaml

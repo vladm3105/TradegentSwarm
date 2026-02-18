@@ -1,0 +1,111 @@
+_meta:
+  id: MKT-2025-001
+  type: research
+  version: 2
+  created: "2025-01-20T10:00:00Z"
+  updated: "2025-01-25T14:00:00Z"
+  valid_until: "2025-04-20"
+
+topic: AI Infrastructure Capex Cycle Q1 2025
+category: thematic
+
+summary:
+  key_finding: "Hyperscaler AI capex accelerating beyond Street estimates; combined 2025 spend from MSFT, GOOGL, AMZN, META exceeds $250B"
+  signal: very_bullish
+  confidence: 0.85
+
+tickers_affected:
+  bullish:
+    - NVDA
+    - AMD
+    - AVGO
+    - MRVL
+  bearish: []
+  neutral:
+    - INTC
+
+data_points:
+  - source: Microsoft Q2 FY25 Earnings Call
+    source_type: earnings_call
+    date: "2025-01-28"
+    data: "FY25 capex guidance raised to $80B, +25% YoY"
+    quote: "Demand for AI infrastructure continues to exceed our available capacity"
+    implication: "NVDA supply/demand favorable through H1 2025"
+
+  - source: Google Q4 2024 Earnings Call
+    source_type: earnings_call
+    date: "2025-02-04"
+    data: "2025 capex guidance $52B, +20% YoY"
+    quote: "We would rather over-invest in AI infrastructure than under-invest"
+    implication: "No near-term capex cuts expected"
+
+  - source: Amazon Q4 2024 Earnings Call
+    source_type: earnings_call
+    date: "2025-02-06"
+    data: "AWS capex acceleration noted; 2025 guidance $48B"
+    quote: "Strong enterprise demand for AI workloads"
+    implication: "AWS growth re-acceleration benefits NVDA"
+
+  - source: Meta Q4 2024 Earnings Call
+    source_type: earnings_call
+    date: "2025-02-01"
+    data: "2025 capex guidance $40B+, +30% YoY, highest AI allocation"
+    quote: "AI is the priority investment for the foreseeable future"
+    implication: "Sustained GPU demand"
+
+  - source: Morgan Stanley Semiconductor Research
+    source_type: analyst_report
+    date: "2025-01-15"
+    data: "Raised 2025 NVDA estimates citing hyperscaler checks"
+    implication: "Street estimates may still be conservative"
+
+implications:
+  trading:
+    - ticker: NVDA
+      strategy: "Pre-earnings momentum"
+      timing: "Enter on any 5%+ pullback before Feb 26"
+      confidence: high
+    - ticker: AMD
+      strategy: "Secondary beneficiary play"
+      timing: "After any post-earnings weakness"
+      confidence: medium
+    - ticker: AVGO
+      strategy: "Custom ASIC exposure"
+      timing: "On pullbacks to support"
+      confidence: medium
+
+  risks:
+    - risk: "China export restriction escalation"
+      probability: medium
+      impact: high
+      mitigation: "Monitor policy news; reduce position size pre-announcement"
+    - risk: "Macro deterioration triggers capex cuts"
+      probability: low
+      impact: very_high
+      mitigation: "Watch hyperscaler guidance changes; reduce if VIX spikes"
+    - risk: "Hyperscaler shift to custom silicon"
+      probability: low
+      impact: medium
+      mitigation: "Track TPU/Trainium announcements; affects mix not total"
+
+refresh_triggers:
+  - "Any hyperscaler earnings report"
+  - "Major export control policy announcement"
+  - "Significant macro event (Fed, recession indicators)"
+
+_graph:
+  entities:
+    - [research, MKT-2025-001]
+    - [theme, AI-Infrastructure-Capex]
+    - [category, thematic]
+  relations:
+    - [MKT-2025-001, covers_theme, AI-Infrastructure-Capex]
+    - [MKT-2025-001, bullish_for, NVDA]
+    - [MKT-2025-001, bullish_for, AMD]
+    - [MKT-2025-001, bullish_for, AVGO]
+    - [AI-Infrastructure-Capex, benefits, Semiconductors]
+
+_links:
+  related_research: []
+  tickers:
+    - analysis/ticker-profiles/2025/01/NVDA_20250110T1000.yaml

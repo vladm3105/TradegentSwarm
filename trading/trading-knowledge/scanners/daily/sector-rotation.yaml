@@ -1,0 +1,391 @@
+# ═══════════════════════════════════════════════════════════════
+# SECTOR ROTATION SCANNER
+# Tracks money flows between sectors to identify emerging trends
+# ═══════════════════════════════════════════════════════════════
+
+_meta:
+  id: SCANNER-SECTOR-ROTATION-001
+  type: scanner-config
+  version: 1
+  created: "2025-01-25T09:00:00Z"
+  updated: "2025-01-25T09:00:00Z"
+  status: active
+  run_frequency: daily
+  last_run: null
+  
+scanner_config:
+  name: "Sector Rotation Scanner"
+  description: "Identifies sector money flows and emerging leadership"
+  category: sector
+  priority: 5
+  
+  schedule:
+    run_at: "16:15"  # After close for daily analysis
+    run_days: [mon, tue, wed, thu, fri]
+    skip_dates: []
+    
+  limits:
+    max_results: 100  # All sector stocks
+    max_api_calls: 20
+    timeout_seconds: 60
+
+# ═══════════════════════════════════════════════════════════════
+# SECTOR ETF UNIVERSE
+# ═══════════════════════════════════════════════════════════════
+
+scanner:
+  source: multi
+  description: "Combines IB data with web search for sector analysis"
+
+sectors:
+  # SPDR Sector ETFs for tracking
+  etfs:
+    - ticker: XLK
+      name: Technology
+      key_stocks: [AAPL, MSFT, NVDA, AVGO, ORCL]
+      
+    - ticker: XLF
+      name: Financials
+      key_stocks: [JPM, BAC, WFC, GS, MS]
+      
+    - ticker: XLV
+      name: Healthcare
+      key_stocks: [UNH, JNJ, LLY, PFE, ABBV]
+      
+    - ticker: XLE
+      name: Energy
+      key_stocks: [XOM, CVX, COP, SLB, EOG]
+      
+    - ticker: XLY
+      name: Consumer Discretionary
+      key_stocks: [AMZN, TSLA, HD, MCD, NKE]
+      
+    - ticker: XLP
+      name: Consumer Staples
+      key_stocks: [PG, KO, PEP, COST, WMT]
+      
+    - ticker: XLI
+      name: Industrials
+      key_stocks: [CAT, UNP, HON, GE, BA]
+      
+    - ticker: XLB
+      name: Materials
+      key_stocks: [LIN, APD, SHW, FCX, NEM]
+      
+    - ticker: XLU
+      name: Utilities
+      key_stocks: [NEE, DUK, SO, D, AEP]
+      
+    - ticker: XLRE
+      name: Real Estate
+      key_stocks: [PLD, AMT, EQIX, SPG, O]
+      
+    - ticker: XLC
+      name: Communication Services
+      key_stocks: [META, GOOGL, NFLX, DIS, VZ]
+
+# ═══════════════════════════════════════════════════════════════
+# ROTATION ANALYSIS
+# ═══════════════════════════════════════════════════════════════
+
+rotation_analysis:
+  # Timeframes to analyze
+  timeframes:
+    - period: 1d
+      weight: 0.15
+      label: "Today"
+      
+    - period: 5d
+      weight: 0.25
+      label: "1 Week"
+      
+    - period: 20d
+      weight: 0.30
+      label: "1 Month"
+      
+    - period: 60d
+      weight: 0.30
+      label: "3 Months"
+      
+  # Economic cycle positioning
+  economic_cycle:
+    early_expansion:
+      leaders: [XLF, XLI, XLY]
+      description: "Recovery phase, cyclicals lead"
+      
+    mid_expansion:
+      leaders: [XLK, XLC, XLY]
+      description: "Growth phase, tech leads"
+      
+    late_expansion:
+      leaders: [XLE, XLB, XLI]
+      description: "Inflation concerns, commodities"
+      
+    recession:
+      leaders: [XLU, XLP, XLV]
+      description: "Defensive rotation"
+      
+  # Relative strength calculation
+  relative_strength:
+    benchmark: SPY
+    calculation: |
+      RS = (Sector Return - SPY Return) / SPY Volatility
+      RS > 1: Strong outperformance
+      RS 0-1: Moderate outperformance
+      RS -1-0: Moderate underperformance
+      RS < -1: Strong underperformance
+
+# ═══════════════════════════════════════════════════════════════
+# MONEY FLOW INDICATORS
+# ═══════════════════════════════════════════════════════════════
+
+money_flow:
+  # Sector fund flows
+  etf_flows:
+    track_inflows: true
+    track_outflows: true
+    source: "Web search ETF flows"
+    significant_flow_threshold_pct: 2.0
+    
+  # Volume analysis
+  volume_patterns:
+    patterns:
+      - name: "Accumulation Day"
+        criteria: "Price up, volume up significantly"
+        bullish: true
+        
+      - name: "Distribution Day"
+        criteria: "Price down, volume up significantly"
+        bearish: true
+        
+    count_window_days: 20
+    accumulation_threshold: 3
+    distribution_threshold: 4
+    
+  # Breadth indicators
+  breadth:
+    - name: "Percent Above 50D MA"
+      bullish_threshold: 70
+      bearish_threshold: 30
+      
+    - name: "New Highs vs New Lows"
+      bullish_threshold: 2.0  # Ratio
+      bearish_threshold: 0.5
+      
+    - name: "Advance/Decline Line"
+      trend: "Rising/Falling"
+
+# ═══════════════════════════════════════════════════════════════
+# QUALITY FILTERS
+# ═══════════════════════════════════════════════════════════════
+
+quality_filters:
+  # For individual stocks within sectors
+  liquidity:
+    min_avg_volume: 1000000
+    min_market_cap_m: 5000  # Large caps for sector plays
+    
+  technicals:
+    prefer_above_200d_ma: true
+    
+  # Sector level filters
+  sector_filters:
+    min_etf_volume: 5000000
+    min_stocks_participating: 0.6  # 60% of sector stocks
+
+# ═══════════════════════════════════════════════════════════════
+# SCORING CRITERIA
+# ═══════════════════════════════════════════════════════════════
+
+scoring:
+  sector_scoring:
+    criteria:
+      - name: relative_strength
+        weight: 0.30
+        calculation: |
+          10: RS > 2 (strong outperformance)
+          8: RS 1-2
+          6: RS 0.5-1
+          5: RS 0-0.5
+          4: RS -0.5-0
+          3: RS -1 to -0.5
+          1: RS < -1 (strong underperformance)
+          
+      - name: momentum_trend
+        weight: 0.25
+        calculation: |
+          10: Outperforming all timeframes
+          8: Outperforming 3/4 timeframes
+          6: Outperforming 2/4 timeframes
+          4: Mixed
+          2: Underperforming most timeframes
+          
+      - name: money_flow
+        weight: 0.25
+        calculation: |
+          10: Strong inflows, accumulation days
+          7: Moderate inflows
+          5: Neutral flows
+          3: Moderate outflows
+          1: Strong outflows, distribution days
+          
+      - name: breadth
+        weight: 0.20
+        calculation: |
+          10: >80% above 50D, improving
+          7: 60-80% above 50D
+          5: 40-60% above 50D
+          3: 20-40% above 50D
+          1: <20% above 50D
+          
+  # Stock-level scoring within sector
+  stock_scoring:
+    criteria:
+      - name: sector_relative_strength
+        weight: 0.40
+        description: "Stock vs sector performance"
+        
+      - name: technical_setup
+        weight: 0.30
+        description: "MA alignment, breakout quality"
+        
+      - name: fundamental_quality
+        weight: 0.30
+        description: "Earnings, revenue, margins"
+        
+  min_sector_score: 6.0
+  min_stock_score: 6.5
+
+# ═══════════════════════════════════════════════════════════════
+# ROTATION SIGNALS
+# ═══════════════════════════════════════════════════════════════
+
+rotation_signals:
+  # What constitutes a rotation signal
+  
+  emerging_leadership:
+    criteria:
+      - "RS improving for 2+ weeks"
+      - "Moving from bottom half to top half"
+      - "Volume increasing"
+    action: "Watch for entry in leading stocks"
+    
+  fading_leadership:
+    criteria:
+      - "RS declining for 2+ weeks"
+      - "Moving from top half to bottom half"
+      - "Distribution days increasing"
+    action: "Consider reducing exposure"
+    
+  defensive_rotation:
+    criteria:
+      - "XLU, XLP, XLV gaining RS"
+      - "XLK, XLY, XLF losing RS"
+    action: "Risk-off signal, reduce beta"
+    
+  offensive_rotation:
+    criteria:
+      - "XLK, XLY, XLF gaining RS"
+      - "XLU, XLP losing RS"
+    action: "Risk-on signal, increase beta"
+
+# ═══════════════════════════════════════════════════════════════
+# OUTPUT FORMAT
+# ═══════════════════════════════════════════════════════════════
+
+output:
+  format: report  # Not just watchlist - full sector report
+  
+  report_sections:
+    - section: "Sector Rankings"
+      content: "All sectors ranked by composite score"
+      
+    - section: "Rotation Signals"
+      content: "Active rotation signals and implications"
+      
+    - section: "Leading Stocks"
+      content: "Top stocks in leading sectors"
+      
+    - section: "Lagging Stocks"
+      content: "Avoid list from lagging sectors"
+      
+    - section: "Economic Cycle Position"
+      content: "Current cycle assessment"
+      
+  capture_fields:
+    # Sector level
+    - sector_etf
+    - sector_name
+    - return_1d_pct
+    - return_5d_pct
+    - return_20d_pct
+    - return_60d_pct
+    - relative_strength
+    - money_flow_signal
+    - breadth_pct
+    - sector_score
+    - ranking
+    # Stock level
+    - ticker
+    - sector
+    - stock_rs_vs_sector
+    - technical_score
+    - fundamental_score
+    - stock_score
+    
+  storage:
+    report_path: "reports/{YYYY}/{MM}/sector-rotation/"
+    log_path: "scanner-logs/{YYYY}/{MM}/sector/"
+    
+  notifications:
+    on_rotation_signal: true
+    on_new_leadership: true
+    on_defensive_shift: true
+
+# ═══════════════════════════════════════════════════════════════
+# AI AGENT INSTRUCTIONS
+# ═══════════════════════════════════════════════════════════════
+
+agent_instructions:
+  execution_steps:
+    1: "Get daily/weekly/monthly returns for all sector ETFs"
+    2: "Calculate relative strength vs SPY for each timeframe"
+    3: "Compute composite sector score"
+    4: "Rank sectors from strongest to weakest"
+    5: "Identify rotation signals (emerging/fading leadership)"
+    6: "Assess economic cycle position"
+    7: "For top 3 sectors, identify leading stocks"
+    8: "For bottom 3 sectors, note stocks to avoid"
+    9: "Generate sector rotation report"
+    10: "Update watchlist with leading sector stocks"
+    
+  strategic_guidance:
+    - "Focus long positions in top 3 sectors"
+    - "Avoid or short bottom 3 sectors"
+    - "Watch for rotation inflection points"
+    - "Align with economic cycle expectations"
+    
+  weekly_review:
+    - "Compare actual rotation vs predicted"
+    - "Update cycle position if warranted"
+    - "Adjust sector weightings"
+    
+  common_mistakes_to_avoid:
+    - "Chasing yesterday's leaders"
+    - "Ignoring sector context for individual stocks"
+    - "Fighting major sector trends"
+    - "Not waiting for rotation confirmation"
+
+_graph:
+  entities:
+    - [scanner, SCANNER-SECTOR-ROTATION-001]
+    - [category, sector]
+    - [signal, rotation]
+  relations:
+    - [this, scans_for, sector-rotation]
+    - [this, tracks, money-flow]
+
+_links:
+  related_scanners:
+    - "scanners/daily/52w-extremes.yaml"
+  output_template: "reference/templates/watchlist.yaml"

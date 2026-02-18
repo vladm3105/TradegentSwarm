@@ -1,0 +1,273 @@
+# ═══════════════════════════════════════════════════════════════
+# UNUSUAL VOLUME SCANNER
+# Detects abnormal volume that often precedes major moves
+# ═══════════════════════════════════════════════════════════════
+
+_meta:
+  id: SCANNER-UNUSUAL-VOLUME-001
+  type: scanner-config
+  version: 1
+  created: "2025-01-25T09:00:00Z"
+  updated: "2025-01-25T09:00:00Z"
+  status: active
+  run_frequency: intraday
+  last_run: null
+  
+scanner_config:
+  name: "Unusual Volume Scanner"
+  description: "Finds stocks with volume 2x+ average, often signals accumulation/distribution"
+  category: momentum
+  priority: 3
+  
+  schedule:
+    run_at: ["10:00", "11:30", "14:00", "15:30"]  # Multiple times per day
+    run_days: [mon, tue, wed, thu, fri]
+    skip_dates: []
+    
+  limits:
+    max_results: 40
+    max_api_calls: 8
+    timeout_seconds: 25
+
+# ═══════════════════════════════════════════════════════════════
+# SCANNER DEFINITION
+# ═══════════════════════════════════════════════════════════════
+
+scanner:
+  source: ib
+  
+  ib_scanner:
+    scan_code: HOT_BY_VOLUME
+    instrument: STK
+    location: STK.US.MAJOR
+    
+    filters:
+      above_price: 10
+      below_price: 500
+      above_volume: 500000
+      
+  # Additional IB scan for price movers with volume
+  secondary_scan:
+    scan_code: HOT_BY_PRICE
+    filters:
+      above_volume: 1000000  # Higher volume threshold
+
+# ═══════════════════════════════════════════════════════════════
+# VOLUME ANALYSIS CRITERIA
+# ═══════════════════════════════════════════════════════════════
+
+volume_criteria:
+  # Relative volume thresholds
+  relative_volume:
+    min_rvol: 2.0  # 2x average
+    strong_rvol: 3.0  # 3x average - very significant
+    extreme_rvol: 5.0  # 5x average - investigate catalyst
+    
+  # Volume patterns
+  patterns:
+    - name: "Accumulation"
+      description: "High volume on up days, low volume on down days"
+      bullish: true
+      lookback_days: 10
+      
+    - name: "Distribution"
+      description: "High volume on down days, low volume on up days"
+      bearish: true
+      lookback_days: 10
+      
+    - name: "Volume Breakout"
+      description: "Volume spike at key technical level"
+      significance: high
+      
+    - name: "Volume Dry-Up"
+      description: "Consolidation with declining volume before move"
+      significance: medium
+      
+  # Time of day adjustments
+  time_adjustments:
+    first_30_min: 0.7  # Volume naturally higher, adjust down
+    last_30_min: 0.8   # Also higher
+    midday: 1.2        # Lower volume, adjust up
+    
+  # Volume vs price correlation
+  volume_price_correlation:
+    bullish_signals:
+      - "Price up + volume up = Accumulation"
+      - "Price down + volume down = Healthy pullback"
+    bearish_signals:
+      - "Price down + volume up = Distribution"
+      - "Price up + volume down = Weak rally"
+
+# ═══════════════════════════════════════════════════════════════
+# QUALITY FILTERS
+# ═══════════════════════════════════════════════════════════════
+
+quality_filters:
+  liquidity:
+    min_avg_volume: 500000
+    min_dollar_volume_m: 5
+    max_spread_pct: 0.5
+    
+  fundamentals:
+    exclude_sectors: []
+    min_market_cap_m: 300  # Allow smaller caps for unusual volume
+    
+  technicals:
+    min_atr_pct: 0.8
+    
+  # News check - unusual volume should have reason
+  news_verification:
+    required: true
+    if_no_news: "Flag as potential insider activity"
+    
+  exclusions:
+    exclude_tickers: [SPY, QQQ, IWM, DIA]
+    exclude_if_held: false
+    exclude_recent_trades_days: 0
+
+# ═══════════════════════════════════════════════════════════════
+# SCORING CRITERIA
+# ═══════════════════════════════════════════════════════════════
+
+scoring:
+  criteria:
+    - name: volume_magnitude
+      weight: 0.30
+      calculation: |
+        10: RVOL > 5x with sustained throughout day
+        8: RVOL > 3x sustained
+        6: RVOL > 2x sustained
+        4: RVOL > 2x but fading
+        2: RVOL 1.5-2x
+        
+    - name: price_action_correlation
+      weight: 0.25
+      calculation: |
+        10: Volume spike with clean breakout/breakdown
+        7: Volume with directional move
+        5: Volume with mixed price action
+        3: Volume spike but price unchanged
+        1: Volume spike, price reversed
+        
+    - name: catalyst_identification
+      weight: 0.25
+      calculation: |
+        10: Clear material catalyst (earnings, FDA, M&A)
+        7: News catalyst identified
+        5: Sector/market related
+        3: No news found (potential insider activity)
+        1: Random noise suspected
+        
+    - name: technical_context
+      weight: 0.20
+      calculation: |
+        10: Volume at key breakout level
+        7: Volume near support/resistance
+        5: Volume within range
+        3: Volume against trend
+        1: Volume at extended level
+        
+  min_total_score: 5.5
+  auto_analyze_threshold: 7.5
+
+# ═══════════════════════════════════════════════════════════════
+# INTERPRETATION FRAMEWORK
+# ═══════════════════════════════════════════════════════════════
+
+interpretation:
+  # What unusual volume means in different contexts
+  
+  contexts:
+    - context: "Volume at new 52-week high"
+      interpretation: "Strong breakout, institutions entering"
+      action: "Potential momentum long"
+      
+    - context: "Volume at new 52-week low"
+      interpretation: "Capitulation or breakdown"
+      action: "Watch for reversal or short continuation"
+      
+    - context: "Volume at major support"
+      interpretation: "Either holding (bullish) or breaking (bearish)"
+      action: "Wait for confirmation"
+      
+    - context: "Volume after consolidation"
+      interpretation: "Range expansion imminent"
+      action: "Trade the breakout direction"
+      
+    - context: "Volume with no news"
+      interpretation: "Possible insider activity or block trade"
+      action: "Monitor closely, check 13F filings later"
+      
+    - context: "Volume into earnings"
+      interpretation: "Positioning before announcement"
+      action: "Assess sentiment, may signal expected direction"
+
+# ═══════════════════════════════════════════════════════════════
+# OUTPUT FORMAT
+# ═══════════════════════════════════════════════════════════════
+
+output:
+  format: watchlist
+  
+  capture_fields:
+    - ticker
+    - price
+    - change_pct
+    - volume
+    - relative_volume
+    - avg_volume_10d
+    - time_of_spike
+    - catalyst
+    - volume_price_correlation
+    - technical_context
+    - score
+    - interpretation
+    
+  storage:
+    watchlist_path: "watchlist/{YYYY}/{MM}/unusual-volume/"
+    log_path: "scanner-logs/{YYYY}/{MM}/unusual-volume/"
+    
+  notifications:
+    on_high_score: true
+    on_extreme_volume: true  # RVOL > 5x
+    on_no_catalyst: true  # Potential insider activity
+
+# ═══════════════════════════════════════════════════════════════
+# AI AGENT INSTRUCTIONS
+# ═══════════════════════════════════════════════════════════════
+
+agent_instructions:
+  execution_steps:
+    1: "Run IB HOT_BY_VOLUME scanner"
+    2: "Calculate relative volume for each result"
+    3: "Filter by RVOL >= 2.0"
+    4: "Apply time-of-day adjustment"
+    5: "Check price action correlation (up/down vs volume)"
+    6: "Search news for catalyst"
+    7: "Identify technical context (support/resistance/breakout)"
+    8: "Apply interpretation framework"
+    9: "Score and generate watchlist"
+    
+  red_flags:
+    - "Extreme volume (5x+) with no news - possible insider activity"
+    - "Volume spike that quickly reverses - failed breakout"
+    - "Volume on low-float stock - manipulation possible"
+    
+  follow_up_actions:
+    on_extreme_volume: "Add to high-priority watchlist, set alerts"
+    on_no_catalyst: "Flag for investigation, check SEC filings"
+    on_breakout_volume: "Consider immediate analysis for entry"
+
+_graph:
+  entities:
+    - [scanner, SCANNER-UNUSUAL-VOLUME-001]
+    - [category, momentum]
+    - [signal, unusual-volume]
+  relations:
+    - [this, scans_for, unusual-volume]
+    - [this, identifies, accumulation-distribution]
+
+_links:
+  related_scanners:
+    - "scanners/daily/premarket-gap.yaml"
+  output_template: "reference/templates/watchlist.yaml"

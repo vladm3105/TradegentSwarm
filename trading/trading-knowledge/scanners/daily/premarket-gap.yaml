@@ -1,0 +1,267 @@
+# ═══════════════════════════════════════════════════════════════
+# PRE-MARKET GAP SCANNER
+# Identifies significant overnight gaps for momentum plays
+# ═══════════════════════════════════════════════════════════════
+
+_meta:
+  id: SCANNER-PREMARKET-GAP-001
+  type: scanner-config
+  version: 1
+  created: "2025-01-25T09:00:00Z"
+  updated: "2025-01-25T09:00:00Z"
+  status: active
+  run_frequency: daily
+  last_run: null
+  
+scanner_config:
+  name: "Pre-Market Gap Scanner"
+  description: "Finds stocks gapping up/down >3% in pre-market with catalyst"
+  category: momentum
+  priority: 1  # Run first - time sensitive
+  
+  schedule:
+    run_at: "08:30"  # ET, 1 hour before open
+    run_days: [mon, tue, wed, thu, fri]
+    skip_dates: []
+    
+  limits:
+    max_results: 30
+    max_api_calls: 5
+    timeout_seconds: 20
+
+# ═══════════════════════════════════════════════════════════════
+# SCANNER DEFINITION
+# ═══════════════════════════════════════════════════════════════
+
+scanner:
+  source: multi  # Combines IB + web search
+  
+  # IB Scanner for gap detection
+  ib_scanner:
+    scan_code: TOP_OPEN_PERC_GAIN  # Also run TOP_OPEN_PERC_LOSE
+    instrument: STK
+    location: STK.US.MAJOR
+    
+    filters:
+      above_price: 10
+      below_price: 500
+      above_volume: 100000  # Pre-market volume
+      
+  # Web search for catalyst identification  
+  web_search:
+    queries:
+      - "stock gap up premarket today"
+      - "earnings beat after hours"
+      - "FDA approval stock"
+      - "upgrade downgrade premarket"
+    sources:
+      - benzinga.com
+      - marketwatch.com
+      - finance.yahoo.com
+    recency: "12h"
+    
+  # Combine and cross-reference
+  combination_logic: |
+    1. Get top gainers/losers from IB pre-market scan
+    2. For each, search news for catalyst
+    3. Score higher if clear catalyst found
+    4. Reject if no catalyst (random gap)
+
+# ═══════════════════════════════════════════════════════════════
+# GAP-SPECIFIC CRITERIA
+# ═══════════════════════════════════════════════════════════════
+
+gap_criteria:
+  min_gap_pct: 3.0
+  max_gap_pct: 25.0  # Avoid extreme gaps (usually fade)
+  
+  gap_types:
+    - type: earnings_gap
+      description: "Post-earnings announcement"
+      min_gap: 5.0
+      action: "Potential continuation or fade trade"
+      
+    - type: news_gap
+      description: "FDA, M&A, upgrade/downgrade"
+      min_gap: 3.0
+      action: "Assess news impact vs gap size"
+      
+    - type: technical_gap
+      description: "Breaking key level with volume"
+      min_gap: 2.0
+      action: "Breakout continuation candidate"
+      
+  # Gap fill probability by type
+  gap_fill_stats:
+    earnings_gap_up: 0.35  # 35% fill same day
+    earnings_gap_down: 0.45
+    news_gap: 0.50
+    technical_gap: 0.60
+
+# ═══════════════════════════════════════════════════════════════
+# QUALITY FILTERS
+# ═══════════════════════════════════════════════════════════════
+
+quality_filters:
+  liquidity:
+    min_avg_volume: 1000000
+    min_dollar_volume_m: 10
+    max_spread_pct: 0.3
+    
+  fundamentals:
+    exclude_sectors: []
+    include_sectors: []
+    min_market_cap_m: 500
+    
+  technicals:
+    require_above_20d_ma: false  # Gaps can break MAs
+    min_relative_volume: 2.0  # 2x normal pre-market
+    
+  exclusions:
+    exclude_tickers: [SPY, QQQ, IWM]  # ETFs
+    exclude_if_held: false  # May want to add to position
+    exclude_recent_trades_days: 0
+
+# ═══════════════════════════════════════════════════════════════
+# SCORING CRITERIA
+# ═══════════════════════════════════════════════════════════════
+
+scoring:
+  criteria:
+    - name: gap_quality
+      weight: 0.30
+      calculation: |
+        10: Clean gap with clear catalyst, holding pre-market highs
+        7: Gap with catalyst, some pre-market fade
+        5: Gap unclear catalyst, volatile pre-market
+        3: Gap fading significantly
+        1: Gap likely to fill
+        
+    - name: catalyst_clarity
+      weight: 0.25
+      calculation: |
+        10: Major catalyst (earnings beat, FDA, M&A)
+        7: Significant catalyst (upgrade, guidance raise)
+        5: Moderate catalyst (analyst mention, sector news)
+        3: Weak catalyst (general market move)
+        1: No identifiable catalyst
+        
+    - name: volume_conviction
+      weight: 0.25
+      calculation: |
+        10: >5x normal pre-market volume
+        7: 3-5x normal volume
+        5: 2-3x normal volume
+        3: 1-2x normal volume
+        1: Normal or below volume
+        
+    - name: technical_setup
+      weight: 0.20
+      calculation: |
+        10: Gap through major resistance, all-time high
+        7: Gap through recent resistance
+        5: Gap within range
+        3: Gap into resistance
+        1: Gap into major supply zone
+        
+  min_total_score: 6.0
+  auto_analyze_threshold: 8.0
+
+# ═══════════════════════════════════════════════════════════════
+# TRADE STRATEGIES BY GAP TYPE
+# ═══════════════════════════════════════════════════════════════
+
+strategies:
+  gap_and_go:
+    description: "Buy continuation of strong gap"
+    criteria:
+      - score >= 8
+      - gap_quality >= 7
+      - volume_conviction >= 7
+    entry: "First 5-min high break"
+    stop: "Below pre-market low or VWAP"
+    target: "1.5-2x risk"
+    
+  gap_fade:
+    description: "Fade weak gap for fill"
+    criteria:
+      - score <= 5
+      - gap_quality <= 5
+      - No clear catalyst
+    entry: "After failed first push"
+    stop: "Above pre-market high"
+    target: "50% gap fill"
+    
+  gap_pullback:
+    description: "Buy pullback of strong gap"
+    criteria:
+      - score >= 7
+      - Gap holds 50% retrace
+    entry: "VWAP test or prior day high"
+    stop: "Below VWAP by 1 ATR"
+    target: "Re-test pre-market high"
+
+# ═══════════════════════════════════════════════════════════════
+# OUTPUT FORMAT
+# ═══════════════════════════════════════════════════════════════
+
+output:
+  format: watchlist
+  
+  capture_fields:
+    - ticker
+    - gap_pct
+    - gap_type
+    - catalyst
+    - pre_market_volume
+    - relative_volume
+    - score
+    - recommended_strategy
+    
+  storage:
+    watchlist_path: "watchlist/{YYYY}/{MM}/"
+    log_path: "scanner-logs/{YYYY}/{MM}/premarket-gaps/"
+    
+  notifications:
+    on_high_score: true
+    on_unusual_volume: true
+
+# ═══════════════════════════════════════════════════════════════
+# AI AGENT INSTRUCTIONS
+# ═══════════════════════════════════════════════════════════════
+
+agent_instructions:
+  execution_steps:
+    1: "At 8:30 ET, run IB scanner for TOP_OPEN_PERC_GAIN and TOP_OPEN_PERC_LOSE"
+    2: "Filter results by gap_criteria (3-25% gap)"
+    3: "For each result, search news for catalyst using web_search queries"
+    4: "Score each result using scoring criteria"
+    5: "Apply quality_filters to remove low-quality results"
+    6: "Generate watchlist entries for score >= 6"
+    7: "Flag score >= 8 for immediate analysis"
+    8: "Log all results with timestamps"
+    
+  decision_framework: |
+    IF gap > 10% AND no catalyst → likely fade, low priority
+    IF gap 3-7% AND clear catalyst → best risk/reward
+    IF gap < 3% → usually noise, skip unless exceptional volume
+    
+  common_mistakes_to_avoid:
+    - "Chasing gaps that have already extended 20%+ from open"
+    - "Ignoring pre-market volume (low volume gaps often fade)"
+    - "Not checking for earnings date (gaps near earnings are tricky)"
+    - "Missing the catalyst search step"
+
+_graph:
+  entities:
+    - [scanner, SCANNER-PREMARKET-GAP-001]
+    - [category, momentum]
+    - [timeframe, premarket]
+  relations:
+    - [this, scans_for, gap-plays]
+    - [this, runs_at, premarket]
+
+_links:
+  related_scanners:
+    - "scanners/daily/earnings-momentum.yaml"
+  output_template: "reference/templates/watchlist.yaml"

@@ -1,0 +1,530 @@
+# ═══════════════════════════════════════════════════════════════
+# MARKET REGIME CLASSIFIER
+# Identifies current market regime for optimal strategy selection
+# Different regimes require different trading approaches
+# ═══════════════════════════════════════════════════════════════
+
+_meta:
+  id: SCANNER-MARKET-REGIME-001
+  type: scanner-config
+  version: 1
+  created: "2025-01-25T09:00:00Z"
+  updated: "2025-01-25T09:00:00Z"
+  status: active
+  run_frequency: daily
+  last_run: null
+  
+scanner_config:
+  name: "Market Regime Classifier"
+  description: "Classifies current market regime and recommends strategy adjustments"
+  category: sector
+  priority: 1  # Run first - affects all other decisions
+  
+  schedule:
+    run_at: "09:35"  # Right after open
+    run_days: [mon, tue, wed, thu, fri]
+    skip_dates: []
+    
+  limits:
+    max_results: 1  # Single regime assessment
+    max_api_calls: 15
+    timeout_seconds: 45
+
+# ═══════════════════════════════════════════════════════════════
+# SCANNER DEFINITION
+# ═══════════════════════════════════════════════════════════════
+
+scanner:
+  source: multi
+  
+  # Market data from IB
+  ib_data:
+    indices:
+      - symbol: SPY
+        metrics: [price, volume, 20d_ma, 50d_ma, 200d_ma, atr]
+      - symbol: QQQ
+        metrics: [price, volume, 20d_ma, 50d_ma, 200d_ma]
+      - symbol: IWM
+        metrics: [price, volume, 20d_ma, 50d_ma, 200d_ma]
+      - symbol: VIX
+        metrics: [price, 20d_ma, 50d_ma]
+        
+  # Breadth data
+  breadth_data:
+    advance_decline: true
+    new_highs_lows: true
+    percent_above_50d: true
+    percent_above_200d: true
+    
+  # Web search for sentiment
+  web_search:
+    queries:
+      - "market sentiment today"
+      - "fear and greed index"
+      - "market breadth"
+      - "VIX analysis"
+    sources:
+      - cnn.com/markets
+      - bloomberg.com
+      - marketwatch.com
+    recency: "24h"
+
+# ═══════════════════════════════════════════════════════════════
+# REGIME DEFINITIONS
+# ═══════════════════════════════════════════════════════════════
+
+regime_definitions:
+  # Primary trend regimes
+  trend_regimes:
+    - regime: "Strong Bull"
+      code: BULL_STRONG
+      criteria:
+        - "SPY > 20D > 50D > 200D MA"
+        - "20D MA slope > 0.5%/week"
+        - "VIX < 15"
+        - "Breadth > 70% above 50D"
+        - "New highs > 5x new lows"
+      characteristics:
+        trend_strength: very_strong
+        pullback_depth: shallow
+        breakout_success_rate: high
+        mean_reversion_success: low
+        
+    - regime: "Bull"
+      code: BULL
+      criteria:
+        - "SPY > 50D > 200D MA"
+        - "20D MA flat to rising"
+        - "VIX 15-20"
+        - "Breadth 50-70% above 50D"
+      characteristics:
+        trend_strength: strong
+        pullback_depth: moderate
+        breakout_success_rate: good
+        mean_reversion_success: moderate
+        
+    - regime: "Bull Pullback"
+      code: BULL_PULLBACK
+      criteria:
+        - "SPY > 200D MA"
+        - "SPY < 20D MA"
+        - "20D MA still rising"
+        - "VIX 18-25"
+      characteristics:
+        trend_strength: moderate
+        pullback_depth: normal
+        breakout_success_rate: moderate
+        mean_reversion_success: good
+        
+    - regime: "Sideways/Range"
+      code: SIDEWAYS
+      criteria:
+        - "SPY between defined range"
+        - "20D MA flat (<0.2%/week slope)"
+        - "VIX 15-22"
+        - "Breadth 40-60%"
+      characteristics:
+        trend_strength: weak
+        pullback_depth: variable
+        breakout_success_rate: low
+        mean_reversion_success: high
+        
+    - regime: "Bear Bounce"
+      code: BEAR_BOUNCE
+      criteria:
+        - "SPY < 200D MA"
+        - "SPY > 20D MA"
+        - "VIX declining from spike"
+        - "Oversold bounce"
+      characteristics:
+        trend_strength: weak
+        pullback_depth: variable
+        breakout_success_rate: low
+        mean_reversion_success: moderate
+        
+    - regime: "Bear"
+      code: BEAR
+      criteria:
+        - "SPY < 50D < 200D MA"
+        - "20D MA falling"
+        - "VIX > 22"
+        - "Breadth < 40% above 50D"
+      characteristics:
+        trend_strength: strong_down
+        pullback_depth: deep
+        breakout_success_rate: very_low
+        mean_reversion_success: risky
+        
+    - regime: "Strong Bear / Crisis"
+      code: BEAR_CRISIS
+      criteria:
+        - "SPY < 20D < 50D < 200D MA"
+        - "20D MA falling sharply"
+        - "VIX > 30"
+        - "Breadth < 25% above 50D"
+        - "Correlation spike (everything down)"
+      characteristics:
+        trend_strength: very_strong_down
+        pullback_depth: extreme
+        breakout_success_rate: very_low
+        mean_reversion_success: dangerous
+
+  # Volatility regimes (overlay)
+  volatility_regimes:
+    - regime: "Low Volatility"
+      code: VOL_LOW
+      criteria:
+        - "VIX < 15"
+        - "VIX below 20D MA"
+        - "ATR(14) declining"
+      implications:
+        - "Trend following works well"
+        - "Breakouts more reliable"
+        - "Options cheaper, good for buying"
+        - "Complacency risk - can spike quickly"
+        
+    - regime: "Normal Volatility"
+      code: VOL_NORMAL
+      criteria:
+        - "VIX 15-22"
+        - "VIX near 20D MA"
+        - "ATR(14) stable"
+      implications:
+        - "Standard strategies work"
+        - "Normal position sizing"
+        - "Balanced approach"
+        
+    - regime: "High Volatility"
+      code: VOL_HIGH
+      criteria:
+        - "VIX 22-30"
+        - "VIX above 20D MA"
+        - "ATR(14) elevated"
+      implications:
+        - "Reduce position sizes"
+        - "Widen stops"
+        - "Options expensive, favor selling"
+        - "Mean reversion more attractive"
+        
+    - regime: "Extreme Volatility"
+      code: VOL_EXTREME
+      criteria:
+        - "VIX > 30"
+        - "VIX spike >20% in day"
+        - "Market gaps common"
+      implications:
+        - "Minimize new positions"
+        - "Cash is a position"
+        - "Watch for capitulation signals"
+        - "Opportunities in oversold quality"
+
+  # Correlation regimes (overlay)
+  correlation_regimes:
+    - regime: "Normal Correlation"
+      code: CORR_NORMAL
+      criteria:
+        - "Stocks moving independently"
+        - "Sector dispersion high"
+        - "Stock picking works"
+        
+    - regime: "Risk-On"
+      code: CORR_RISK_ON
+      criteria:
+        - "High beta outperforming"
+        - "Growth > Value"
+        - "Small caps > Large caps"
+        - "Credit spreads tightening"
+        
+    - regime: "Risk-Off"
+      code: CORR_RISK_OFF
+      criteria:
+        - "Defensive outperforming"
+        - "Value > Growth"
+        - "Large caps > Small caps"
+        - "Credit spreads widening"
+        - "Gold/Bonds bid"
+        
+    - regime: "Correlation 1"
+      code: CORR_CRISIS
+      criteria:
+        - "Everything moving together"
+        - "Correlations spike to 0.8+"
+        - "Diversification fails"
+        - "Liquidity crisis risk"
+
+# ═══════════════════════════════════════════════════════════════
+# STRATEGY RECOMMENDATIONS BY REGIME
+# ═══════════════════════════════════════════════════════════════
+
+strategy_recommendations:
+  BULL_STRONG:
+    recommended_strategies:
+      - "Trend following / breakouts"
+      - "Buy the dip aggressively"
+      - "Momentum plays"
+      - "Reduced hedging"
+    avoid:
+      - "Counter-trend shorts"
+      - "Excessive put buying"
+      - "Fighting the tape"
+    position_sizing: "Full size, can be aggressive"
+    stop_strategy: "Trailing stops, let winners run"
+    sector_focus: ["XLK", "XLY", "XLC"]  # Growth/cyclicals
+    
+  BULL:
+    recommended_strategies:
+      - "Trend following"
+      - "Breakout plays"
+      - "Earnings momentum"
+      - "Light hedging"
+    avoid:
+      - "Aggressive shorts"
+      - "Fighting momentum"
+    position_sizing: "Standard size"
+    stop_strategy: "Normal stops"
+    sector_focus: ["XLK", "XLF", "XLI"]
+    
+  BULL_PULLBACK:
+    recommended_strategies:
+      - "Buy the dip at support"
+      - "Quality oversold bounces"
+      - "Scaling into positions"
+    avoid:
+      - "Chasing breakouts"
+      - "Full position immediately"
+    position_sizing: "Scale in, 50% initial"
+    stop_strategy: "Below recent swing low"
+    sector_focus: ["Leaders that held up"]
+    
+  SIDEWAYS:
+    recommended_strategies:
+      - "Range trading (buy support, sell resistance)"
+      - "Mean reversion"
+      - "Options selling (high premium)"
+      - "Pairs trading"
+    avoid:
+      - "Breakout chasing"
+      - "Trend following"
+      - "Large directional bets"
+    position_sizing: "Reduced, focus on edges"
+    stop_strategy: "Tight stops at range boundaries"
+    sector_focus: ["Relative strength leaders"]
+    
+  BEAR_BOUNCE:
+    recommended_strategies:
+      - "Quick trades, take profits fast"
+      - "Oversold bounces (reduced size)"
+      - "Quality at discount"
+    avoid:
+      - "Holding for extended moves"
+      - "Full position sizes"
+      - "Ignoring resistance"
+    position_sizing: "50% of normal"
+    stop_strategy: "Tight stops, quick to exit"
+    sector_focus: ["XLV", "XLP"]  # Defensive with bounce potential
+    
+  BEAR:
+    recommended_strategies:
+      - "Cash preservation"
+      - "Short weak stocks"
+      - "Put buying on bounces"
+      - "Inverse ETFs"
+    avoid:
+      - "Bottom picking"
+      - "Buy and hold mentality"
+      - "Averaging down"
+    position_sizing: "Minimal long exposure"
+    stop_strategy: "Quick exits on longs"
+    sector_focus: ["XLU", "XLP", "XLV"]  # Defensive
+    
+  BEAR_CRISIS:
+    recommended_strategies:
+      - "Mostly cash"
+      - "Watch for capitulation"
+      - "Small positions only in quality"
+      - "Wait for VIX spike exhaustion"
+    avoid:
+      - "Trying to catch falling knife"
+      - "Large positions of any kind"
+      - "Leverage"
+    position_sizing: "Minimal, preserve capital"
+    stop_strategy: "Mental stops, be ready to exit"
+    sector_focus: ["Cash", "Short-term bonds"]
+
+# ═══════════════════════════════════════════════════════════════
+# REGIME CHANGE DETECTION
+# ═══════════════════════════════════════════════════════════════
+
+regime_change_detection:
+  # Early warning signals
+  
+  bull_to_bear_signals:
+    - "SPY breaks below 50D MA on volume"
+    - "VIX breaks above 20 and holds"
+    - "Breadth deterioration (< 50% above 50D)"
+    - "New lows expanding"
+    - "Credit spreads widening"
+    - "Leadership stocks breaking down"
+    
+  bear_to_bull_signals:
+    - "VIX spike exhaustion (>30 then decline)"
+    - "Breadth thrust (>80% up day)"
+    - "SPY reclaims 20D MA with volume"
+    - "New highs expanding"
+    - "Credit spreads tightening"
+    - "Leadership emerging"
+    
+  confirmation_requirements:
+    - "Regime change should be confirmed over 2-3 days"
+    - "Single day moves can be traps"
+    - "Volume should confirm"
+    - "Breadth should confirm"
+
+# ═══════════════════════════════════════════════════════════════
+# SCORING CRITERIA
+# ═══════════════════════════════════════════════════════════════
+
+scoring:
+  criteria:
+    - name: trend_clarity
+      weight: 0.30
+      calculation: |
+        10: Clear trend, all MAs aligned
+        7: Trend present, minor divergence
+        5: Mixed signals
+        3: Choppy, unclear
+        1: Transitioning
+        
+    - name: volatility_assessment
+      weight: 0.25
+      calculation: |
+        10: VIX stable in normal range
+        7: VIX elevated but stable
+        5: VIX transitioning
+        3: VIX spiking
+        1: VIX extreme / crisis
+        
+    - name: breadth_confirmation
+      weight: 0.25
+      calculation: |
+        10: Breadth strongly confirms trend
+        7: Breadth supports trend
+        5: Breadth neutral
+        3: Breadth diverging
+        1: Breadth contradicting
+        
+    - name: correlation_regime
+      weight: 0.20
+      calculation: |
+        10: Normal, stock picking works
+        7: Mild risk-on or risk-off
+        5: Elevated correlation
+        3: High correlation
+        1: Crisis correlation
+        
+  min_total_score: 0  # Always generates assessment
+  confidence_threshold: 7.0  # High confidence regime ID
+
+# ═══════════════════════════════════════════════════════════════
+# OUTPUT FORMAT
+# ═══════════════════════════════════════════════════════════════
+
+output:
+  format: report
+  
+  report_sections:
+    - section: "Current Regime"
+      content: "Primary trend regime and confidence"
+      
+    - section: "Volatility Overlay"
+      content: "Current volatility regime"
+      
+    - section: "Correlation Overlay"
+      content: "Current correlation regime"
+      
+    - section: "Strategy Recommendations"
+      content: "What to do in this regime"
+      
+    - section: "Regime Change Watch"
+      content: "Early warning signals to monitor"
+      
+    - section: "Position Sizing Guidance"
+      content: "How to size positions in this regime"
+      
+  capture_fields:
+    - date
+    - trend_regime
+    - trend_regime_confidence
+    - volatility_regime
+    - correlation_regime
+    - spy_vs_20d_ma
+    - spy_vs_50d_ma
+    - spy_vs_200d_ma
+    - vix_level
+    - vix_vs_20d_ma
+    - breadth_pct_above_50d
+    - new_highs_vs_lows
+    - recommended_strategies
+    - avoid_strategies
+    - position_sizing
+    - regime_change_warnings
+    
+  storage:
+    report_path: "reports/{YYYY}/{MM}/regime/"
+    log_path: "scanner-logs/{YYYY}/{MM}/regime/"
+    
+  notifications:
+    on_regime_change: true
+    on_volatility_spike: true
+    on_correlation_spike: true
+
+# ═══════════════════════════════════════════════════════════════
+# AI AGENT INSTRUCTIONS
+# ═══════════════════════════════════════════════════════════════
+
+agent_instructions:
+  execution_steps:
+    1: "Get SPY, QQQ, IWM, VIX prices and MA levels"
+    2: "Calculate MA alignment (above/below 20D, 50D, 200D)"
+    3: "Get breadth data (advance/decline, new highs/lows)"
+    4: "Search web for Fear & Greed index, sentiment"
+    5: "Classify primary trend regime"
+    6: "Classify volatility regime"
+    7: "Classify correlation regime"
+    8: "Check for regime change signals"
+    9: "Generate strategy recommendations"
+    10: "Produce daily regime report"
+    
+  decision_framework: |
+    1. ALWAYS identify regime BEFORE taking trades
+    2. Adjust position sizing to regime
+    3. Select strategies appropriate to regime
+    4. Monitor for regime change signals
+    5. When in doubt, reduce exposure
+    
+  regime_persistence: |
+    - Regimes typically last weeks to months
+    - Don't overreact to single-day moves
+    - Require confirmation for regime change
+    - Transitions are gradual, not instant
+    
+  common_mistakes_to_avoid:
+    - "Using bull market strategies in bear market"
+    - "Ignoring VIX regime for position sizing"
+    - "Fighting the tape"
+    - "Not adjusting stops to volatility"
+    - "Declaring regime change too quickly"
+
+_graph:
+  entities:
+    - [scanner, SCANNER-MARKET-REGIME-001]
+    - [category, regime]
+    - [signal, market-regime]
+  relations:
+    - [this, classifies, market-regime]
+    - [this, recommends, strategy-adjustments]
+
+_links:
+  related_scanners:
+    - "scanners/daily/sector-rotation.yaml"
+  output_template: "reference/templates/watchlist.yaml"

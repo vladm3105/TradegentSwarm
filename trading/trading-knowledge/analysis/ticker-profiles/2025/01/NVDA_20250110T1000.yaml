@@ -1,0 +1,137 @@
+_meta:
+  id: NVDA
+  type: ticker
+  version: 5
+  created: "2024-03-01T00:00:00Z"
+  updated: "2025-01-25T12:00:00Z"
+
+ticker: NVDA
+
+company:
+  name: NVIDIA Corporation
+  sector: Technology
+  industry: Semiconductors
+  market_cap: "3.4T"
+  description: "Designs GPUs and SoCs; dominant in AI/ML training and inference"
+
+revenue_breakdown:
+  - segment: Data Center
+    pct: 83
+    growth_driver: "AI/ML training & inference demand"
+  - segment: Gaming
+    pct: 13
+    growth_driver: "Consumer GPU upgrades"
+  - segment: Professional Visualization
+    pct: 2
+    growth_driver: "Workstation demand"
+  - segment: Automotive
+    pct: 2
+    growth_driver: "ADAS and autonomous driving"
+
+key_metrics:
+  primary:
+    name: Data Center Revenue
+    importance: critical
+    why: "83% of revenue; direct proxy for AI infrastructure demand"
+  secondary:
+    - name: Gross Margin
+      importance: high
+    - name: Blackwell Ramp
+      importance: high
+    - name: Hyperscaler Capex
+      importance: critical
+
+earnings_history:
+  beat_streak: 8
+  typical_reaction: "Gaps 8-15% on beats, 5-10% down on misses"
+  earnings_time: after_close
+  recent_quarters:
+    - quarter: Q3-FY25
+      eps_est: 0.74
+      eps_act: 0.81
+      beat_pct: 9.5
+      stock_reaction_pct: 5.2
+    - quarter: Q2-FY25
+      eps_est: 0.64
+      eps_act: 0.68
+      beat_pct: 6.3
+      stock_reaction_pct: 8.1
+    - quarter: Q1-FY25
+      eps_est: 0.52
+      eps_act: 0.61
+      beat_pct: 17.3
+      stock_reaction_pct: 12.4
+
+trading_patterns:
+  pre_earnings: "Tends to decline 5-10% in week before earnings; creates entry opportunity"
+  post_earnings: "Gaps on beats, consolidates 2-3 days; best re-entry on first pullback"
+  support_levels:
+    - price: 125
+      significance: "200-day MA area, major support"
+    - price: 135
+      significance: "50-day MA, minor support"
+  resistance_levels:
+    - price: 150
+      significance: "Psychological level"
+    - price: 152
+      significance: "All-time high"
+  avg_daily_volume: "45M"
+  options_liquid: true
+  typical_iv_rank: "60-80%"
+
+my_edge:
+  what_works:
+    - "Customer demand analysis (hyperscaler capex) highly predictive"
+    - "Pre-earnings entry on weakness with high conviction"
+    - "Bull call spreads when IV elevated"
+  best_strategies:
+    - earnings-momentum
+    - covered-calls
+  historical_performance:
+    total_trades: 15
+    wins: 12
+    win_rate_pct: 80.0
+    total_pnl: 8450.00
+  watch_out_for:
+    - risk: "China export restrictions"
+      likelihood: medium
+      mitigation: "Monitor policy news; reduce size pre-announcement"
+    - risk: "Valuation compression in risk-off"
+      likelihood: low-medium
+      mitigation: "Smaller positions when VIX elevated"
+    - risk: "Competition from custom ASICs"
+      likelihood: low
+      mitigation: "Track hyperscaler in-house chip announcements"
+
+upcoming_catalysts:
+  - date: "2025-02-26"
+    event: "Q4 FY25 Earnings"
+    expected_impact: "High - key metric is DC revenue"
+  - date: "2025-03-18"
+    event: "GTC Conference"
+    expected_impact: "Medium - Blackwell updates"
+  - date: "2025-05-28"
+    event: "Q1 FY26 Earnings"
+    expected_impact: "High"
+
+notes:
+  - date: "2025-01-20"
+    note: "All hyperscalers raising 2025 capex - very bullish for DC revenue"
+  - date: "2024-11-15"
+    note: "Timing conservatism cost ~$500 on Q3 trade; entered late"
+
+_graph:
+  entities:
+    - [ticker, NVDA]
+    - [sector, Technology]
+    - [industry, Semiconductors]
+    - [metric, Data-Center-Revenue]
+  relations:
+    - [NVDA, in_sector, Technology]
+    - [NVDA, in_industry, Semiconductors]
+    - [NVDA, key_metric, Data-Center-Revenue]
+    - [NVDA, best_strategy, earnings-momentum]
+
+_links:
+  analyses: "earnings/**/NVDA-*.yaml"
+  trades: "trades/**/NVDA-*.yaml"

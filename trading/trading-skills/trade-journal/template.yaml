@@ -1,0 +1,89 @@
+# Trade Journal Template
+# Output: trading-knowledge/trades/{TICKER}_{YYYYMMDDHHMM}.yaml
+
+_meta:
+  id: "{TICKER}_{YYYYMMDDHHMM}"
+  type: trade-journal
+  version: 1
+  created: "{ISO_DATETIME}"
+  status: "open|closed"
+
+ticker: "{TICKER}"
+direction: "long|short"
+
+# Entry
+entry:
+  date: "{YYYY-MM-DD}"
+  time: "{HH:MM}"
+  price: 0.00
+  shares: 0
+  value: 0.00
+  order_type: "market|limit|stop"
+  
+  thesis:
+    summary: ""
+    catalyst: ""
+    timeframe: ""
+    
+  emotional_state: "confident|neutral|nervous|fomo"
+  entry_notes: ""
+
+# Risk Management (set at entry)
+risk_management:
+  stop_loss:
+    initial: 0.00
+    current: 0.00
+    type: "hard|mental|trailing"
+    
+  targets:
+    target_1: 0.00
+    target_2: 0.00
+    
+  position_risk:
+    risk_per_share: 0.00
+    total_risk: 0.00
+    portfolio_risk_pct: 0.00
+
+# During Trade (update as needed)
+updates:
+  - date: "{YYYY-MM-DD}"
+    price: 0.00
+    note: ""
+    stop_adjusted_to: null
+
+# Partial Exits
+partial_exits:
+  - date: "{YYYY-MM-DD}"
+    price: 0.00
+    shares: 0
+    reason: ""
+    remaining_shares: 0
+
+# Final Exit (fill when closed)
+exit:
+  date: "{YYYY-MM-DD}"
+  time: "{HH:MM}"
+  price: 0.00
+  shares: 0
+  order_type: "market|limit|stop"
+  
+  reason: "target_hit|stop_hit|thesis_changed|time_stop|better_opportunity|manual"
+  
+  exit_notes: ""
+  followed_plan: true
+  emotional_state: "confident|neutral|nervous|relief|regret"
+
+# Results (calculated on close)
+result:
+  gross_pnl: 0.00
+  fees: 0.00
+  net_pnl: 0.00
+  return_pct: 0.00
+  holding_days: 0
+  
+  outcome: "big_win|small_win|breakeven|small_loss|big_loss"
+
+# Links
+_links:
+  analysis: ""  # analysis/stock/{TICKER}_*.yaml or analysis/earnings/{TICKER}_*.yaml
+  post_review: ""  # Fill after review created
