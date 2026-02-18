@@ -36,7 +36,7 @@ services:
     container_name: nexus-postgres
     restart: unless-stopped
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
       POSTGRES_USER: ${PG_USER:-lightrag}
       POSTGRES_PASSWORD: ${PG_PASS}
@@ -58,8 +58,8 @@ services:
     container_name: nexus-neo4j
     restart: unless-stopped
     ports:
-      - "7474:7474"
-      - "7687:7687"
+      - "7475:7474"
+      - "7688:7687"
     environment:
       NEO4J_AUTH: neo4j/${NEO4J_PASS}
       NEO4J_PLUGINS: '["apoc"]'
@@ -121,10 +121,10 @@ services:
   # The orchestrator (service.py) needs Claude Code CLI which is
   # installed on the host. It connects to these Docker services
   # via localhost ports:
-  #   PostgreSQL:  localhost:5432
+  #   PostgreSQL:  localhost:5433
   #   IB Gateway:  localhost:4002
   #   LightRAG:    localhost:9621
-  #   Neo4j:       localhost:7474 / 7687
+  #   Neo4j:       localhost:7475 / 7688
   #
   # Run on host:
   #   python service.py          # long-running service
