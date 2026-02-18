@@ -145,6 +145,86 @@ Parameters:
 | `mcp__github-vl__get_file_contents` | Read file from repo |
 | `mcp__github-vl__list_commits` | View commit history |
 
+## IB MCP Server (Interactive Brokers)
+
+Access Interactive Brokers TWS/Gateway for market data and portfolio information.
+
+**Source**: `/opt/data/trading/mcp_ib`
+
+### Available Tools
+
+| Tool | Purpose |
+|------|----------|
+| `get_stock_price` | Real-time stock quote (bid, ask, last, volume) |
+| `get_option_chain` | Option chain data (expirations, strikes) |
+| `get_positions` | Current portfolio positions |
+| `health_check` | Check IB Gateway connection status |
+
+### Usage Examples
+
+```yaml
+# Get stock price
+Tool: get_stock_price
+Input: {"symbol": "NVDA"}
+
+# Get option chain
+Tool: get_option_chain
+Input: {"symbol": "NVDA", "expiration": "20251205", "right": "CALL"}
+
+# Get portfolio positions
+Tool: get_positions
+```
+
+### Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `IB_GATEWAY_HOST` | 127.0.0.1 | TWS/Gateway hostname |
+| `IB_GATEWAY_PORT` | 4002 | API port (7496=TWS live, 7497=TWS paper, 4001=Gateway live, 4002=Gateway paper) |
+| `IB_CLIENT_ID` | 1 | Unique client ID |
+| `IB_READONLY` | true | Read-only mode (recommended) |
+
+## Brave Browser MCP (Web Scraping)
+
+Browser automation for accessing protected content (Medium, Seeking Alpha, analyst reports).
+
+**Source**: `/opt/data/trading/mcp_brave-browser`
+
+### Available Tools
+
+| Tool | Purpose |
+|------|----------|
+| `fetch_article` | Extract article content from URL |
+| `screenshot` | Take page screenshot (base64 PNG) |
+| `extract_data` | Extract data using CSS selectors |
+| `search` | Search and extract results |
+
+### Usage Examples
+
+```yaml
+# Fetch article content
+Tool: fetch_article
+Input: {"url": "https://seekingalpha.com/article/...", "wait_for_selector": "article"}
+
+# Take screenshot of chart
+Tool: screenshot
+Input: {"url": "https://finviz.com/chart.ashx?t=NVDA", "full_page": true}
+
+# Extract consensus data
+Tool: extract_data
+Input: {
+  "url": "https://seekingalpha.com/symbol/NVDA/earnings",
+  "selectors": {"eps": "[data-test-id='eps']", "revenue": "[data-test-id='revenue']"}
+}
+```
+
+### Features
+
+- Profile persistence (maintains login sessions)
+- Article caching (SHA-256 keyed, TTL support)
+- SSRF protection (blocks internal networks)
+- API key authentication
+
 ## Git Workflow (Fallback)
 
 ### Pushing Changes
