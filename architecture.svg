@@ -1,0 +1,447 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 1900" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0a0e1a"/>
+      <stop offset="100%" stop-color="#111827"/>
+    </linearGradient>
+    <linearGradient id="serviceGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="tickGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1a1f35"/>
+      <stop offset="100%" stop-color="#151929"/>
+    </linearGradient>
+    <linearGradient id="stage1Grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0c2d48"/>
+      <stop offset="100%" stop-color="#0a1f33"/>
+    </linearGradient>
+    <linearGradient id="stage2Grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2d1b0c"/>
+      <stop offset="100%" stop-color="#1f1408"/>
+    </linearGradient>
+    <linearGradient id="dbGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1b2838"/>
+      <stop offset="100%" stop-color="#111d2b"/>
+    </linearGradient>
+    <linearGradient id="dockerGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0c1929"/>
+      <stop offset="100%" stop-color="#091220"/>
+    </linearGradient>
+
+    <filter id="glowBlue" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feFlood flood-color="#3b82f6" flood-opacity="0.3"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glowAmber" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feFlood flood-color="#f59e0b" flood-opacity="0.3"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glowGreen" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feFlood flood-color="#10b981" flood-opacity="0.3"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="softShadow" x="-5%" y="-5%" width="110%" height="115%">
+      <feDropShadow dx="0" dy="2" stdDeviation="6" flood-color="#000" flood-opacity="0.4"/>
+    </filter>
+
+    <marker id="arrowBlue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#60a5fa"/>
+    </marker>
+    <marker id="arrowAmber" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#fbbf24"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#34d399"/>
+    </marker>
+    <marker id="arrowRed" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#f87171"/>
+    </marker>
+    <marker id="arrowWhite" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowCyan" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#22d3ee"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1400" height="1900" fill="url(#bgGrad)"/>
+
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <!-- TITLE -->
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <text x="700" y="46" text-anchor="middle" fill="#f1f5f9" font-size="26" font-weight="700" letter-spacing="2">NEXUS LIGHT TRADING PLATFORM</text>
+  <text x="700" y="70" text-anchor="middle" fill="#64748b" font-size="13" letter-spacing="4">ORCHESTRATOR SERVICE v2.1 — DEPLOYMENT ARCHITECTURE</text>
+  <line x1="200" y1="84" x2="1200" y2="84" stroke="#334155" stroke-width="1"/>
+
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <!-- HOST MACHINE BOUNDARY -->
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <rect x="30" y="100" width="1340" height="1080" rx="18" fill="none" stroke="#22c55e" stroke-width="2" stroke-dasharray="12,4" opacity="0.5"/>
+  <rect x="30" y="100" width="210" height="32" rx="8" fill="#052e16" stroke="#22c55e" stroke-width="1" opacity="0.8"/>
+  <text x="135" y="121" text-anchor="middle" fill="#4ade80" font-size="12" font-weight="700" letter-spacing="1">🖥 HOST MACHINE</text>
+
+  <!-- Subtitle -->
+  <text x="280" y="121" fill="#4ade80" font-size="10" opacity="0.7">Python3 + Claude Code CLI + Node.js + ~/.claude/ MCP config</text>
+
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <!-- SERVICE LOOP -->
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <rect x="50" y="145" width="900" height="330" rx="14" fill="url(#serviceGrad)" stroke="#334155" stroke-width="1.5" filter="url(#softShadow)"/>
+  <rect x="50" y="145" width="900" height="40" rx="14" fill="#1e293b"/>
+  <rect x="50" y="171" width="900" height="14" fill="#1e293b"/>
+  <circle cx="74" cy="165" r="5" fill="#ef4444" opacity="0.8"/>
+  <circle cx="90" cy="165" r="5" fill="#f59e0b" opacity="0.8"/>
+  <circle cx="106" cy="165" r="5" fill="#22c55e" opacity="0.8"/>
+  <text x="126" y="170" fill="#94a3b8" font-size="12" font-weight="600" letter-spacing="1">service.py — UNINTERRUPTED LOOP</text>
+  <text x="900" y="170" fill="#475569" font-size="10" text-anchor="end">systemd / screen / tmux</text>
+
+  <!-- Tick cycle -->
+  <rect x="70" y="200" width="860" height="255" rx="10" fill="url(#tickGrad)" stroke="#2d3748" stroke-width="1" stroke-dasharray="6,3"/>
+  <text x="500" y="220" text-anchor="middle" fill="#64748b" font-size="11" letter-spacing="2">TICK CYCLE — reads ALL config from PostgreSQL each pass</text>
+
+  <!-- Steps -->
+  <rect x="90" y="235" width="155" height="55" rx="7" fill="#1a1f35" stroke="#475569" stroke-width="1"/>
+  <text x="167" y="258" text-anchor="middle" fill="#94a3b8" font-size="9.5" font-weight="600">① RECONNECT</text>
+  <text x="167" y="273" text-anchor="middle" fill="#64748b" font-size="9">ensure_connection()</text>
+
+  <rect x="262" y="235" width="155" height="55" rx="7" fill="#1a2332" stroke="#3b82f6" stroke-width="1.5" filter="url(#glowBlue)"/>
+  <text x="339" y="258" text-anchor="middle" fill="#60a5fa" font-size="9.5" font-weight="600">② REFRESH CFG</text>
+  <text x="339" y="273" text-anchor="middle" fill="#93c5fd" font-size="9">settings from DB</text>
+
+  <rect x="434" y="235" width="160" height="55" rx="7" fill="#1a2332" stroke="#f59e0b" stroke-width="1.5" filter="url(#glowAmber)"/>
+  <text x="514" y="258" text-anchor="middle" fill="#fbbf24" font-size="9.5" font-weight="600">③ DUE SCHEDULES</text>
+  <text x="514" y="273" text-anchor="middle" fill="#fde68a" font-size="9">run_due_schedules()</text>
+
+  <rect x="611" y="235" width="155" height="55" rx="7" fill="#1a2332" stroke="#8b5cf6" stroke-width="1.5"/>
+  <text x="688" y="258" text-anchor="middle" fill="#a78bfa" font-size="9.5" font-weight="600">④ EARNINGS</text>
+  <text x="688" y="273" text-anchor="middle" fill="#c4b5fd" font-size="9">earnings_check()</text>
+
+  <rect x="783" y="235" width="130" height="55" rx="7" fill="#1a2332" stroke="#10b981" stroke-width="1.5" filter="url(#glowGreen)"/>
+  <text x="848" y="258" text-anchor="middle" fill="#34d399" font-size="9.5" font-weight="600">⑤ HEARTBEAT</text>
+  <text x="848" y="273" text-anchor="middle" fill="#6ee7b7" font-size="9">metrics to DB</text>
+
+  <!-- Step arrows -->
+  <line x1="245" y1="262" x2="260" y2="262" stroke="#475569" stroke-width="1.2" marker-end="url(#arrowWhite)"/>
+  <line x1="417" y1="262" x2="432" y2="262" stroke="#475569" stroke-width="1.2" marker-end="url(#arrowWhite)"/>
+  <line x1="594" y1="262" x2="609" y2="262" stroke="#475569" stroke-width="1.2" marker-end="url(#arrowWhite)"/>
+  <line x1="766" y1="262" x2="781" y2="262" stroke="#475569" stroke-width="1.2" marker-end="url(#arrowWhite)"/>
+
+  <!-- Loop-back -->
+  <path d="M 913 265 Q 930 265, 930 300 Q 930 330, 900 330 L 100 330 Q 80 330, 80 305 L 80 290" stroke="#475569" stroke-width="1" fill="none" stroke-dasharray="4,3" marker-end="url(#arrowWhite)"/>
+  <text x="500" y="348" text-anchor="middle" fill="#475569" font-size="9.5" font-style="italic">sleep(cfg.scheduler_poll_seconds from DB) — interruptible by SIGTERM</text>
+
+  <!-- Task dispatch -->
+  <rect x="90" y="370" width="740" height="70" rx="8" fill="#11151f" stroke="#2d3748" stroke-width="1"/>
+  <text x="110" y="389" fill="#94a3b8" font-size="10" font-weight="600">TASK DISPATCH</text>
+  <g font-size="8.5" fill="#64748b">
+    <rect x="100" y="398" width="95" height="28" rx="4" fill="#172032" stroke="#3b82f6" stroke-width="0.8"/>
+    <text x="147" y="416" text-anchor="middle" fill="#60a5fa" font-size="8.5">analyze_stock</text>
+    <rect x="202" y="398" width="110" height="28" rx="4" fill="#172032" stroke="#3b82f6" stroke-width="0.8"/>
+    <text x="257" y="416" text-anchor="middle" fill="#60a5fa" font-size="8.5">analyze_watchlist</text>
+    <rect x="319" y="398" width="80" height="28" rx="4" fill="#172032" stroke="#f59e0b" stroke-width="0.8"/>
+    <text x="359" y="416" text-anchor="middle" fill="#fbbf24" font-size="8.5">pipeline</text>
+    <rect x="406" y="398" width="95" height="28" rx="4" fill="#172032" stroke="#8b5cf6" stroke-width="0.8"/>
+    <text x="453" y="416" text-anchor="middle" fill="#a78bfa" font-size="8.5">run_scanner</text>
+    <rect x="508" y="398" width="95" height="28" rx="4" fill="#172032" stroke="#10b981" stroke-width="0.8"/>
+    <text x="555" y="416" text-anchor="middle" fill="#34d399" font-size="8.5">review</text>
+    <rect x="610" y="398" width="95" height="28" rx="4" fill="#172032" stroke="#10b981" stroke-width="0.8"/>
+    <text x="657" y="416" text-anchor="middle" fill="#34d399" font-size="8.5">postmortem</text>
+    <rect x="712" y="398" width="80" height="28" rx="4" fill="#172032" stroke="#64748b" stroke-width="0.8"/>
+    <text x="752" y="416" text-anchor="middle" fill="#94a3b8" font-size="8.5">custom</text>
+  </g>
+
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <!-- CLAUDE CODE CLI (on host) -->
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <rect x="970" y="145" width="390" height="330" rx="14" fill="#1a1520" stroke="#d97706" stroke-width="1.5" filter="url(#softShadow)"/>
+  <rect x="970" y="145" width="390" height="40" rx="14" fill="#78350f" opacity="0.3"/>
+  <rect x="970" y="171" width="390" height="14" fill="#78350f" opacity="0.3"/>
+  <text x="990" y="170" fill="#fde68a" font-size="13" font-weight="700">CLAUDE CODE CLI</text>
+  <text x="1320" y="170" fill="#92400e" font-size="10" text-anchor="end">on HOST</text>
+
+  <g transform="translate(990, 195)">
+    <text fill="#fde68a" font-size="10" font-weight="600">subprocess.run(["claude", "--print", ...])</text>
+
+    <rect x="0" y="18" width="340" height="30" rx="5" fill="#1f1708" stroke="#78350f" stroke-width="1"/>
+    <text x="12" y="37" fill="#fbbf24" font-size="9.5">~/.claude/config — MCP server definitions</text>
+
+    <rect x="0" y="55" width="340" height="30" rx="5" fill="#1f1708" stroke="#78350f" stroke-width="1"/>
+    <text x="12" y="74" fill="#fbbf24" font-size="9.5">Auth session — Anthropic API key</text>
+
+    <rect x="0" y="92" width="340" height="30" rx="5" fill="#1f1708" stroke="#78350f" stroke-width="1"/>
+    <text x="12" y="111" fill="#fbbf24" font-size="9.5">Node.js runtime — installed on host</text>
+
+    <text fill="#94a3b8" font-size="10" font-weight="600" y="148">MCP SERVERS (managed by Claude Code)</text>
+
+    <rect x="0" y="158" width="160" height="26" rx="4" fill="#1f1708" stroke="#ef4444" stroke-width="1"/>
+    <text x="80" y="176" text-anchor="middle" fill="#fca5a5" font-size="9">mcp__ib-gateway__*</text>
+
+    <rect x="170" y="158" width="160" height="26" rx="4" fill="#1f1708" stroke="#8b5cf6" stroke-width="1"/>
+    <text x="250" y="176" text-anchor="middle" fill="#c4b5fd" font-size="9">mcp__lightrag__*</text>
+
+    <rect x="0" y="192" width="160" height="26" rx="4" fill="#1f1708" stroke="#3b82f6" stroke-width="1"/>
+    <text x="80" y="210" text-anchor="middle" fill="#93c5fd" font-size="9">web_search</text>
+
+    <text x="0" y="240" fill="#64748b" font-size="9">--allowedTools per stage</text>
+    <text x="0" y="255" fill="#64748b" font-size="9">Stage 1: ib + web + lightrag</text>
+    <text x="0" y="270" fill="#64748b" font-size="9">Stage 2: ib + lightrag only</text>
+  </g>
+
+  <!-- Arrow from orchestrator to Claude Code -->
+  <line x1="950" y1="320" x2="968" y2="320" stroke="#d97706" stroke-width="2" marker-end="url(#arrowAmber)"/>
+  <text x="958" y="310" fill="#92400e" font-size="8" text-anchor="middle" transform="rotate(-90,958,310)">subprocess</text>
+
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <!-- TWO-STAGE PIPELINE -->
+  <!-- ════════════════════════════════════════════════════════════ -->
+
+  <!-- Stage 1 -->
+  <rect x="50" y="510" width="580" height="290" rx="14" fill="url(#stage1Grad)" stroke="#2563eb" stroke-width="1.5" filter="url(#softShadow)"/>
+  <rect x="50" y="510" width="580" height="36" rx="14" fill="#1e40af" opacity="0.4"/>
+  <rect x="50" y="532" width="580" height="14" fill="#1e40af" opacity="0.4"/>
+  <text x="80" y="534" fill="#93c5fd" font-size="13" font-weight="700">STAGE 1 — ANALYSIS</text>
+  <text x="580" y="534" fill="#3b82f6" font-size="10" text-anchor="end">Claude Code Call #1</text>
+
+  <g transform="translate(70, 558)">
+    <text fill="#64748b" font-size="9.5" font-weight="600" letter-spacing="1">PROMPT INCLUDES</text>
+    <rect x="0" y="10" width="240" height="26" rx="4" fill="#0f1d2f" stroke="#1e3a5f" stroke-width="1"/>
+    <text x="10" y="28" fill="#7dd3fc" font-size="9">📋 Skill framework (earnings / stock)</text>
+    <rect x="0" y="42" width="240" height="26" rx="4" fill="#0f1d2f" stroke="#1e3a5f" stroke-width="1"/>
+    <text x="10" y="60" fill="#7dd3fc" font-size="9">📊 Stock context from nexus.stocks</text>
+    <rect x="0" y="74" width="240" height="26" rx="4" fill="#0f1d2f" stroke="#1e3a5f" stroke-width="1"/>
+    <text x="10" y="92" fill="#7dd3fc" font-size="9">🧠 LightRAG prior analyses</text>
+  </g>
+
+  <g transform="translate(340, 558)">
+    <text fill="#64748b" font-size="9.5" font-weight="600" letter-spacing="1">CLAUDE CODE USES TOOLS</text>
+    <rect x="0" y="10" width="260" height="26" rx="4" fill="#0f1d2f" stroke="#1e3a5f" stroke-width="1"/>
+    <text x="10" y="28" fill="#93c5fd" font-size="9">🔌 IB MCP → price, IV, options, positions</text>
+    <rect x="0" y="42" width="260" height="26" rx="4" fill="#0f1d2f" stroke="#1e3a5f" stroke-width="1"/>
+    <text x="10" y="60" fill="#93c5fd" font-size="9">🌐 Web Search → news, estimates, ratings</text>
+    <rect x="0" y="74" width="260" height="26" rx="4" fill="#0f1d2f" stroke="#1e3a5f" stroke-width="1"/>
+    <text x="10" y="92" fill="#93c5fd" font-size="9">🧠 LightRAG MCP → context queries</text>
+  </g>
+
+  <!-- Output -->
+  <g transform="translate(70, 670)">
+    <rect x="0" y="0" width="530" height="110" rx="7" fill="#0a1628" stroke="#1e40af" stroke-width="1"/>
+    <text x="12" y="18" fill="#bfdbfe" font-size="10" font-weight="600">OUTPUT → analysis.md + embedded JSON block</text>
+    <text x="12" y="35" fill="#64748b" font-size="8.5">├─ gate_passed: true/false       ├─ entry_price, stop_loss, target</text>
+    <text x="12" y="48" fill="#64748b" font-size="8.5">├─ recommendation: BULLISH..     ├─ structure: call_spread, iron_condor</text>
+    <text x="12" y="61" fill="#64748b" font-size="8.5">├─ confidence: 0-100             ├─ position_size_pct</text>
+    <text x="12" y="74" fill="#64748b" font-size="8.5">└─ expected_value_pct            └─ rationale_summary</text>
+    <line x1="12" y1="82" x2="518" y2="82" stroke="#1e3a5f" stroke-width="0.5"/>
+    <text x="12" y="98" fill="#475569" font-size="8.5" font-style="italic">Saved: analyses/NFLX_earnings_20260217_0630.md → ingested into LightRAG</text>
+  </g>
+
+  <!-- Gate diamond -->
+  <polygon points="700,680 755,720 700,760 645,720" fill="#1a1520" stroke="#f59e0b" stroke-width="2" filter="url(#glowAmber)"/>
+  <text x="700" y="715" text-anchor="middle" fill="#fbbf24" font-size="10" font-weight="700">GATE</text>
+  <text x="700" y="728" text-anchor="middle" fill="#fde68a" font-size="7.5">Do Nothing?</text>
+
+  <!-- FAIL -->
+  <line x1="700" y1="760" x2="700" y2="800" stroke="#ef4444" stroke-width="2" marker-end="url(#arrowRed)"/>
+  <rect x="658" y="802" width="84" height="24" rx="5" fill="#1a0f0f" stroke="#ef4444" stroke-width="1"/>
+  <text x="700" y="818" text-anchor="middle" fill="#fca5a5" font-size="9.5" font-weight="600">FAIL → stop</text>
+
+  <!-- PASS -->
+  <line x1="755" y1="720" x2="820" y2="720" stroke="#22c55e" stroke-width="2" marker-end="url(#arrowGreen)"/>
+
+  <!-- State check -->
+  <polygon points="900,680 955,720 900,760 845,720" fill="#1a1520" stroke="#8b5cf6" stroke-width="1.5"/>
+  <text x="900" y="715" text-anchor="middle" fill="#a78bfa" font-size="9" font-weight="700">STATE</text>
+  <text x="900" y="728" text-anchor="middle" fill="#c4b5fd" font-size="7.5">paper?</text>
+
+  <!-- state=analysis → stop -->
+  <line x1="900" y1="760" x2="900" y2="800" stroke="#ef4444" stroke-width="1.5" marker-end="url(#arrowRed)"/>
+  <rect x="848" y="802" width="104" height="24" rx="5" fill="#1a0f0f" stroke="#ef4444" stroke-width="1"/>
+  <text x="900" y="818" text-anchor="middle" fill="#fca5a5" font-size="8.5">state=analysis</text>
+
+  <!-- state=paper → Stage 2 -->
+  <line x1="955" y1="720" x2="1030" y2="720" stroke="#22c55e" stroke-width="2" marker-end="url(#arrowGreen)"/>
+  <text x="990" y="712" fill="#475569" font-size="8">paper</text>
+
+  <!-- Stage 2 -->
+  <rect x="1030" y="510" width="320" height="290" rx="14" fill="url(#stage2Grad)" stroke="#d97706" stroke-width="1.5" filter="url(#softShadow)"/>
+  <rect x="1030" y="510" width="320" height="36" rx="14" fill="#92400e" opacity="0.3"/>
+  <rect x="1030" y="532" width="320" height="14" fill="#92400e" opacity="0.3"/>
+  <text x="1060" y="534" fill="#fde68a" font-size="13" font-weight="700">STAGE 2 — EXECUTION</text>
+  <text x="1310" y="534" fill="#d97706" font-size="10" text-anchor="end">Call #2</text>
+
+  <g transform="translate(1050, 555)">
+    <rect width="280" height="25" rx="4" fill="#1f1708" stroke="#78350f" stroke-width="1"/>
+    <text x="10" y="17" fill="#fde68a" font-size="9">① Parse JSON trade plan from analysis</text>
+    <rect x="0" y="30" width="280" height="25" rx="4" fill="#1f1708" stroke="#78350f" stroke-width="1"/>
+    <text x="10" y="47" fill="#fde68a" font-size="9">② Re-validate gate + stock state from DB</text>
+    <rect x="0" y="60" width="280" height="25" rx="4" fill="#1f1708" stroke="#78350f" stroke-width="1"/>
+    <text x="10" y="77" fill="#fde68a" font-size="9">③ Pre-flight: price, exposure, buying power</text>
+    <rect x="0" y="90" width="280" height="25" rx="4" fill="#1f1708" stroke="#78350f" stroke-width="1"/>
+    <text x="10" y="107" fill="#fde68a" font-size="9">④ Options liquidity check (spread &lt;15%)</text>
+    <rect x="0" y="120" width="280" height="25" rx="4" fill="#1f1708" stroke="#78350f" stroke-width="1"/>
+    <text x="10" y="137" fill="#fde68a" font-size="9">⑤ Position sizing: max_position_pct</text>
+    <rect x="0" y="155" width="280" height="35" rx="4" fill="#1f1708" stroke="#f59e0b" stroke-width="1.5"/>
+    <text x="10" y="172" fill="#fbbf24" font-size="10" font-weight="600">⑥ LIMIT order → IB paper account</text>
+    <text x="10" y="185" fill="#92400e" font-size="8">via IB MCP → localhost:4002</text>
+
+    <rect x="0" y="200" width="280" height="25" rx="4" fill="#1f1708" stroke="#10b981" stroke-width="1"/>
+    <text x="10" y="217" fill="#34d399" font-size="9">⑦ Log to trades/ + ingest LightRAG</text>
+  </g>
+
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <!-- LOCALHOST BOUNDARY -->
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <rect x="250" y="855" width="900" height="30" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+  <text x="700" y="875" text-anchor="middle" fill="#64748b" font-size="11" font-weight="600" letter-spacing="3">localhost  :5432  :4002  :9621  :7687</text>
+  <line x1="250" y1="885" x2="1150" y2="885" stroke="#22c55e" stroke-width="1" stroke-dasharray="3,3" opacity="0.4"/>
+  <!-- Down arrows -->
+  <line x1="420" y1="885" x2="420" y2="910" stroke="#475569" stroke-width="1.5" marker-end="url(#arrowWhite)"/>
+  <line x1="620" y1="885" x2="620" y2="910" stroke="#475569" stroke-width="1.5" marker-end="url(#arrowWhite)"/>
+  <line x1="820" y1="885" x2="820" y2="910" stroke="#475569" stroke-width="1.5" marker-end="url(#arrowWhite)"/>
+  <line x1="1020" y1="885" x2="1020" y2="910" stroke="#475569" stroke-width="1.5" marker-end="url(#arrowWhite)"/>
+
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <!-- DOCKER BOUNDARY -->
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <rect x="30" y="920" width="1340" height="570" rx="18" fill="url(#dockerGrad)" stroke="#0ea5e9" stroke-width="2" stroke-dasharray="12,4" opacity="0.6"/>
+  <rect x="30" y="920" width="280" height="32" rx="8" fill="#082f49" stroke="#0ea5e9" stroke-width="1" opacity="0.8"/>
+  <text x="170" y="941" text-anchor="middle" fill="#38bdf8" font-size="12" font-weight="700" letter-spacing="1">🐳 DOCKER COMPOSE</text>
+  <text x="350" y="941" fill="#38bdf8" font-size="10" opacity="0.7">docker-compose.yml — infrastructure only</text>
+
+  <!-- PostgreSQL -->
+  <rect x="50" y="970" width="440" height="280" rx="12" fill="url(#dbGrad)" stroke="#334155" stroke-width="1.5" filter="url(#softShadow)"/>
+  <rect x="50" y="970" width="440" height="34" rx="12" fill="#1e3a5f" opacity="0.4"/>
+  <rect x="50" y="990" width="440" height="14" fill="#1e3a5f" opacity="0.4"/>
+  <circle cx="74" cy="987" r="10" fill="#336791" opacity="0.8"/>
+  <text x="74" y="991" text-anchor="middle" fill="#fff" font-size="9" font-weight="700">P</text>
+  <text x="94" y="992" fill="#7dd3fc" font-size="12" font-weight="700">PostgreSQL :5432</text>
+  <text x="440" y="992" fill="#475569" font-size="9" text-anchor="end">pgvector/pgvector:pg16</text>
+
+  <!-- DB tables -->
+  <g transform="translate(62, 1015)">
+    <rect width="130" height="90" rx="6" fill="#0f1d2f" stroke="#3b82f6" stroke-width="1"/>
+    <text x="65" y="16" text-anchor="middle" fill="#60a5fa" font-size="9" font-weight="700">settings</text>
+    <text x="8" y="32" fill="#64748b" font-size="8">key → JSONB</text>
+    <text x="8" y="44" fill="#64748b" font-size="8">poll_seconds: 60</text>
+    <text x="8" y="56" fill="#64748b" font-size="8">dry_run: true</text>
+    <text x="8" y="68" fill="#64748b" font-size="8">auto_execute: false</text>
+    <text x="65" y="84" text-anchor="middle" fill="#3b82f6" font-size="7" font-weight="600">HOT-RELOAD</text>
+  </g>
+  <g transform="translate(200, 1015)">
+    <rect width="130" height="90" rx="6" fill="#0f1d2f" stroke="#f59e0b" stroke-width="1"/>
+    <text x="65" y="16" text-anchor="middle" fill="#fbbf24" font-size="9" font-weight="700">stocks</text>
+    <text x="8" y="32" fill="#64748b" font-size="8">ticker, state</text>
+    <text x="8" y="44" fill="#64748b" font-size="8">priority, tags[]</text>
+    <text x="8" y="56" fill="#64748b" font-size="8">earnings_date</text>
+    <text x="8" y="68" fill="#64748b" font-size="8">max_position_pct</text>
+    <text x="8" y="82" fill="#64748b" font-size="8">analysis|paper|live</text>
+  </g>
+  <g transform="translate(338, 1015)">
+    <rect width="140" height="90" rx="6" fill="#0f1d2f" stroke="#8b5cf6" stroke-width="1"/>
+    <text x="70" y="16" text-anchor="middle" fill="#a78bfa" font-size="9" font-weight="700">schedules</text>
+    <text x="8" y="32" fill="#64748b" font-size="8">task_type, freq</text>
+    <text x="8" y="44" fill="#64748b" font-size="8">time_of_day</text>
+    <text x="8" y="56" fill="#64748b" font-size="8">next_run_at</text>
+    <text x="8" y="68" fill="#64748b" font-size="8">circuit_breaker</text>
+    <text x="8" y="82" fill="#64748b" font-size="8">auto_execute</text>
+  </g>
+  <g transform="translate(62, 1115)">
+    <rect width="130" height="60" rx="6" fill="#0f1d2f" stroke="#06b6d4" stroke-width="1"/>
+    <text x="65" y="16" text-anchor="middle" fill="#22d3ee" font-size="9" font-weight="700">ib_scanners</text>
+    <text x="8" y="32" fill="#64748b" font-size="8">scanner_code</text>
+    <text x="8" y="44" fill="#64748b" font-size="8">filters (JSONB)</text>
+    <text x="8" y="56" fill="#64748b" font-size="8">auto_analyze</text>
+  </g>
+  <g transform="translate(200, 1115)">
+    <rect width="130" height="60" rx="6" fill="#0f1d2f" stroke="#10b981" stroke-width="1"/>
+    <text x="65" y="16" text-anchor="middle" fill="#34d399" font-size="9" font-weight="700">run_history</text>
+    <text x="8" y="32" fill="#64748b" font-size="8">status, duration</text>
+    <text x="8" y="44" fill="#64748b" font-size="8">gate, confidence</text>
+    <text x="8" y="56" fill="#64748b" font-size="8">order_id, error</text>
+  </g>
+  <g transform="translate(338, 1115)">
+    <rect width="140" height="60" rx="6" fill="#0f1d2f" stroke="#10b981" stroke-width="1"/>
+    <text x="70" y="16" text-anchor="middle" fill="#34d399" font-size="9" font-weight="700">service_status</text>
+    <text x="8" y="32" fill="#64748b" font-size="8">heartbeat, pid</text>
+    <text x="8" y="44" fill="#64748b" font-size="8">ticks, analyses</text>
+    <text x="8" y="56" fill="#64748b" font-size="8">today counters</text>
+  </g>
+
+  <text x="270" y="1200" text-anchor="middle" fill="#475569" font-size="8.5" font-style="italic">LightRAG uses public schema on same PG instance</text>
+
+  <!-- IB Gateway -->
+  <g transform="translate(520, 970)">
+    <rect width="250" height="120" rx="12" fill="#1a1520" stroke="#ef4444" stroke-width="1.5" filter="url(#softShadow)"/>
+    <rect width="250" height="30" rx="12" fill="#7f1d1d" opacity="0.3"/>
+    <text x="125" y="22" text-anchor="middle" fill="#fca5a5" font-size="12" font-weight="700">IB GATEWAY :4002</text>
+    <text x="125" y="50" text-anchor="middle" fill="#64748b" font-size="9">ghcr.io/gnzsnz/ib-gateway</text>
+    <text x="20" y="70" fill="#94a3b8" font-size="9">TRADING_MODE: paper</text>
+    <text x="20" y="86" fill="#94a3b8" font-size="9">VNC: :5900</text>
+    <text x="20" y="102" fill="#94a3b8" font-size="9">TWS API for MCP server</text>
+  </g>
+
+  <!-- LightRAG -->
+  <g transform="translate(800, 970)">
+    <rect width="250" height="120" rx="12" fill="#1a1520" stroke="#8b5cf6" stroke-width="1.5" filter="url(#softShadow)"/>
+    <rect width="250" height="30" rx="12" fill="#4c1d95" opacity="0.3"/>
+    <text x="125" y="22" text-anchor="middle" fill="#c4b5fd" font-size="12" font-weight="700">LIGHTRAG :9621</text>
+    <text x="125" y="50" text-anchor="middle" fill="#64748b" font-size="9">lightrag/lightrag:latest</text>
+    <text x="20" y="70" fill="#94a3b8" font-size="9">REST API + MCP server</text>
+    <text x="20" y="86" fill="#94a3b8" font-size="9">PG vectors + Neo4j graph</text>
+    <text x="20" y="102" fill="#94a3b8" font-size="9">Anthropic LLM + OpenAI embed</text>
+  </g>
+
+  <!-- Neo4j -->
+  <g transform="translate(1080, 970)">
+    <rect width="250" height="120" rx="12" fill="#1a1520" stroke="#06b6d4" stroke-width="1.5" filter="url(#softShadow)"/>
+    <rect width="250" height="30" rx="12" fill="#164e63" opacity="0.3"/>
+    <text x="125" y="22" text-anchor="middle" fill="#67e8f9" font-size="12" font-weight="700">NEO4J :7687</text>
+    <text x="125" y="50" text-anchor="middle" fill="#64748b" font-size="9">neo4j:5-community</text>
+    <text x="20" y="70" fill="#94a3b8" font-size="9">Graph storage for LightRAG</text>
+    <text x="20" y="86" fill="#94a3b8" font-size="9">Browser: :7474</text>
+    <text x="20" y="102" fill="#94a3b8" font-size="9">APOC plugin</text>
+  </g>
+
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <!-- BOTTOM ROW: Outputs + CLI + Future -->
+  <!-- ════════════════════════════════════════════════════════════ -->
+
+  <g transform="translate(50, 1520)">
+    <rect width="380" height="80" rx="10" fill="#11151f" stroke="#334155" stroke-width="1"/>
+    <text x="18" y="22" fill="#94a3b8" font-size="10" font-weight="600">FILE OUTPUTS (on host filesystem)</text>
+    <text x="18" y="40" fill="#64748b" font-size="9">📁 analyses/  NFLX_earnings_20260217_0630.md</text>
+    <text x="18" y="54" fill="#64748b" font-size="9">📁 trades/    NFLX_trade_20260217_0635.md</text>
+    <text x="18" y="68" fill="#475569" font-size="9">📁 logs/      orchestrator.log, service.log</text>
+  </g>
+
+  <g transform="translate(460, 1520)">
+    <rect width="440" height="80" rx="10" fill="#11151f" stroke="#334155" stroke-width="1"/>
+    <text x="18" y="22" fill="#94a3b8" font-size="10" font-weight="600">CLI — LIVE CONTROL (while service runs, separate terminal)</text>
+    <text x="18" y="40" fill="#60a5fa" font-size="9" font-family="'Cascadia Code', monospace">orchestrator.py settings set dry_run_mode false</text>
+    <text x="18" y="54" fill="#fbbf24" font-size="9" font-family="'Cascadia Code', monospace">orchestrator.py stock set-state NFLX --state paper</text>
+    <text x="18" y="68" fill="#34d399" font-size="9" font-family="'Cascadia Code', monospace">orchestrator.py status | service.py health</text>
+  </g>
+
+  <g transform="translate(930, 1520)">
+    <rect width="410" height="80" rx="10" fill="#11151f" stroke="#334155" stroke-width="1"/>
+    <text x="18" y="22" fill="#94a3b8" font-size="10" font-weight="600">PRODUCTION PATH</text>
+    <text x="18" y="40" fill="#64748b" font-size="9">Now: Host process + Docker infrastructure</text>
+    <text x="18" y="54" fill="#64748b" font-size="9">Future: Anthropic API SDK replaces Claude CLI</text>
+    <text x="18" y="68" fill="#475569" font-size="9">→ GCP Cloud Run + Cloud SQL (fully containerized)</text>
+  </g>
+
+  <!-- Key insight callout -->
+  <rect x="50" y="1630" width="1300" height="55" rx="10" fill="#0c2d1b" stroke="#22c55e" stroke-width="1" opacity="0.8"/>
+  <text x="700" y="1655" text-anchor="middle" fill="#4ade80" font-size="11" font-weight="600">KEY: Orchestrator runs on HOST because Claude Code CLI needs local Node.js, ~/.claude/ auth, and MCP server configs.</text>
+  <text x="700" y="1673" text-anchor="middle" fill="#4ade80" font-size="10" opacity="0.7">Docker handles infrastructure only: PostgreSQL, IB Gateway, LightRAG, Neo4j. Host connects via localhost ports.</text>
+
+  <!-- Footer -->
+  <text x="700" y="1710" text-anchor="middle" fill="#334155" font-size="10">Nexus Light Trading Platform v2.1 — Host + Docker Split Architecture</text>
+</svg>

@@ -1,0 +1,976 @@
+#!/usr/bin/env python3
+"""
+Nexus Light Trading Platform - Orchestrator v2.0
+Database-driven two-stage pipeline: Analysis → Execution via Claude Code CLI
+
+All configuration (stocks, scanners, schedules) lives in PostgreSQL.
+Shares the same PG instance as LightRAG (separate 'nexus' schema).
+
+Usage:
+    python orchestrator.py analyze NFLX --type earnings
+    python orchestrator.py execute analyses/NFLX_earnings_20260217.md
+    python orchestrator.py pipeline NFLX --type earnings
+    python orchestrator.py scan                              # run all enabled IB scanners
+    python orchestrator.py scan --scanner HIGH_OPT_IMP_VOLAT # specific scanner
+    python orchestrator.py watchlist                          # analyze all enabled stocks
+    python orchestrator.py review                             # portfolio review
+    python orchestrator.py run-due                            # execute all due schedules
+    python orchestrator.py status                             # show system status
+    python orchestrator.py db-init                            # initialize database schema
+"""
+
+import subprocess
+import sys
+import json
+import re
+import logging
+import os
+from datetime import datetime, timedelta
+from pathlib import Path
+from dataclasses import dataclass
+from enum import Enum
+from typing import Optional
+
+from db_layer import NexusDB, Stock, IBScanner, Schedule
+
+# ─── Configuration ───────────────────────────────────────────────────────────
+
+BASE_DIR = Path(__file__).parent
+
+for d in [BASE_DIR / "analyses", BASE_DIR / "trades", BASE_DIR / "logs"]:
+    d.mkdir(parents=True, exist_ok=True)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(BASE_DIR / "logs" / "orchestrator.log"),
+    ],
+)
+log = logging.getLogger("nexus-light")
+
+
+class Settings:
+    """
+    Hot-reloadable settings from PostgreSQL.
+    Call refresh() to pull latest values — no restart required.
+    Falls back to env vars → hardcoded defaults if DB unavailable.
+    """
+
+    def __init__(self, db: Optional["NexusDB"] = None):
+        self._cache: dict = {}
+        self._last_refresh: Optional[datetime] = None
+        self._db = db
+        if db:
+            self.refresh()
+
+    def refresh(self):
+        """Pull all settings from DB into local cache."""
+        if not self._db:
+            return
+        try:
+            self._cache = self._db.get_all_settings()
+            self._last_refresh = datetime.now()
+            log.debug(f"Settings refreshed: {len(self._cache)} keys")
+        except Exception as e:
+            log.warning(f"Settings refresh failed (using cached): {e}")
+
+    def _get(self, key: str, env_key: str = None, default=None):
+        """Get setting: DB cache → env var → default."""
+        # DB cache first
+        if key in self._cache:
+            return self._cache[key]
+        # Env var fallback
+        if env_key and os.getenv(env_key):
+            return os.getenv(env_key)
+        return default
+
+    def _get_bool(self, key: str, env_key: str = None, default: bool = False) -> bool:
+        """Get a boolean setting with safe coercion (handles string 'false')."""
+        val = self._get(key, env_key, default)
+        if isinstance(val, bool):
+            return val
+        if isinstance(val, str):
+            return val.lower() in ('true', '1', 'yes')
+        return bool(val)
+
+    # ─── Accessors ───────────────────────────────────────────────────
+
+    @property
+    def claude_cmd(self) -> str:
+        return self._get('claude_cmd', 'CLAUDE_CMD', 'claude')
+
+    @property
+    def claude_timeout(self) -> int:
+        return int(self._get('claude_timeout_seconds', 'CLAUDE_TIMEOUT', 600))
+
+    @property
+    def allowed_tools_analysis(self) -> str:
+        return self._get('allowed_tools_analysis', None,
+                         'mcp__ib-gateway__*,web_search,mcp__lightrag__*')
+
+    @property
+    def allowed_tools_execution(self) -> str:
+        return self._get('allowed_tools_execution', None,
+                         'mcp__ib-gateway__*,mcp__lightrag__*')
+
+    @property
+    def allowed_tools_scanner(self) -> str:
+        return self._get('allowed_tools_scanner', None, 'mcp__ib-gateway__*')
+
+    @property
+    def ib_account(self) -> str:
+        return self._get('ib_account', 'IB_ACCOUNT', 'DU_PAPER')
+
+    @property
+    def lightrag_url(self) -> str:
+        return self._get('lightrag_url', 'LIGHTRAG_URL', 'http://localhost:9621')
+
+    @property
+    def lightrag_ingest_enabled(self) -> bool:
+        return self._get_bool('lightrag_ingest_enabled', None, True)
+
+    @property
+    def max_daily_analyses(self) -> int:
+        return int(self._get('max_daily_analyses', 'MAX_DAILY_ANALYSES', 15))
+
+    @property
+    def max_daily_executions(self) -> int:
+        return int(self._get('max_daily_executions', 'MAX_DAILY_EXECUTIONS', 5))
+
+    @property
+    def max_concurrent_runs(self) -> int:
+        return int(self._get('max_concurrent_runs', None, 2))
+
+    @property
+    def auto_execute_enabled(self) -> bool:
+        return self._get_bool('auto_execute_enabled', None, False)
+
+    @property
+    def scanners_enabled(self) -> bool:
+        return self._get_bool('scanners_enabled', None, True)
+
+    @property
+    def lightrag_query_enabled(self) -> bool:
+        return self._get_bool('lightrag_query_enabled', None, True)
+
+    @property
+    def dry_run_mode(self) -> bool:
+        return self._get_bool('dry_run_mode', None, True)
+
+    @property
+    def scheduler_poll_seconds(self) -> int:
+        return int(self._get('scheduler_poll_seconds', None, 60))
+
+    @property
+    def earnings_check_hours(self) -> list[int]:
+        val = self._get('earnings_check_hours', None, [6, 7])
+        return val if isinstance(val, list) else [6, 7]
+
+    @property
+    def earnings_lookback_days(self) -> int:
+        return int(self._get('earnings_lookback_days', None, 21))
+
+    @property
+    def analyses_dir(self) -> Path:
+        return BASE_DIR / self._get('analyses_dir', None, 'analyses')
+
+    @property
+    def trades_dir(self) -> Path:
+        return BASE_DIR / self._get('trades_dir', None, 'trades')
+
+    @property
+    def logs_dir(self) -> Path:
+        return BASE_DIR / self._get('logs_dir', None, 'logs')
+
+
+# Module-level default (overridden when DB is available)
+cfg = Settings()
+
+
+# ─── Data Models ─────────────────────────────────────────────────────────────
+
+class AnalysisType(Enum):
+    EARNINGS = "earnings"
+    STOCK = "stock"
+    SCAN = "scan"
+    REVIEW = "review"
+    POSTMORTEM = "postmortem"
+
+
+@dataclass
+class AnalysisResult:
+    ticker: str
+    type: AnalysisType
+    filepath: Path
+    gate_passed: bool
+    recommendation: str
+    confidence: int
+    expected_value: float
+    raw_output: str
+    parsed_json: Optional[dict] = None
+
+
+@dataclass
+class ExecutionResult:
+    analysis_path: Path
+    order_placed: bool
+    order_details: Optional[dict] = None
+    reason: str = ""
+    filepath: Optional[Path] = None
+    raw_output: str = ""
+
+
+# ─── Prompt Builders ─────────────────────────────────────────────────────────
+
+def build_analysis_prompt(ticker: str, analysis_type: AnalysisType,
+                          stock: Optional[Stock] = None,
+                          lightrag_enabled: bool = True) -> str:
+    """Build Stage 1 prompt, enriched with stock metadata from DB."""
+
+    stock_ctx = ""
+    if stock:
+        stock_ctx = f"""
+STOCK CONTEXT (from database):
+- Ticker: {stock.ticker} ({stock.name or 'N/A'})
+- Sector: {stock.sector or 'N/A'}
+- State: {stock.state} | Priority: {stock.priority}/10
+- Earnings: {stock.next_earnings_date or 'Unknown'} ({'confirmed' if stock.earnings_confirmed else 'unconfirmed'})
+- Beat History: {stock.beat_history or 'Unknown'}
+- Open Position: {stock.has_open_position} ({stock.position_state or 'none'})
+- Max Position Size: {stock.max_position_pct}%
+- Tags: {', '.join(stock.tags) if stock.tags else 'none'}
+- Notes: {stock.comments or 'none'}
+"""
+
+    json_block = """
+End with a JSON block for machine parsing:
+```json
+{{
+    "ticker": "{ticker}",
+    "gate_passed": true/false,
+    "recommendation": "BULLISH/BEARISH/NEUTRAL/WAIT",
+    "confidence": 0-100,
+    "expected_value_pct": 0.0,
+    "entry_price": null,
+    "stop_loss": null,
+    "target": null,
+    "position_size_pct": 0.0,
+    "structure": "none/shares/call_spread/put_spread/iron_condor/straddle",
+    "expiry": null,
+    "strikes": null,
+    "rationale_summary": "one line summary"
+}}
+```
+""".replace("{ticker}", ticker)
+
+    if analysis_type == AnalysisType.EARNINGS:
+        lightrag_ctx = ""
+        if lightrag_enabled:
+            lightrag_ctx = f"""
+CONTEXT RETRIEVAL:
+1. Query LightRAG for: "previous {ticker} analyses learnings biases"
+2. Query LightRAG for: "similar earnings setups current quarter"
+"""
+        return f"""You are a systematic trading analyst. Follow the earnings-analysis skill framework EXACTLY.
+
+SKILL INSTRUCTIONS: Read and follow /mnt/skills/user/earnings-analysis/SKILL.md
+{stock_ctx}
+{lightrag_ctx}
+DATA GATHERING (use tools):
+1. Via IB MCP: Get {ticker} current price, IV percentile, options chain (nearest monthly expiry)
+2. Via IB MCP: Get {ticker} historical volatility (20-day, 60-day)
+3. Via Web Search: Get {ticker} earnings estimates (EPS, revenue consensus)
+4. Via Web Search: Get {ticker} recent analyst upgrades/downgrades (last 30 days)
+5. Via Web Search: Get {ticker} recent news and catalysts (last 14 days)
+6. Via IB MCP: Get current portfolio positions to check existing exposure
+
+ANALYSIS:
+Run the complete 8-phase earnings analysis framework.
+Pay special attention to:
+- The "Do Nothing" gate (ALL 4 criteria must pass)
+- Bias detection (especially timing conservatism pattern)
+- Pre-earnings positioning matrix
+- News age decay assessment
+
+OUTPUT FORMAT: Use the exact output format from the skill.
+CRITICAL: If the Do Nothing gate FAILS, state NO POSITION RECOMMENDED.
+{json_block}"""
+
+    elif analysis_type == AnalysisType.STOCK:
+        lightrag_ctx = ""
+        if lightrag_enabled:
+            lightrag_ctx = f"""
+CONTEXT RETRIEVAL:
+1. Query LightRAG for: "previous {ticker} analyses and trade history"
+2. Query LightRAG for: "{ticker} sector rotation catalyst patterns"
+"""
+        return f"""You are a systematic trading analyst. Follow the stock-analysis skill framework EXACTLY.
+
+SKILL INSTRUCTIONS: Read and follow /mnt/skills/user/stock-analysis/SKILL.md
+Also read: /mnt/skills/user/stock-analysis/comprehensive_framework.md
+{stock_ctx}
+{lightrag_ctx}
+
+DATA GATHERING (use tools):
+1. Via IB MCP: Get {ticker} current price, volume, key technicals
+2. Via IB MCP: Get {ticker} options chain for implied volatility assessment
+3. Via Web Search: Get {ticker} recent news, analyst ratings, price targets
+4. Via Web Search: Get {ticker} sector and competitor performance
+
+ANALYSIS: Run the complete stock analysis framework.
+{json_block}"""
+
+    elif analysis_type == AnalysisType.POSTMORTEM:
+        lightrag_ctx = ""
+        if lightrag_enabled:
+            lightrag_ctx = f"""
+CONTEXT RETRIEVAL:
+1. Query LightRAG for: "most recent {ticker} earnings analysis prediction"
+2. Query LightRAG for: "{ticker} trade execution history"
+"""
+        return f"""You are a systematic trading analyst performing a MANDATORY post-earnings review.
+
+SKILL INSTRUCTIONS: Read Phase 8 of /mnt/skills/user/earnings-analysis/SKILL.md
+{stock_ctx}
+{lightrag_ctx}
+
+DATA GATHERING:
+1. Via Web Search: Get {ticker} actual earnings results
+2. Via Web Search: Get {ticker} post-earnings stock reaction
+3. Via IB MCP: Get {ticker} current price and any open positions
+
+POST-MORTEM: Compare predictions vs results, error analysis, bias detection.
+
+End with JSON:
+```json
+{{
+    "ticker": "{ticker}",
+    "prediction_accuracy": 0-100,
+    "scenario_matched": "strong_beat/modest_beat/miss",
+    "direction_correct": true/false,
+    "magnitude_correct": true/false,
+    "key_learning": "one line",
+    "framework_adjustment": "one line recommendation"
+}}
+```
+"""
+
+    elif analysis_type == AnalysisType.REVIEW:
+        lightrag_ctx = ""
+        if lightrag_enabled:
+            lightrag_ctx = '4. Query LightRAG for: "recent trade history and learnings"'
+        return f"""You are a systematic portfolio manager performing a comprehensive review.
+
+DATA GATHERING:
+1. Via IB MCP: Get all current positions, P&L, and account summary
+2. Via IB MCP: Get portfolio Greeks and risk metrics
+3. Via Web Search: Get current market overview and key sector performance
+{lightrag_ctx}
+
+REVIEW: Portfolio composition, P&L attribution, risk assessment, framework effectiveness.
+Output as comprehensive markdown report.
+"""
+
+    return f"Analyze {ticker} using available tools."
+
+
+def build_scanner_prompt(scanner: IBScanner) -> str:
+    """Build prompt for running an IB scanner."""
+    filters_str = json.dumps(scanner.filters, indent=2)
+
+    return f"""You are a market scanner operator. Run an IB market scanner and report results.
+
+SCANNER: {scanner.scanner_code} ({scanner.display_name})
+Instrument: {scanner.instrument} | Location: {scanner.location} | Max: {scanner.num_results}
+Filters: {filters_str}
+
+INSTRUCTIONS:
+1. Via IB MCP: Run scanner "{scanner.scanner_code}" with parameters above
+2. For top {scanner.max_candidates} results: get price, volume, IV%
+3. Score each (1-10)
+
+OUTPUT as markdown table then list top candidates.
+
+End with JSON:
+```json
+{{
+    "scanner": "{scanner.scanner_code}",
+    "scan_time": "ISO-8601",
+    "results_count": 0,
+    "candidates": [
+        {{"ticker": "XXX", "score": 8, "price": 0.0, "notes": "..."}}
+    ]
+}}
+```
+"""
+
+
+def build_execution_prompt(analysis_path: Path, analysis_content: str,
+                           stock: Optional[Stock] = None) -> str:
+    """Build Stage 2 prompt for trade execution."""
+
+    ticker = analysis_path.stem.split("_")[0]
+    stock_ctx = ""
+    if stock:
+        state_map = {
+            'analysis': f"\n⚠️ CRITICAL: Stock in ANALYSIS state — DO NOT PLACE ORDERS. Log recommendation only.",
+            'paper': f"\n✅ Stock in PAPER state — place orders on paper account {cfg.ib_account}.",
+            'live': f"\n🔴 Stock in LIVE state — requires additional confirmation. DO NOT auto-execute.",
+        }
+        stock_ctx = f"""
+STOCK STATE FROM DATABASE:
+- State: {stock.state}{state_map.get(stock.state, '')}
+- Max Position: {stock.max_position_pct}%
+- Open Position: {stock.has_open_position} ({stock.position_state or 'none'})
+"""
+
+    return f"""You are a trade execution agent. Read analysis, validate, place paper orders if appropriate.
+
+ANALYSIS FILE: {analysis_path.name}
+{stock_ctx}
+ANALYSIS CONTENT:
+{analysis_content}
+
+EXECUTION PROTOCOL:
+
+STEP 1: Parse the JSON trade plan from analysis.
+STEP 2: Validate "Do Nothing" gate — must be PASSED. If FAILED → NO ORDER.
+STEP 3: Check stock state — "analysis" → recommendation only, "paper" → paper orders OK.
+STEP 4: Pre-flight via IB MCP:
+  a. Check existing {ticker} exposure
+  b. Verify buying power
+  c. Verify current price is within entry zone
+  d. If options: verify strikes exist with <15% bid/ask spread
+STEP 5: Position sizing — max {stock.max_position_pct if stock else 6.0}% of portfolio.
+STEP 6: Place LIMIT order (paper only, account {cfg.ib_account}).
+  - Price >3% from entry → GTC limit
+  - Price in entry zone → DAY limit
+
+End with JSON:
+```json
+{{
+    "ticker": "{ticker}",
+    "action": "ORDER_PLACED/NO_ORDER/RECOMMENDATION_ONLY",
+    "gate_passed": true/false,
+    "stock_state": "{stock.state if stock else 'unknown'}",
+    "reason": "...",
+    "order_id": null,
+    "order_type": "LIMIT",
+    "quantity": 0,
+    "limit_price": 0.0,
+    "structure": "...",
+    "account": "{cfg.ib_account}",
+    "timestamp": "ISO-8601"
+}}
+```
+"""
+
+
+# ─── Core Functions ──────────────────────────────────────────────────────────
+
+def call_claude_code(prompt: str, allowed_tools: str, label: str,
+                     timeout: int = None) -> str:
+    """Execute a Claude Code CLI call."""
+    timeout = timeout or cfg.claude_timeout
+
+    if cfg.dry_run_mode:
+        log.info(f"[{label}] DRY RUN — would call Claude Code ({len(prompt)} char prompt)")
+        return ""
+
+    log.info(f"[{label}] Calling Claude Code...")
+    try:
+        result = subprocess.run(
+            [cfg.claude_cmd, "--print", "--allowedTools", allowed_tools, "-p", prompt],
+            capture_output=True, text=True, timeout=timeout, cwd=str(BASE_DIR),
+        )
+        if result.returncode != 0:
+            log.error(f"[{label}] Error (rc={result.returncode}): {result.stderr[:500]}")
+            return ""
+        log.info(f"[{label}] Completed ({len(result.stdout)} chars)")
+        return result.stdout
+    except subprocess.TimeoutExpired:
+        log.error(f"[{label}] Timed out after {timeout}s")
+        return ""
+    except FileNotFoundError:
+        log.error(f"[{label}] 'claude' CLI not found in PATH")
+        return ""
+
+
+def parse_json_block(text: str) -> Optional[dict]:
+    """Extract the last JSON block from output."""
+    # Try fenced JSON blocks first
+    pattern = r"```json\s*\n(.*?)\n\s*```"
+    matches = re.findall(pattern, text, re.DOTALL)
+    if not matches:
+        # Fallback: find balanced braces containing "ticker"
+        # Handles nested objects like {"candidates": [{...}]}
+        for i in range(len(text) - 1, -1, -1):
+            if text[i] == '}':
+                depth = 0
+                for j in range(i, -1, -1):
+                    if text[j] == '}':
+                        depth += 1
+                    elif text[j] == '{':
+                        depth -= 1
+                    if depth == 0:
+                        candidate = text[j:i+1]
+                        if '"ticker"' in candidate or '"scanner"' in candidate:
+                            matches = [candidate]
+                        break
+                if matches:
+                    break
+    if matches:
+        try:
+            return json.loads(matches[-1])
+        except json.JSONDecodeError as e:
+            log.warning(f"JSON parse error: {e}")
+    return None
+
+
+def ingest_to_lightrag(filepath: Path, metadata: dict):
+    """Ingest document into LightRAG."""
+    if not cfg.lightrag_ingest_enabled:
+        return
+    try:
+        import requests
+        text = filepath.read_text()
+        requests.post(f"{cfg.lightrag_url}/documents/text",
+                      json={"text": text, "metadata": metadata}, timeout=30)
+    except Exception as e:
+        log.warning(f"LightRAG ingest failed: {e}")
+
+
+# ─── Stage 1: Analysis ──────────────────────────────────────────────────────
+
+def run_analysis(db: NexusDB, ticker: str, analysis_type: AnalysisType,
+                 schedule_id: Optional[int] = None) -> Optional[AnalysisResult]:
+    """Stage 1: Generate analysis via Claude Code."""
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+    filepath = cfg.analyses_dir / f"{ticker}_{analysis_type.value}_{timestamp}.md"
+    stock = db.get_stock(ticker) if ticker != "PORTFOLIO" else None
+
+    run_id = db.mark_schedule_started(schedule_id) if schedule_id else None
+
+    log.info(f"═══ STAGE 1: ANALYSIS ═══ {ticker} ({analysis_type.value})")
+
+    prompt = build_analysis_prompt(ticker, analysis_type, stock,
+                                    lightrag_enabled=cfg.lightrag_query_enabled)
+    output = call_claude_code(prompt, cfg.allowed_tools_analysis, f"ANALYZE-{ticker}")
+
+    if not output:
+        if run_id and schedule_id:
+            db.mark_schedule_completed(schedule_id, run_id, 'failed',
+                                       error="Claude Code returned empty")
+        return None
+
+    filepath.write_text(output)
+    parsed = parse_json_block(output)
+
+    result = AnalysisResult(
+        ticker=ticker, type=analysis_type, filepath=filepath,
+        gate_passed=parsed.get("gate_passed", False) if parsed else False,
+        recommendation=parsed.get("recommendation", "UNKNOWN") if parsed else "UNKNOWN",
+        confidence=parsed.get("confidence", 0) if parsed else 0,
+        expected_value=parsed.get("expected_value_pct", 0.0) if parsed else 0.0,
+        raw_output=output, parsed_json=parsed,
+    )
+
+    # Persist to DB
+    if run_id and schedule_id:
+        db.mark_schedule_completed(schedule_id, run_id, 'completed',
+            gate_passed=result.gate_passed, recommendation=result.recommendation,
+            confidence=result.confidence, expected_value=result.expected_value,
+            analysis_file=str(filepath))
+
+    if parsed and ticker not in ("PORTFOLIO", "SCAN"):
+        try:
+            db.save_analysis_result(run_id or 0, ticker, analysis_type.value, parsed)
+        except Exception as e:
+            log.warning(f"Save analysis result failed: {e}")
+
+    ingest_to_lightrag(filepath, {"ticker": ticker, "type": analysis_type.value,
+                                   "date": timestamp, "gate_passed": result.gate_passed})
+
+    # Increment service counters
+    try:
+        db.increment_service_counter('analyses_total')
+        db.increment_service_counter('today_analyses')
+    except Exception:
+        pass
+
+    log.info(f"Analysis: {ticker} | Gate: {'PASS' if result.gate_passed else 'FAIL'} | "
+             f"Rec: {result.recommendation} | Conf: {result.confidence}%")
+    return result
+
+
+# ─── Stage 2: Execution ─────────────────────────────────────────────────────
+
+def run_execution(db: NexusDB, analysis_path: Path) -> ExecutionResult:
+    """Stage 2: Read analysis, validate, place paper order."""
+
+    log.info(f"═══ STAGE 2: EXECUTION ═══ {analysis_path.name}")
+    content = analysis_path.read_text()
+    ticker = analysis_path.stem.split("_")[0]
+    stock = db.get_stock(ticker)
+
+    # Short-circuits
+    if '"gate_passed": false' in content or "GATE: ❌ FAIL" in content:
+        log.info("Gate FAILED → skip execution")
+        return ExecutionResult(analysis_path=analysis_path, order_placed=False,
+                               reason="Do Nothing gate failed")
+
+    if stock and stock.state == 'analysis':
+        log.info(f"{ticker} state=analysis → recommendation only")
+
+    prompt = build_execution_prompt(analysis_path, content, stock)
+    output = call_claude_code(prompt, cfg.allowed_tools_execution, f"EXECUTE-{ticker}")
+
+    if not output:
+        return ExecutionResult(analysis_path=analysis_path, order_placed=False,
+                               reason="Execution call failed")
+
+    parsed = parse_json_block(output)
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    trade_path = cfg.trades_dir / f"{ticker}_trade_{ts}.md"
+    trade_path.write_text(output)
+
+    result = ExecutionResult(
+        analysis_path=analysis_path,
+        order_placed=parsed.get("action") == "ORDER_PLACED" if parsed else False,
+        order_details=parsed,
+        reason=parsed.get("reason", "") if parsed else "Parse failed",
+        filepath=trade_path, raw_output=output,
+    )
+
+    if result.order_placed and stock:
+        db.update_stock_position(ticker, True, 'pending')
+
+    # Increment service counters
+    try:
+        db.increment_service_counter('executions_total')
+        db.increment_service_counter('today_executions')
+    except Exception:
+        pass
+
+    ingest_to_lightrag(trade_path, {"ticker": ticker, "type": "trade_execution",
+                                     "date": ts, "order_placed": result.order_placed})
+
+    log.info(f"Execution: {ticker} | {'ORDER PLACED' if result.order_placed else 'NO ORDER'}")
+    return result
+
+
+# ─── Pipeline Orchestration ──────────────────────────────────────────────────
+
+def run_pipeline(db: NexusDB, ticker: str, analysis_type: AnalysisType,
+                 auto_execute: bool = True, schedule_id: Optional[int] = None):
+    """Full two-stage pipeline."""
+    log.info(f"╔═ PIPELINE: {ticker} ({analysis_type.value}) ═╗")
+
+    analysis = run_analysis(db, ticker, analysis_type, schedule_id)
+    if not analysis:
+        return
+
+    if not auto_execute or not cfg.auto_execute_enabled or not analysis.gate_passed:
+        reasons = []
+        if not auto_execute:
+            reasons.append("auto-execute OFF (schedule)")
+        if not cfg.auto_execute_enabled:
+            reasons.append("auto-execute OFF (global)")
+        if not analysis.gate_passed:
+            reasons.append("gate FAILED")
+        log.info(f"Pipeline stop: {', '.join(reasons)}")
+        return
+
+    stock = db.get_stock(ticker)
+    if stock and stock.state == 'analysis':
+        log.info(f"{ticker} state=analysis → no execution")
+        return
+
+    run_execution(db, analysis.filepath)
+
+
+def run_watchlist(db: NexusDB, auto_execute: bool = False):
+    """Analyze all enabled stocks."""
+    stocks = db.get_enabled_stocks()
+    remaining = cfg.max_daily_analyses - db.get_today_run_count()
+    log.info(f"═══ WATCHLIST: {len(stocks)} stocks, {remaining} slots remaining ═══")
+
+    for stock in stocks[:max(0, remaining)]:
+        atype = AnalysisType(stock.default_analysis_type)
+        if stock.days_to_earnings is not None and stock.days_to_earnings <= 14:
+            atype = AnalysisType.EARNINGS
+        run_pipeline(db, stock.ticker, atype, auto_execute=auto_execute)
+
+
+def run_scanners(db: NexusDB, scanner_code: Optional[str] = None):
+    """Run IB scanners."""
+    if not cfg.scanners_enabled:
+        log.info("Scanners disabled (scanners_enabled=false)")
+        return
+
+    if scanner_code:
+        s = db.get_scanner_by_code(scanner_code)
+        scanners = [s] if s else []
+    else:
+        scanners = db.get_enabled_scanners()
+
+    log.info(f"═══ SCANNERS: {len(scanners)} ═══")
+
+    for scanner in scanners:
+        log.info(f"Scanner: {scanner.display_name}")
+        output = call_claude_code(
+            build_scanner_prompt(scanner), cfg.allowed_tools_scanner,
+            f"SCAN-{scanner.scanner_code}")
+        if not output:
+            continue
+
+        ts = datetime.now().strftime("%Y%m%d_%H%M")
+        fp = cfg.analyses_dir / f"scanner_{scanner.scanner_code}_{ts}.md"
+        fp.write_text(output)
+
+        parsed = parse_json_block(output)
+        if not parsed or "candidates" not in parsed:
+            continue
+
+        candidates = parsed["candidates"]
+        log.info(f"  {len(candidates)} candidates found")
+
+        if scanner.auto_add_to_watchlist:
+            for c in candidates[:scanner.max_candidates]:
+                db.upsert_stock(c["ticker"], is_enabled=True,
+                                tags=[f"scanner:{scanner.scanner_code}"])
+
+        if scanner.auto_analyze:
+            atype = AnalysisType(scanner.analysis_type)
+            for c in candidates[:scanner.max_candidates]:
+                run_pipeline(db, c["ticker"], atype, auto_execute=False)
+
+
+def run_earnings_check(db: NexusDB):
+    """Trigger pre/post-earnings schedules based on earnings dates."""
+    stocks = db.get_stocks_near_earnings(days=21)
+    log.info(f"═══ EARNINGS CHECK: {len(stocks)} stocks ═══")
+
+    for stock in stocks:
+        days = stock.days_to_earnings
+        schedules = db.get_earnings_triggered_schedules(stock.ticker, days)
+        for sched in schedules:
+            log.info(f"  Triggering: {sched.name} for {stock.ticker} (T-{days})")
+            run_pipeline(db, stock.ticker, AnalysisType(sched.analysis_type),
+                         auto_execute=sched.auto_execute, schedule_id=sched.id)
+
+
+def run_due_schedules(db: NexusDB):
+    """Execute all schedules that are due."""
+    schedules = db.get_due_schedules()
+    log.info(f"═══ DUE SCHEDULES: {len(schedules)} ═══")
+
+    remaining_analyses = cfg.max_daily_analyses - db.get_today_run_count()
+    if remaining_analyses <= 0:
+        log.info("Daily analysis limit reached — skipping due schedules")
+        return
+
+    task_dispatch = {
+        'analyze_stock': lambda s: run_analysis(db, s.target_ticker, AnalysisType(s.analysis_type), s.id) if s.target_ticker else None,
+        'analyze_watchlist': lambda s: run_watchlist(db, s.auto_execute),
+        'run_scanner': lambda s: run_scanners(db, db.get_scanner(s.target_scanner_id).scanner_code) if s.target_scanner_id else None,
+        'run_all_scanners': lambda s: run_scanners(db),
+        'pipeline': lambda s: run_pipeline(db, s.target_ticker, AnalysisType(s.analysis_type), s.auto_execute, s.id) if s.target_ticker else None,
+        'portfolio_review': lambda s: run_analysis(db, "PORTFOLIO", AnalysisType.REVIEW, s.id),
+        'postmortem': lambda s: run_analysis(db, s.target_ticker, AnalysisType.POSTMORTEM, s.id) if s.target_ticker else None,
+    }
+
+    executed = 0
+    for sched in schedules:
+        if executed >= remaining_analyses:
+            log.info("Daily analysis limit reached mid-batch — stopping")
+            break
+
+        log.info(f"Executing: {sched.name}")
+        try:
+            handler = task_dispatch.get(sched.task_type)
+            if handler:
+                handler(sched)
+                executed += 1
+            elif sched.task_type == 'custom' and sched.custom_prompt:
+                output = call_claude_code(sched.custom_prompt, cfg.allowed_tools_analysis, f"CUSTOM-{sched.id}")
+                if output:
+                    ts = datetime.now().strftime("%Y%m%d_%H%M")
+                    (cfg.analyses_dir / f"custom_{sched.id}_{ts}.md").write_text(output)
+        except Exception as e:
+            log.error(f"Schedule '{sched.name}' failed: {e}")
+
+        next_run = db.calculate_next_run(sched)
+        db.update_next_run(sched.id, next_run)
+
+
+# ─── Status ──────────────────────────────────────────────────────────────────
+
+def show_status(db: NexusDB):
+    stocks = db.get_enabled_stocks()
+    by_state = {}
+    for s in stocks:
+        by_state.setdefault(s.state, []).append(s)
+
+    print(f"\n{'═'*60}")
+    print(f"  NEXUS LIGHT - STATUS")
+    print(f"{'═'*60}")
+
+    print(f"\n  WATCHLIST ({len(stocks)} enabled)")
+    for state in ['analysis', 'paper', 'live']:
+        items = by_state.get(state, [])
+        tickers = ', '.join(s.ticker for s in items) if items else '—'
+        print(f"    {state:>10}: {tickers}")
+
+    earnings = db.get_stocks_near_earnings()
+    if earnings:
+        print(f"\n  UPCOMING EARNINGS")
+        for s in earnings[:5]:
+            print(f"    {s.ticker:<6} {str(s.next_earnings_date):<12} (T-{s.days_to_earnings})")
+
+    scanners = db.get_enabled_scanners()
+    print(f"\n  SCANNERS ({len(scanners)} enabled)")
+    for sc in scanners:
+        auto = "→auto" if sc.auto_analyze else ""
+        print(f"    {sc.scanner_code:<35} {auto}")
+
+    schedules = db.get_enabled_schedules()
+    due = db.get_due_schedules()
+    print(f"\n  SCHEDULES ({len(schedules)} enabled, {len(due)} due)")
+    for s in schedules[:10]:
+        status = s.last_run_status or 'never'
+        print(f"    {s.name[:40]:<40} {s.frequency:<12} [{status}]")
+
+    print(f"\n  TODAY: {db.get_today_run_count()} runs (limit {cfg.max_daily_analyses})")
+    print(f"{'═'*60}\n")
+
+
+# ─── CLI ─────────────────────────────────────────────────────────────────────
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Nexus Light v2.0")
+    sub = parser.add_subparsers(dest="cmd")
+
+    p = sub.add_parser("analyze"); p.add_argument("ticker"); p.add_argument("--type", default="stock", choices=["earnings","stock","postmortem"])
+    p = sub.add_parser("execute"); p.add_argument("analysis_file")
+    p = sub.add_parser("pipeline"); p.add_argument("ticker"); p.add_argument("--type", default="stock", choices=["earnings","stock"]); p.add_argument("--no-execute", action="store_true")
+    p = sub.add_parser("watchlist"); p.add_argument("--auto-execute", action="store_true")
+    p = sub.add_parser("scan"); p.add_argument("--scanner")
+    sub.add_parser("run-due")
+    sub.add_parser("review")
+    sub.add_parser("earnings-check")
+    sub.add_parser("status")
+    sub.add_parser("db-init")
+
+    p = sub.add_parser("stock"); p.add_argument("action", choices=["add","enable","disable","set-state","list"])
+    p.add_argument("ticker", nargs="?"); p.add_argument("--state", choices=["analysis","paper","live"])
+    p.add_argument("--tags", nargs="*"); p.add_argument("--priority", type=int)
+    p.add_argument("--earnings-date"); p.add_argument("--comment")
+
+    p = sub.add_parser("settings", help="View or update settings")
+    p.add_argument("action", choices=["list", "get", "set"], nargs="?", default="list")
+    p.add_argument("key", nargs="?")
+    p.add_argument("value", nargs="?")
+    p.add_argument("--category")
+
+    args = parser.parse_args()
+
+    with NexusDB() as db:
+        # Initialize settings from DB for all commands
+        global cfg
+        cfg = Settings(db)
+        orchestrator_module = sys.modules[__name__]
+        orchestrator_module.cfg = cfg
+
+        if args.cmd == "db-init":
+            db.init_schema(); print("✅ Schema initialized")
+
+        elif args.cmd == "analyze":
+            r = run_analysis(db, args.ticker.upper(), AnalysisType(args.type))
+            if r: print(f"File: {r.filepath}\nGate: {'PASS' if r.gate_passed else 'FAIL'}\nRec: {r.recommendation} ({r.confidence}%)")
+
+        elif args.cmd == "execute":
+            p = Path(args.analysis_file)
+            if not p.exists(): print(f"Not found: {p}"); sys.exit(1)
+            r = run_execution(db, p); print(f"Order: {r.order_placed} | {r.reason}")
+
+        elif args.cmd == "pipeline":
+            run_pipeline(db, args.ticker.upper(), AnalysisType(args.type), auto_execute=not args.no_execute)
+
+        elif args.cmd == "watchlist":
+            run_watchlist(db, args.auto_execute)
+
+        elif args.cmd == "scan":
+            run_scanners(db, args.scanner)
+
+        elif args.cmd == "run-due":
+            run_due_schedules(db)
+
+        elif args.cmd == "review":
+            run_analysis(db, "PORTFOLIO", AnalysisType.REVIEW)
+
+        elif args.cmd == "earnings-check":
+            run_earnings_check(db)
+
+        elif args.cmd == "status":
+            show_status(db)
+
+        elif args.cmd == "stock":
+            if args.action == "list":
+                print(f"\n{'Ticker':<8} {'State':<10} {'Pri':<4} {'Earnings':<12} {'Tags'}")
+                print("─"*60)
+                for s in db.get_enabled_stocks():
+                    tags = ','.join(s.tags[:3]) if s.tags else ''
+                    earn = str(s.next_earnings_date) if s.next_earnings_date else '—'
+                    print(f"{s.ticker:<8} {s.state:<10} {s.priority:<4} {earn:<12} {tags}")
+            elif args.action == "add" and args.ticker:
+                kw = {}
+                if args.state: kw['state'] = args.state
+                if args.tags: kw['tags'] = args.tags
+                if args.priority: kw['priority'] = args.priority
+                if args.comment: kw['comments'] = args.comment
+                if args.earnings_date: kw['next_earnings_date'] = args.earnings_date
+                s = db.upsert_stock(args.ticker.upper(), **kw)
+                print(f"✅ {s.ticker}")
+            elif args.action in ("enable","disable") and args.ticker:
+                db.upsert_stock(args.ticker.upper(), is_enabled=(args.action=="enable"))
+                print(f"✅ {args.ticker.upper()} {'enabled' if args.action=='enable' else 'disabled'}")
+            elif args.action == "set-state" and args.ticker and args.state:
+                db.upsert_stock(args.ticker.upper(), state=args.state)
+                print(f"✅ {args.ticker.upper()} → {args.state}")
+
+        elif args.cmd == "settings":
+            if args.action == "list":
+                all_settings = db.get_all_settings()
+                cat = args.category
+                print(f"\n{'Key':<35} {'Value':<25}")
+                print("─"*60)
+                for k, v in sorted(all_settings.items()):
+                    print(f"{k:<35} {str(v):<25}")
+            elif args.action == "get" and args.key:
+                val = db.get_setting(args.key)
+                if val is not None:
+                    print(f"{args.key} = {val}")
+                else:
+                    print(f"Setting '{args.key}' not found")
+            elif args.action == "set" and args.key and args.value:
+                # Try to parse as JSON, fall back to string
+                import json as _json
+                try:
+                    parsed_val = _json.loads(args.value)
+                except _json.JSONDecodeError:
+                    parsed_val = args.value
+                db.set_setting(args.key, parsed_val)
+                print(f"✅ {args.key} = {parsed_val}")
+                print("  (takes effect on next service tick)")
+        else:
+            parser.print_help()
+
+
+if __name__ == "__main__":
+    main()

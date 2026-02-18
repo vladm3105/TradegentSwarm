@@ -1,0 +1,58 @@
+# ═══════════════════════════════════════════════════════════════
+# Nexus Light Trading Platform - systemd service
+#
+# Before installing, replace YOUR_USER with your Linux username.
+#
+# Install:
+#   sudo cp nexus-light.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now nexus-light
+#
+# Control:
+#   sudo systemctl start nexus-light
+#   sudo systemctl stop nexus-light       # SIGTERM → graceful shutdown
+#   sudo systemctl restart nexus-light
+#   sudo systemctl status nexus-light
+#
+# Logs:
+#   journalctl -u nexus-light -f           # live stream
+#   journalctl -u nexus-light --since today
+# ═══════════════════════════════════════════════════════════════
+
+[Unit]
+Description=Nexus Light Trading Orchestrator
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+
+# ── EDIT: replace YOUR_USER with your Linux username ────────
+User=YOUR_USER
+WorkingDirectory=/home/YOUR_USER/nexus-light
+EnvironmentFile=/home/YOUR_USER/nexus-light/.env
+ExecStart=/usr/bin/python3 /home/YOUR_USER/nexus-light/service.py
+# ─────────────────────────────────────────────────────────────
+
+# Host → Docker connections
+Environment=PG_HOST=localhost
+Environment=LIGHTRAG_URL=http://localhost:9621
+
+# Claude Code needs Node.js on PATH. If using nvm, uncomment:
+# Environment=PATH=/home/YOUR_USER/.nvm/versions/node/v20.18.0/bin:/usr/local/bin:/usr/bin:/bin
+
+# Graceful shutdown — service.py catches SIGTERM
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# Auto-restart on crash (not on clean stop)
+Restart=on-failure
+RestartSec=10
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nexus-light
+
+[Install]
+WantedBy=multi-user.target
