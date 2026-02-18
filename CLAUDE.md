@@ -147,18 +147,53 @@ Parameters:
 
 ## IB MCP Server (Interactive Brokers)
 
-Access Interactive Brokers TWS/Gateway for market data and portfolio information.
+Access Interactive Brokers TWS/Gateway for market data, portfolio, and trading.
 
 **Source**: `/opt/data/trading/mcp_ib`
 
-### Available Tools
+### Available Tools (22 total)
 
+**Market Data**:
 | Tool | Purpose |
 |------|----------|
-| `get_stock_price` | Real-time stock quote (bid, ask, last, volume) |
-| `get_option_chain` | Option chain data (expirations, strikes) |
+| `get_stock_price` | Real-time quote (bid, ask, last, volume) |
+| `get_quotes_batch` | Batch quotes for multiple symbols |
+| `get_option_chain` | Option chain (expirations, strikes) |
+| `get_option_quotes` | Option prices for specific contracts |
+| `get_historical_data` | OHLCV historical bars |
+| `get_market_depth` | Level 2 order book |
+| `get_fundamental_data` | Company fundamentals |
+
+**Portfolio & Account**:
+| Tool | Purpose |
+|------|----------|
 | `get_positions` | Current portfolio positions |
-| `health_check` | Check IB Gateway connection status |
+| `get_portfolio` | Full portfolio with P&L |
+| `get_account_summary` | Account balances and metrics |
+| `get_pnl` | Profit/loss summary |
+| `get_executions` | Recent trade executions |
+
+**Orders**:
+| Tool | Purpose |
+|------|----------|
+| `place_order` | Submit new order |
+| `cancel_order` | Cancel existing order |
+| `get_open_orders` | List open orders |
+| `get_order_status` | Check order status |
+
+**Research & Discovery**:
+| Tool | Purpose |
+|------|----------|
+| `search_symbols` | Search for symbols |
+| `get_contract_details` | Contract specifications |
+| `get_scanner_params` | Available scanner parameters |
+| `get_news_providers` | News provider list |
+| `get_news_headlines` | Recent news headlines |
+
+**System**:
+| Tool | Purpose |
+|------|----------|
+| `health_check` | Check IB Gateway connection |
 
 ### Usage Examples
 
@@ -167,22 +202,27 @@ Access Interactive Brokers TWS/Gateway for market data and portfolio information
 Tool: get_stock_price
 Input: {"symbol": "NVDA"}
 
-# Get option chain
-Tool: get_option_chain
-Input: {"symbol": "NVDA", "expiration": "20251205", "right": "CALL"}
+# Get historical data
+Tool: get_historical_data
+Input: {"symbol": "NVDA", "duration": "1 D", "bar_size": "5 mins"}
 
-# Get portfolio positions
-Tool: get_positions
+# Get portfolio P&L
+Tool: get_pnl
+
+# Search symbols
+Tool: search_symbols
+Input: {"pattern": "NVDA"}
 ```
 
 ### Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `IB_GATEWAY_HOST` | 127.0.0.1 | TWS/Gateway hostname |
+| `IB_GATEWAY_HOST` | host.docker.internal | TWS/Gateway hostname |
 | `IB_GATEWAY_PORT` | 4002 | API port (7496=TWS live, 7497=TWS paper, 4001=Gateway live, 4002=Gateway paper) |
-| `IB_CLIENT_ID` | 1 | Unique client ID |
-| `IB_READONLY` | true | Read-only mode (recommended) |
+| `IB_CLIENT_ID` | 2 | Unique client ID |
+| `IB_READONLY` | true | Read-only mode (blocks order placement) |
+| `IB_RATE_LIMIT` | 45 | Requests per second limit |
 
 ## Brave Browser MCP (Web Scraping)
 
