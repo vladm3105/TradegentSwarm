@@ -238,24 +238,35 @@ Browser automation for accessing protected content (Medium, Seeking Alpha, analy
 
 **Source**: `/opt/data/trading/mcp_brave-browser`
 
-### Available Tools
+### MCP Tools (stdio mode)
 
 | Tool | Purpose |
 |------|----------|
-| `fetch_article` | Extract article content from URL |
-| `screenshot` | Take page screenshot (base64 PNG) |
-| `extract_data` | Extract data using CSS selectors |
-| `search` | Search and extract results |
+| `fetch_protected_article` | Fetch paywalled/protected article content |
+| `take_screenshot` | Take page screenshot (base64 PNG) |
+| `extract_structured_data` | Extract data using CSS selectors |
+| `search_and_extract` | Search and extract results |
+
+### HTTP API Endpoints
+
+| Endpoint | Method | Purpose |
+|----------|--------|----------|
+| `/health` | GET | Health check (no auth) |
+| `/api/fetch_article` | POST | Fetch article content |
+| `/api/screenshot` | POST | Take screenshot |
+| `/api/extract_data` | POST | Extract structured data |
+| `/api/search` | POST | Search and extract |
+| `/api/cache/clear` | POST | Clear article cache |
 
 ### Usage Examples
 
 ```yaml
-# Fetch article content
-Tool: fetch_article
+# Fetch article content (MCP)
+Tool: fetch_protected_article
 Input: {"url": "https://seekingalpha.com/article/...", "wait_for_selector": "article"}
 
-# Take screenshot of chart
-Tool: screenshot
+# Take screenshot (MCP)
+Tool: take_screenshot
 Input: {"url": "https://finviz.com/chart.ashx?t=NVDA", "full_page": true}
 
 # Extract consensus data
