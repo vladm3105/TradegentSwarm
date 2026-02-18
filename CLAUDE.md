@@ -116,6 +116,53 @@ docker compose logs -f            # View logs
 - Use existing patterns in `orchestrator.py` and `db_layer.py`
 - All SQL queries go through `db_layer.py`
 
+## Git Workflow
+
+### Pushing Changes
+
+This project uses SSH authentication. The remote is configured as:
+
+```bash
+git remote set-url origin git@github.com:vladm3105/trading_light_pilot.git
+```
+
+**Standard workflow:**
+
+```bash
+git add -A
+git commit -m "description of change"
+GIT_SSH_COMMAND="LD_LIBRARY_PATH= /usr/bin/ssh" git push
+```
+
+### Git Push with Conda/OpenSSL Issue
+
+If using conda, its `LD_LIBRARY_PATH` loads a newer OpenSSL that conflicts with system SSH. Fix options:
+
+```bash
+# Option 1: Clear LD_LIBRARY_PATH for SSH during git operations
+GIT_SSH_COMMAND="LD_LIBRARY_PATH= /usr/bin/ssh" git push
+
+# Option 2: Use git alias (one-time setup)
+git config --global alias.pushs '!GIT_SSH_COMMAND="LD_LIBRARY_PATH= /usr/bin/ssh" git push'
+# Then use: git pushs
+
+# Option 3: Deactivate conda before git operations
+conda deactivate
+git push
+```
+
+### SSH Configuration
+
+Requires `~/.ssh/config` entry:
+
+```text
+Host github.com
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/github-vladm3105
+    IdentitiesOnly yes
+```
+
 ## Important Notes
 
 - Do not commit `.env` files (contains credentials)
@@ -123,3 +170,4 @@ docker compose logs -f            # View logs
 - LightRAG syncs trading knowledge for semantic search
 - Scanner configs in `knowledge/scanners/` encode trading edge - treat as sensitive
 - Skills auto-invoke based on conversation context - no manual `/command` needed
+- Always use the SSH git push command with `LD_LIBRARY_PATH=` fix when in conda environment
