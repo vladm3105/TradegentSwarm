@@ -1,8 +1,6 @@
-version: "3.9"
-
 # ═══════════════════════════════════════════════════════════════
-# Nexus Light Trading Platform v2.0 - Docker Stack
-# IB Gateway + LightRAG + PostgreSQL + Neo4j + Orchestrator
+# Nexus Light Trading Platform v2.1 - Docker Stack
+# IB Gateway + LightRAG + PostgreSQL + Neo4j
 # ═══════════════════════════════════════════════════════════════
 
 services:
@@ -80,7 +78,7 @@ services:
 
   # ─── LightRAG API ──────────────────────────────────────────
   lightrag:
-    image: lightrag/lightrag:latest
+    image: ghcr.io/hkuds/lightrag:latest
     container_name: nexus-lightrag
     restart: unless-stopped
     ports:

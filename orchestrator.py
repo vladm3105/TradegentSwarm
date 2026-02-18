@@ -29,7 +29,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 from db_layer import NexusDB, Stock, IBScanner, Schedule
 
@@ -76,7 +76,7 @@ class Settings:
         except Exception as e:
             log.warning(f"Settings refresh failed (using cached): {e}")
 
-    def _get(self, key: str, env_key: str = None, default=None):
+    def _get(self, key: str, env_key: Optional[str] = None, default: Any = None) -> Any:
         """Get setting: DB cache → env var → default."""
         # DB cache first
         if key in self._cache:
@@ -86,7 +86,7 @@ class Settings:
             return os.getenv(env_key)
         return default
 
-    def _get_bool(self, key: str, env_key: str = None, default: bool = False) -> bool:
+    def _get_bool(self, key: str, env_key: Optional[str] = None, default: bool = False) -> bool:
         """Get a boolean setting with safe coercion (handles string 'false')."""
         val = self._get(key, env_key, default)
         if isinstance(val, bool):
@@ -471,7 +471,7 @@ End with JSON:
 # ─── Core Functions ──────────────────────────────────────────────────────────
 
 def call_claude_code(prompt: str, allowed_tools: str, label: str,
-                     timeout: int = None) -> str:
+                     timeout: Optional[int] = None) -> str:
     """Execute a Claude Code CLI call."""
     timeout = timeout or cfg.claude_timeout
 
@@ -756,6 +756,8 @@ def run_earnings_check(db: NexusDB):
 
     for stock in stocks:
         days = stock.days_to_earnings
+        if days is None:
+            continue
         schedules = db.get_earnings_triggered_schedules(stock.ticker, days)
         for sched in schedules:
             log.info(f"  Triggering: {sched.name} for {stock.ticker} (T-{days})")
@@ -773,10 +775,16 @@ def run_due_schedules(db: NexusDB):
         log.info("Daily analysis limit reached — skipping due schedules")
         return
 
+    def _run_scanner_task(s: Schedule) -> None:
+        if s.target_scanner_id:
+            scanner = db.get_scanner(s.target_scanner_id)
+            if scanner:
+                run_scanners(db, scanner.scanner_code)
+
     task_dispatch = {
         'analyze_stock': lambda s: run_analysis(db, s.target_ticker, AnalysisType(s.analysis_type), s.id) if s.target_ticker else None,
         'analyze_watchlist': lambda s: run_watchlist(db, s.auto_execute),
-        'run_scanner': lambda s: run_scanners(db, db.get_scanner(s.target_scanner_id).scanner_code) if s.target_scanner_id else None,
+        'run_scanner': _run_scanner_task,
         'run_all_scanners': lambda s: run_scanners(db),
         'pipeline': lambda s: run_pipeline(db, s.target_ticker, AnalysisType(s.analysis_type), s.auto_execute, s.id) if s.target_ticker else None,
         'portfolio_review': lambda s: run_analysis(db, "PORTFOLIO", AnalysisType.REVIEW, s.id),
@@ -811,7 +819,7 @@ def run_due_schedules(db: NexusDB):
 
 def show_status(db: NexusDB):
     stocks = db.get_enabled_stocks()
-    by_state = {}
+    by_state: dict[str, list[Stock]] = {}
     for s in stocks:
         by_state.setdefault(s.state, []).append(s)
 
@@ -840,9 +848,9 @@ def show_status(db: NexusDB):
     schedules = db.get_enabled_schedules()
     due = db.get_due_schedules()
     print(f"\n  SCHEDULES ({len(schedules)} enabled, {len(due)} due)")
-    for s in schedules[:10]:
-        status = s.last_run_status or 'never'
-        print(f"    {s.name[:40]:<40} {s.frequency:<12} [{status}]")
+    for sch in schedules[:10]:
+        status = sch.last_run_status or 'never'
+        print(f"    {(sch.name or '')[:40]:<40} {sch.frequency:<12} [{status}]")
 
     print(f"\n  TODAY: {db.get_today_run_count()} runs (limit {cfg.max_daily_analyses})")
     print(f"{'═'*60}\n")
@@ -884,8 +892,7 @@ def main():
         # Initialize settings from DB for all commands
         global cfg
         cfg = Settings(db)
-        orchestrator_module = sys.modules[__name__]
-        orchestrator_module.cfg = cfg
+        sys.modules[__name__].__dict__['cfg'] = cfg
 
         if args.cmd == "db-init":
             db.init_schema(); print("✅ Schema initialized")
@@ -936,7 +943,7 @@ def main():
                 if args.comment: kw['comments'] = args.comment
                 if args.earnings_date: kw['next_earnings_date'] = args.earnings_date
                 s = db.upsert_stock(args.ticker.upper(), **kw)
-                print(f"✅ {s.ticker}")
+                print(f"✅ {s.ticker if s else args.ticker.upper()}")
             elif args.action in ("enable","disable") and args.ticker:
                 db.upsert_stock(args.ticker.upper(), is_enabled=(args.action=="enable"))
                 print(f"✅ {args.ticker.upper()} {'enabled' if args.action=='enable' else 'disabled'}")

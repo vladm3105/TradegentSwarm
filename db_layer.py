@@ -202,7 +202,7 @@ class NexusDB:
         'has_open_position', 'position_state', 'max_position_pct', 'comments', 'tags',
     }
 
-    def upsert_stock(self, ticker: str, **kwargs) -> Stock:
+    def upsert_stock(self, ticker: str, **kwargs) -> Optional[Stock]:
         """Insert or update a stock. Only provided fields are updated."""
         ticker = ticker.upper()
 
@@ -458,7 +458,7 @@ class NexusDB:
 
         elif schedule.frequency == 'weekly':
             day_map = {'mon': 0, 'tue': 1, 'wed': 2, 'thu': 3, 'fri': 4, 'sat': 5, 'sun': 6}
-            target_day = day_map.get(schedule.day_of_week, 0)
+            target_day = day_map.get(schedule.day_of_week or 'mon', 0)
             days_ahead = target_day - now.weekday()
             if days_ahead <= 0:
                 days_ahead += 7
@@ -592,7 +592,7 @@ class NexusDB:
             rows = cur.fetchall()
         return {r['key']: r['value'] for r in rows}
 
-    def set_setting(self, key: str, value: Any, description: str = None, category: str = None):
+    def set_setting(self, key: str, value: Any, description: Optional[str] = None, category: Optional[str] = None):
         """Create or update a setting."""
         with self.conn.cursor() as cur:
             if description or category:
@@ -619,8 +619,8 @@ class NexusDB:
 
     # ─── Service Status ──────────────────────────────────────────────────
 
-    def heartbeat(self, state: str = 'running', current_task: str = None,
-                  tick_duration_ms: int = None):
+    def heartbeat(self, state: str = 'running', current_task: Optional[str] = None,
+                  tick_duration_ms: Optional[int] = None):
         """Update the service heartbeat (singleton row)."""
         import socket
         with self.conn.cursor() as cur:
