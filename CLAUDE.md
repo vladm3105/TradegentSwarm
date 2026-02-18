@@ -1,11 +1,12 @@
 # Trading Light Pilot - Claude Code Instructions
 
-AI-driven trading platform using Claude Code CLI, Interactive Brokers, and LightRAG.
+AI-driven trading platform using Claude Code CLI, Interactive Brokers, and LightRAG. This is an **AI-first project** with agent automation.
 
 ## Project Structure
 
 ```
 trading_light_pilot/
+├── .claude/skills/          # Claude Code skills (auto-invoke enabled)
 ├── trader/                  # Nexus Light Trading Platform (Python)
 │   ├── service.py           # Long-running daemon
 │   ├── orchestrator.py      # Pipeline engine + CLI
@@ -17,6 +18,43 @@ trading_light_pilot/
     ├── knowledge/           # Trading data & analyses (YAML documents)
     └── workflows/           # CI/CD & LightRAG schemas
 ```
+
+## Claude Code Skills
+
+Skills in `.claude/skills/` auto-invoke based on context. Each skill has:
+- YAML frontmatter with metadata and triggers
+- Workflow steps referencing `trading/skills/`
+- Chaining to related skills
+
+### Skill Index
+
+| Skill                 | Triggers                                                 | Category   |
+| --------------------- | -------------------------------------------------------- | ---------- |
+| **earnings-analysis** | "earnings analysis", "pre-earnings", "before earnings"   | Analysis   |
+| **stock-analysis**    | "stock analysis", "technical analysis", "value analysis" | Analysis   |
+| **research**          | "research", "macro analysis", "sector analysis"          | Research   |
+| **ticker-profile**    | "ticker profile", "what do I know about"                 | Knowledge  |
+| **trade-journal**     | "log trade", "bought", "sold", "entered position"        | Trade Mgmt |
+| **watchlist**         | "watchlist", "add to watchlist", "watch this"            | Trade Mgmt |
+| **post-trade-review** | "review trade", "closed trade", "what did I learn"       | Learning   |
+| **scan**              | "scan", "find opportunities", "what should I trade"      | Scanning   |
+
+### Workflow Chains
+
+```text
+scan → earnings-analysis → watchlist → trade-journal → post-trade-review
+         ↓                                    ↓
+    stock-analysis ─────────────────────→ ticker-profile
+         ↓
+      research
+```
+
+**Automatic chaining:**
+
+- Analysis recommends WATCH → triggers watchlist skill
+- Trade journal exit → triggers post-trade-review skill
+- Scanner high score → triggers appropriate analysis skill
+- Post-trade review → updates ticker-profile
 
 ## Key Conventions
 
@@ -40,25 +78,15 @@ Example: `NVDA_20250120T0900.yaml`
 | post-trade-review | `knowledge/reviews/` |
 | market-scanning | Uses `knowledge/scanners/`, outputs to `watchlist/` |
 
-## Trading Skills
+## Executing Skills
 
-When executing trading skills:
+When a skill is invoked (auto or manual):
 
 1. Read the `SKILL.md` file from `trading/skills/{skill-name}/`
 2. Follow the workflow steps exactly
 3. Use the `template.yaml` structure for output
 4. Save output to corresponding `trading/knowledge/` folder
-
-### Available Skills
-
-- **earnings-analysis**: 8-phase pre-earnings analysis (3-10 days before earnings)
-- **stock-analysis**: 7-phase non-earnings analysis (technical, value, momentum)
-- **research-analysis**: Macro/sector/thematic research
-- **ticker-profile**: Persistent ticker knowledge
-- **trade-journal**: Document executed trades
-- **watchlist**: Track potential trades waiting for trigger
-- **post-trade-review**: Analyze completed trades for lessons
-- **market-scanning**: Find trading opportunities using scanner configs
+5. Check for chaining actions (WATCH → watchlist, exit → review)
 
 ## Trader Platform
 
@@ -94,3 +122,4 @@ docker compose logs -f            # View logs
 - IB Gateway requires valid paper trading account
 - LightRAG syncs trading knowledge for semantic search
 - Scanner configs in `knowledge/scanners/` encode trading edge - treat as sensitive
+- Skills auto-invoke based on conversation context - no manual `/command` needed
