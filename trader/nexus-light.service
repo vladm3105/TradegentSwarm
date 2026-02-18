@@ -29,9 +29,9 @@ Type=simple
 
 # ── EDIT: replace YOUR_USER with your Linux username ────────
 User=YOUR_USER
-WorkingDirectory=/home/YOUR_USER/nexus-light
-EnvironmentFile=/home/YOUR_USER/nexus-light/.env
-ExecStart=/usr/bin/python3 /home/YOUR_USER/nexus-light/service.py
+WorkingDirectory=/home/YOUR_USER/trading_light_pilot/trader
+EnvironmentFile=/home/YOUR_USER/trading_light_pilot/trader/.env
+ExecStart=/usr/bin/python3 /home/YOUR_USER/trading_light_pilot/trader/service.py
 # ─────────────────────────────────────────────────────────────
 
 # Host → Docker connections
