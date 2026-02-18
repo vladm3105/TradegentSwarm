@@ -1,0 +1,190 @@
+# Earnings Analysis Template
+# Output: knowledge/analysis/earnings/{TICKER}_{YYYYMMDDTHHMM}.yaml
+
+_meta:
+  id: "{TICKER}_{YYYYMMDDTHHMM}"
+  type: earnings-analysis
+  version: 1
+  created: "{ISO_DATETIME}"
+  status: "active"
+
+ticker: "{TICKER}"
+earnings_date: "{YYYY-MM-DD}"
+earnings_time: "BMO|AMC"
+current_price: 0.00
+analysis_date: "{YYYY-MM-DD}"
+
+# Phase 1: Preparation
+preparation:
+  beat_history:
+    quarters_analyzed: 8
+    beats: 0
+    misses: 0
+    beat_rate: 0.00
+    
+  historical_reactions:
+    avg_move_on_beat: 0.00
+    avg_move_on_miss: 0.00
+    largest_beat_move: 0.00
+    largest_miss_move: 0.00
+    
+  current_estimates:
+    consensus_eps: 0.00
+    consensus_revenue: 0.00
+    whisper_eps: 0.00
+    analyst_count: 0
+    
+  estimate_revisions:
+    direction: "up|flat|down"
+    magnitude: "significant|slight|none"
+    
+  implied_move:
+    percentage: 0.00
+    iv_percentile: 0
+
+# Phase 2: Customer Demand (50% WEIGHT)
+customer_demand:
+  signal_strength: "strong_bullish|moderate_bullish|neutral|moderate_bearish|strong_bearish"
+  confidence: "high|medium|low"
+  
+  signals:
+    - source: "{Data source}"
+      signal: "{What it indicates}"
+      interpretation: "bullish|bearish|neutral"
+      
+  adjustment_to_probability: 0.00  # -20% to +20%
+  
+  summary: |
+    {One paragraph summary of customer demand picture}
+
+# Phase 3: Technical Setup
+technical:
+  trend:
+    vs_20d_ma: "above|below"
+    vs_50d_ma: "above|below"
+    vs_200d_ma: "above|below"
+    ma_alignment: "bullish|neutral|bearish"
+    
+  momentum:
+    rsi: 0
+    recent_action: "trending_up|consolidating|trending_down|overextended"
+    
+  key_levels:
+    support: 0.00
+    resistance: 0.00
+    ath_distance_pct: 0.00
+    
+  pre_earnings_run:
+    already_run_up: false
+    run_up_pct: 0.00
+    
+  technical_score: 0  # 1-10
+
+# Phase 4: Sentiment
+sentiment:
+  analyst_ratings:
+    buy: 0
+    hold: 0
+    sell: 0
+    recent_changes: "upgrades|downgrades|mixed|none"
+    avg_price_target: 0.00
+    
+  short_interest:
+    pct_float: 0.00
+    days_to_cover: 0.00
+    trend: "increasing|stable|decreasing"
+    
+  options_positioning:
+    put_call_ratio: 0.00
+    unusual_activity: "bullish|bearish|none"
+    
+  overall_sentiment: "very_bullish|bullish|neutral|bearish|very_bearish"
+  contrarian_opportunity: false
+  sentiment_score: 0  # 1-10
+
+# Phase 5: Probability Assessment
+probability:
+  base_rate: 0.00  # Historical beat rate
+  
+  adjustments:
+    customer_demand: 0.00
+    estimate_revisions: 0.00
+    sentiment_contrarian: 0.00
+    technical: 0.00
+    
+  final_probability:
+    p_beat: 0.00
+    p_miss: 0.00
+    p_significant_beat: 0.00
+    
+  confidence: "high|medium|low"
+
+# Phase 6: Bias Check
+bias_check:
+  recency_bias:
+    present: false
+    notes: ""
+    
+  confirmation_bias:
+    present: false
+    notes: ""
+    
+  overconfidence:
+    present: false
+    notes: ""
+    
+  anchoring:
+    present: false
+    notes: ""
+    
+  fomo:
+    present: false
+    notes: ""
+    
+  corrections_applied: ""
+
+# Phase 7: Decision
+decision:
+  recommendation: "BULLISH|MODERATE_BULLISH|NEUTRAL|MODERATE_BEARISH|BEARISH"
+  
+  rationale: |
+    {2-3 sentence summary of why}
+    
+  do_nothing_gate:
+    passed: true
+    reason: ""
+
+# Phase 8: Execution Plan
+execution:
+  trade: true  # false if DO NOT TRADE
+  
+  entry:
+    price: 0.00
+    date: "{YYYY-MM-DD}"
+    size_shares: 0
+    size_pct_portfolio: 0.00
+    
+  structure:
+    type: "stock|calls|puts|call_spread|put_spread"
+    strike: 0.00
+    expiration: "{YYYY-MM-DD}"
+    
+  risk_management:
+    stop_loss: 0.00
+    max_loss_dollars: 0.00
+    max_loss_pct: 0.00
+    
+  targets:
+    target_1: 0.00
+    target_2: 0.00
+    
+  contingency:
+    if_gaps_against: ""
+    if_gaps_for: ""
+    if_flat: ""
+
+# Links
+_links:
+  trade_journal: ""  # Fill after trade executed
+  post_review: ""    # Fill after trade closed
+  ticker_profile: "analysis/ticker-profiles/{TICKER}_*.yaml"

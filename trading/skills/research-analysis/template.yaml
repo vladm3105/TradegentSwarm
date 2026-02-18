@@ -1,0 +1,78 @@
+# Research Analysis Template
+# Output: knowledge/analysis/research/{TOPIC}_{YYYYMMDDTHHMM}.yaml
+
+_meta:
+  id: "{TOPIC}_{YYYYMMDDTHHMM}"
+  type: research
+  version: 1
+  created: "{ISO_DATETIME}"
+  status: "active|stale|invalidated"
+  valid_until: "{YYYY-MM-DD}"
+
+# Research Definition
+topic: "{TOPIC}"
+category: "macro|sector|thematic|quantitative"
+
+research_question: ""
+
+# Thesis
+thesis:
+  statement: ""
+  confidence: "high|medium|low"
+  
+  supporting_arguments:
+    - argument: ""
+      evidence: ""
+      source: ""
+      
+  counter_arguments:
+    - argument: ""
+      response: ""
+
+# Evidence
+sources:
+  primary:
+    - source: ""
+      date: "{YYYY-MM-DD}"
+      key_finding: ""
+      reliability: "high|medium|low"
+      
+  secondary:
+    - source: ""
+      date: "{YYYY-MM-DD}"
+      key_finding: ""
+
+# Implications
+implications:
+  beneficiaries:
+    - ticker: ""
+      reason: ""
+      
+  losers:
+    - ticker: ""
+      reason: ""
+      
+  sector_positioning:
+    overweight:
+      - ""
+    underweight:
+      - ""
+      
+  timing: ""
+
+# Review
+review:
+  validity_period: "30d|90d|1y"
+  next_review_date: "{YYYY-MM-DD}"
+  
+  review_triggers:
+    - ""
+    
+  falsification_criteria:
+    - ""
+
+# Status Updates
+updates:
+  - date: "{YYYY-MM-DD}"
+    note: ""
+    thesis_still_valid: true

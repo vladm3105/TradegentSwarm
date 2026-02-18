@@ -1,0 +1,174 @@
+# Post-Trade Review Template
+# Output: knowledge/reviews/{TICKER}_{YYYYMMDDTHHMM}_review.yaml
+
+_meta:
+  id: "{TICKER}_{YYYYMMDDTHHMM}_review"
+  type: post-trade-review
+  version: 1
+  created: "{ISO_DATETIME}"
+  status: "completed"
+
+# Trade Reference
+trade:
+  trade_journal: ""  # Link to trades/{TICKER}_*.yaml
+  analysis: ""       # Link to analysis/*/{TICKER}_*.yaml
+  ticker: "{TICKER}"
+  direction: "long|short"
+
+# Trade Facts
+facts:
+  entry:
+    date: "{YYYY-MM-DD}"
+    price: 0.00
+    shares: 0
+    
+  exit:
+    date: "{YYYY-MM-DD}"
+    price: 0.00
+    
+  result:
+    holding_days: 0
+    gross_pnl: 0.00
+    net_pnl: 0.00
+    return_pct: 0.00
+    outcome: "big_win|small_win|breakeven|small_loss|big_loss"
+
+# Original Thesis
+original_thesis:
+  summary: ""
+  catalyst: ""
+  expected_move: 0.00
+  expected_timeframe_days: 0
+  target: 0.00
+  stop: 0.00
+
+# Execution Analysis
+execution:
+  entry:
+    planned_price: 0.00
+    actual_price: 0.00
+    slippage_pct: 0.00
+    timing: "early|on_time|late"
+    grade: "A|B|C|D|F"
+    notes: ""
+    
+  exit:
+    planned_price: 0.00
+    actual_price: 0.00
+    reason: "target_hit|stop_hit|thesis_changed|time_stop|manual"
+    followed_plan: true
+    timing: "early|on_time|late"
+    grade: "A|B|C|D|F"
+    notes: ""
+    
+  position_sizing:
+    planned_pct: 0.00
+    actual_pct: 0.00
+    appropriate: true
+    notes: ""
+
+# Thesis Accuracy
+thesis_accuracy:
+  direction:
+    predicted: "up|down"
+    actual: "up|down"
+    correct: true
+    
+  magnitude:
+    predicted_pct: 0.00
+    actual_pct: 0.00
+    within_50pct: true
+    
+  timing:
+    predicted_days: 0
+    actual_days: 0
+    correct: true
+    
+  catalyst:
+    predicted: ""
+    actual: ""
+    correct: "yes|no|partially"
+    
+  # For earnings trades only
+  earnings_specific:
+    customer_demand_signal: "bullish|neutral|bearish"
+    signal_correct: true
+    beat_miss_prediction_correct: true
+
+# What Worked / Didn't
+analysis:
+  what_worked:
+    - ""
+  what_didnt_work:
+    - ""
+  surprises:
+    - ""
+  missed_signals:
+    - ""
+
+# Bias Retrospective
+bias_check:
+  recency_bias:
+    score: 0  # 1-5
+    notes: ""
+    
+  confirmation_bias:
+    score: 0
+    notes: ""
+    
+  overconfidence:
+    score: 0
+    notes: ""
+    
+  loss_aversion:
+    score: 0
+    notes: ""
+    
+  anchoring:
+    score: 0
+    notes: ""
+    
+  new_biases:
+    - bias: ""
+      impact: ""
+
+# Grades
+grades:
+  analysis_quality: "A|B|C|D|F"
+  entry_execution: "A|B|C|D|F"
+  exit_execution: "A|B|C|D|F"
+  risk_management: "A|B|C|D|F"
+  emotional_discipline: "A|B|C|D|F"
+  
+  overall: "A|B|C|D|F"
+  rationale: ""
+  what_would_make_A: ""
+
+# Lessons
+lessons:
+  primary:
+    lesson: ""
+    action: ""
+    applies_to: "all|earnings|technical|this_ticker"
+    
+  secondary:
+    - lesson: ""
+      action: ""
+      
+  pattern_to_add:
+    pattern: ""
+    description: ""
+    expected_outcome: ""
+    
+  rule_to_add:
+    rule: ""
+    reason: ""
+
+# One-Line Summary
+summary: ""  # "{TICKER}: {Win/Loss} {%} - {Key lesson}"
+
+# Links to Knowledge Base
+_links:
+  trade_journal: ""
+  analysis: ""
+  new_learning: ""  # If learning was created
