@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "trading-graph": {
+      "command": "python",
+      "args": ["-m", "mcp_trading_graph.server"],
+      "cwd": "/opt/data/trading_light_pilot",
+      "env": {
+        "PYTHONPATH": "/opt/data/trading_light_pilot/trader:/opt/data/trading_light_pilot",
+        "NEO4J_URI": "bolt://localhost:7688",
+        "NEO4J_USER": "neo4j"
+      }
+    },
+    "trading-rag": {
+      "command": "python",
+      "args": ["-m", "mcp_trading_rag.server"],
+      "cwd": "/opt/data/trading_light_pilot",
+      "env": {
+        "PYTHONPATH": "/opt/data/trading_light_pilot/trader:/opt/data/trading_light_pilot",
+        "DATABASE_URL": "postgresql://lightrag:lightrag@localhost:5433/lightrag",
+        "OLLAMA_BASE_URL": "http://localhost:11434"
+      }
+    }
+  }
+}

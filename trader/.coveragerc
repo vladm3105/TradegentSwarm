@@ -1,0 +1,26 @@
+[run]
+branch = True
+source = graph,rag
+omit =
+    */tests/*
+    */conftest.py
+    */__pycache__/*
+    */__init__.py
+
+[report]
+precision = 2
+show_missing = True
+skip_covered = False
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise AssertionError
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+    @abstractmethod
+    @abc.abstractmethod
+
+[html]
+directory = coverage_report
+title = Trading Graph Test Coverage

@@ -820,6 +820,84 @@ Host github.com
 
 ---
 
+## Testing
+
+The platform includes comprehensive test coverage for the graph and RAG layers.
+
+### Running Tests
+
+```bash
+cd trader
+
+# Run all tests with coverage
+pytest
+
+# Run specific test modules
+pytest graph/tests/test_webhook.py -v      # Webhook endpoint tests
+pytest graph/tests/test_rate_limit.py -v   # Rate limiting tests
+pytest graph/tests/ -v                      # All graph tests
+pytest rag/tests/ -v                        # All RAG tests
+
+# Run without coverage (faster)
+pytest --no-cov
+
+# Run only unit tests (no external dependencies)
+pytest -m unit
+
+# Run integration tests (requires Neo4j, PostgreSQL)
+pytest --run-integration -m integration
+```
+
+### Test Coverage
+
+Coverage reports are generated automatically with pytest. Configuration in `.coveragerc`.
+
+```bash
+# Generate HTML coverage report
+pytest --cov-report=html
+
+# View report
+open coverage_report/index.html
+```
+
+### Test Structure
+
+```
+trader/
+├── graph/tests/
+│   ├── conftest.py           # Shared fixtures (Neo4j mocks, test client)
+│   ├── test_webhook.py       # FastAPI endpoint tests (12 endpoints)
+│   ├── test_rate_limit.py    # Rate limiting and retry decorator tests
+│   ├── test_layer.py         # Neo4j layer operations
+│   ├── test_extract.py       # Entity extraction pipeline
+│   ├── test_normalize.py     # Entity normalization
+│   ├── test_query.py         # Cypher query catalog
+│   ├── test_integration.py   # End-to-end tests (conditional)
+│   └── fixtures/             # YAML test fixtures
+│
+├── rag/tests/
+│   ├── conftest.py           # Shared fixtures (PostgreSQL mocks)
+│   ├── test_chunk.py         # Document chunking
+│   ├── test_embed.py         # Embedding generation
+│   ├── test_search.py        # Search implementation
+│   └── ...
+│
+├── pytest.ini                # Pytest configuration with markers
+└── .coveragerc               # Coverage configuration
+```
+
+### Test Markers
+
+| Marker | Description |
+|--------|-------------|
+| `@unit` | Unit tests (no external dependencies) |
+| `@integration` | Integration tests (requires Neo4j, PostgreSQL) |
+| `@slow` | Slow tests (embedding, extraction) |
+| `@phase11` | Phase 11 Graph Trading Intelligence tests |
+| `@phase12` | Phase 12 Graph-RAG Hybrid tests |
+
+---
+
 ## Development Workflow
 
 ```bash
@@ -831,6 +909,9 @@ cd trading_light_pilot
 cp .env.template .env
 # Edit .env with your credentials
 bash setup.sh
+
+# Run tests before committing
+cd trader && pytest --no-cov -q
 
 # After making changes
 git add -A

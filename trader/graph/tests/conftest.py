@@ -77,3 +77,35 @@ def mock_config():
     }
     with patch("graph.extract._config", config):
         yield config
+
+
+@pytest.fixture
+def test_client():
+    """FastAPI test client for webhook tests."""
+    from starlette.testclient import TestClient
+    from graph.webhook import app
+    return TestClient(app)
+
+
+@pytest.fixture
+def mock_trading_graph():
+    """Mock TradingGraph context manager for webhook tests."""
+    with patch("graph.webhook.TradingGraph") as mock_class:
+        mock_instance = MagicMock()
+        mock_class.return_value.__enter__ = MagicMock(return_value=mock_instance)
+        mock_class.return_value.__exit__ = MagicMock(return_value=False)
+        yield mock_instance
+
+
+@pytest.fixture
+def mock_extract_document():
+    """Mock extract_document function."""
+    with patch("graph.webhook.extract_document") as mock:
+        yield mock
+
+
+@pytest.fixture
+def mock_extract_text():
+    """Mock extract_text function."""
+    with patch("graph.webhook.extract_text") as mock:
+        yield mock
