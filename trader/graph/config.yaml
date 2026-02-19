@@ -1,0 +1,37 @@
+schema_version: "1.0.0"
+extract_version: "1.0.0"
+
+neo4j:
+  uri: "bolt://localhost:7688"
+  user: "neo4j"
+  password: "${NEO4J_PASS}"
+  database: "neo4j"
+
+extraction:
+  default_extractor: ollama
+  fallback_chain:
+    - ollama           # Try local first ($0)
+    - openrouter       # Fallback to cloud if Ollama fails
+  timeout_seconds: 30
+
+  # Confidence thresholds
+  commit_threshold: 0.7       # >= 0.7: commit normally
+  flag_threshold: 0.5         # 0.5-0.7: commit with needs_review flag
+  skip_threshold: 0.5         # < 0.5: do not commit
+
+  ollama:
+    base_url: "http://localhost:11434"
+    model: "qwen3:8b"
+
+  openrouter:
+    api_key: "${OPENROUTER_API_KEY}"
+    model: "anthropic/claude-3-5-sonnet"
+    fallback_model: "anthropic/claude-3-haiku"
+
+  claude_api:
+    api_key: "${ANTHROPIC_API_KEY}"
+    model: "claude-sonnet-4-20250514"
+
+logging:
+  extraction_log: "logs/graph_extractions.jsonl"
+  pending_commits: "logs/pending_commits.jsonl"

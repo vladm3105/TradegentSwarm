@@ -226,8 +226,9 @@ class ExecutionResult:
 
 def build_analysis_prompt(ticker: str, analysis_type: AnalysisType,
                           stock: Optional[Stock] = None,
-                          lightrag_enabled: bool = True) -> str:
-    """Build Stage 1 prompt, enriched with stock metadata from DB."""
+                          lightrag_enabled: bool = True,
+                          kb_enabled: bool = True) -> str:
+    """Build Stage 1 prompt, enriched with stock metadata from DB and KB context."""
 
     stock_ctx = ""
     if stock:
@@ -265,6 +266,13 @@ End with a JSON block for machine parsing:
 ```
 """.replace("{ticker}", ticker)
 
+    # Get KB context (RAG + Graph)
+    kb_ctx = ""
+    if kb_enabled and ticker != "PORTFOLIO":
+        kb_ctx = build_kb_context(ticker, analysis_type.value)
+        if kb_ctx:
+            kb_ctx = f"\nKNOWLEDGE BASE CONTEXT:\n{kb_ctx}\n"
+
     if analysis_type == AnalysisType.EARNINGS:
         lightrag_ctx = ""
         if lightrag_enabled:
@@ -277,6 +285,7 @@ CONTEXT RETRIEVAL:
 
 SKILL INSTRUCTIONS: Read and follow /mnt/skills/user/earnings-analysis/SKILL.md
 {stock_ctx}
+{kb_ctx}
 {lightrag_ctx}
 DATA GATHERING (use tools):
 1. Via IB MCP: Get {ticker} current price, IV percentile, options chain (nearest monthly expiry)
@@ -311,6 +320,7 @@ CONTEXT RETRIEVAL:
 SKILL INSTRUCTIONS: Read and follow /mnt/skills/user/stock-analysis/SKILL.md
 Also read: /mnt/skills/user/stock-analysis/comprehensive_framework.md
 {stock_ctx}
+{kb_ctx}
 {lightrag_ctx}
 
 DATA GATHERING (use tools):
@@ -334,6 +344,7 @@ CONTEXT RETRIEVAL:
 
 SKILL INSTRUCTIONS: Read Phase 8 of /mnt/skills/user/earnings-analysis/SKILL.md
 {stock_ctx}
+{kb_ctx}
 {lightrag_ctx}
 
 DATA GATHERING:
@@ -540,6 +551,62 @@ def ingest_to_lightrag(filepath: Path, metadata: dict):
                       json={"text": text, "metadata": metadata}, timeout=30)
     except Exception as e:
         log.warning(f"LightRAG ingest failed: {e}")
+
+
+# ─── Knowledge Base Context ──────────────────────────────────────────────────
+
+def build_kb_context(ticker: str, analysis_type: str) -> str:
+    """
+    Gather hybrid RAG + Graph context before analysis.
+
+    Called by build_analysis_prompt() to inject historical context.
+    Returns empty string if knowledge base unavailable.
+    """
+    try:
+        from rag.hybrid import build_analysis_context as rag_context
+        context = rag_context(ticker, analysis_type)
+        if context and len(context) > 100:
+            log.info(f"KB context injected for {ticker} ({len(context)} chars)")
+            return context
+    except ImportError:
+        log.debug("RAG module not available, skipping KB context")
+    except Exception as e:
+        log.warning(f"KB context injection failed: {e}")
+    return ""
+
+
+def kb_ingest_file(file_path: str) -> dict:
+    """
+    Ingest a file into both Graph and RAG systems.
+
+    Returns dict with extraction and embedding results.
+    """
+    results = {"graph": None, "rag": None, "errors": []}
+
+    # Graph extraction
+    try:
+        from graph.extract import extract_document
+        result = extract_document(file_path, commit=True)
+        results["graph"] = {
+            "entities": len(result.entities),
+            "relations": len(result.relations),
+            "committed": result.committed,
+        }
+    except Exception as e:
+        results["errors"].append(f"Graph: {e}")
+
+    # RAG embedding
+    try:
+        from rag.embed import embed_document
+        result = embed_document(file_path)
+        results["rag"] = {
+            "chunks": result.chunk_count,
+            "duration_ms": result.duration_ms,
+        }
+    except Exception as e:
+        results["errors"].append(f"RAG: {e}")
+
+    return results
 
 
 # ─── Stage 1: Analysis ──────────────────────────────────────────────────────
@@ -856,6 +923,445 @@ def show_status(db: NexusDB):
     print(f"{'═'*60}\n")
 
 
+# ─── Graph and RAG CLI Handlers ──────────────────────────────────────────────
+
+def _check_all_health() -> None:
+    """Check health of all services: Neo4j, PostgreSQL, Ollama."""
+    import requests
+
+    print(f"\n{'═'*50}")
+    print("SERVICE HEALTH CHECK")
+    print(f"{'═'*50}\n")
+
+    # PostgreSQL + pgvector
+    try:
+        from rag.schema import health_check as rag_health
+        if rag_health():
+            print("✅ PostgreSQL (pgvector): OK")
+        else:
+            print("❌ PostgreSQL (pgvector): FAIL")
+    except Exception as e:
+        print(f"❌ PostgreSQL (pgvector): {e}")
+
+    # Neo4j
+    try:
+        from graph.layer import TradingGraph
+        with TradingGraph() as g:
+            if g.health_check():
+                print("✅ Neo4j (graph): OK")
+            else:
+                print("❌ Neo4j (graph): FAIL")
+    except Exception as e:
+        print(f"❌ Neo4j (graph): {e}")
+
+    # Ollama
+    try:
+        ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
+        resp = requests.get(f"{ollama_url}/api/tags", timeout=5)
+        if resp.status_code == 200:
+            models = resp.json().get("models", [])
+            model_names = [m.get("name", "") for m in models]
+            has_embed = any("nomic-embed" in n for n in model_names)
+            has_llm = any("qwen" in n or "llama" in n for n in model_names)
+            status = "OK" if has_embed else "WARN (no embedding model)"
+            print(f"✅ Ollama: {status}")
+            print(f"   Models: {', '.join(model_names[:5])}")
+        else:
+            print(f"❌ Ollama: HTTP {resp.status_code}")
+    except Exception as e:
+        print(f"❌ Ollama: {e}")
+
+    # IB Gateway
+    try:
+        from ib_insync import IB
+        ib = IB()
+        ib.connect("localhost", 4002, clientId=99, readonly=True, timeout=5)
+        print(f"✅ IB Gateway: Connected")
+        ib.disconnect()
+    except Exception as e:
+        print(f"⚠️ IB Gateway: {e}")
+
+    # Check pending commits
+    pending_file = Path("logs/pending_commits.jsonl")
+    if pending_file.exists():
+        import json
+        with open(pending_file, "r") as f:
+            pending_count = sum(1 for line in f if line.strip())
+        if pending_count > 0:
+            print(f"\n⚠️ Pending commits: {pending_count} items")
+            print("   Run 'python orchestrator.py graph retry' to process")
+    else:
+        print(f"\n✅ No pending commits")
+
+    print(f"\n{'═'*50}\n")
+
+
+def _retry_pending_commits(limit: int = 10) -> None:
+    """Retry pending commits from the queue."""
+    import json
+    from pathlib import Path as _Path
+
+    pending_file = _Path("logs/pending_commits.jsonl")
+    if not pending_file.exists():
+        print("No pending commits file found")
+        return
+
+    from graph.extract import extract_document
+    from graph.exceptions import ExtractionError, GraphUnavailableError
+
+    pending_items = []
+    with open(pending_file, "r") as f:
+        for line in f:
+            if line.strip():
+                pending_items.append(json.loads(line))
+
+    if not pending_items:
+        print("No pending commits to retry")
+        return
+
+    print(f"Found {len(pending_items)} pending commits")
+    remaining = []
+    success_count = 0
+
+    for item in pending_items[:limit]:
+        file_path = item.get("file_path", "")
+        doc_id = item.get("doc", "unknown")
+        retry_count = item.get("retry_count", 0)
+
+        if not _Path(file_path).exists():
+            print(f"❌ {doc_id}: File not found, skipping")
+            continue
+
+        try:
+            result = extract_document(file_path, commit=True)
+            if result.committed:
+                print(f"✅ {doc_id}: Retry successful")
+                success_count += 1
+            else:
+                item["retry_count"] = retry_count + 1
+                item["reason"] = result.error_message or "commit_failed"
+                remaining.append(item)
+                print(f"⚠️ {doc_id}: Still failing (retry {retry_count + 1})")
+        except GraphUnavailableError:
+            print(f"❌ {doc_id}: Neo4j still unavailable")
+            item["retry_count"] = retry_count + 1
+            remaining.append(item)
+        except ExtractionError as e:
+            print(f"❌ {doc_id}: {e}")
+            item["retry_count"] = retry_count + 1
+            item["reason"] = str(e)
+            remaining.append(item)
+
+    # Keep items beyond the limit
+    remaining.extend(pending_items[limit:])
+
+    # Rewrite file with remaining items
+    with open(pending_file, "w") as f:
+        for item in remaining:
+            f.write(json.dumps(item) + "\n")
+
+    print(f"\nRetry complete: {success_count} succeeded, {len(remaining)} remaining")
+
+
+def _handle_graph_command(args):
+    """Handle graph subcommands."""
+    from pathlib import Path as _Path
+    import glob
+
+    if args.graph_cmd == "init":
+        from graph.schema import init_schema
+        init_schema()
+        print("✅ Neo4j schema initialized")
+
+    elif args.graph_cmd == "reset":
+        confirm = input("This will DELETE ALL graph data. Type 'yes' to confirm: ")
+        if confirm.lower() == "yes":
+            from graph.schema import reset_schema
+            reset_schema(confirm=True)
+            print("✅ Graph reset complete")
+        else:
+            print("Aborted")
+
+    elif args.graph_cmd == "extract":
+        from graph.extract import extract_document
+        from graph.exceptions import ExtractionError
+
+        files = []
+        if args.file:
+            files = [args.file]
+        elif args.dir:
+            files = list(glob.glob(f"{args.dir}/**/*.yaml", recursive=True))
+            files += list(glob.glob(f"{args.dir}/**/*.yml", recursive=True))
+
+        if not files:
+            print("No files specified. Use --file or --dir")
+            return
+
+        for f in files:
+            try:
+                result = extract_document(
+                    f,
+                    extractor=args.extractor,
+                    commit=not args.dry_run,
+                    dry_run=args.dry_run,
+                )
+                status = "✅" if result.committed else "⚠️"
+                print(f"{status} {result.source_doc_id}: {len(result.entities)} entities, {len(result.relations)} relations")
+            except ExtractionError as e:
+                print(f"❌ {f}: {e}")
+
+    elif args.graph_cmd == "status":
+        from graph.layer import TradingGraph
+        try:
+            with TradingGraph() as g:
+                stats = g.get_stats()
+                print(f"\n{'═'*40}")
+                print("KNOWLEDGE GRAPH STATUS")
+                print(f"{'═'*40}")
+                print(f"Total Nodes: {stats.total_nodes}")
+                print(f"Total Edges: {stats.total_edges}")
+                if stats.node_counts:
+                    print("\nNode Types:")
+                    for label, count in sorted(stats.node_counts.items(), key=lambda x: -x[1]):
+                        print(f"  {label:<20} {count:>6}")
+                if stats.edge_counts:
+                    print("\nRelationship Types:")
+                    for rel, count in sorted(stats.edge_counts.items(), key=lambda x: -x[1])[:10]:
+                        print(f"  {rel:<25} {count:>6}")
+        except Exception as e:
+            print(f"❌ Graph unavailable: {e}")
+
+    elif args.graph_cmd == "search":
+        from graph.layer import TradingGraph
+        with TradingGraph() as g:
+            results = g.find_related(args.ticker.upper(), depth=args.depth)
+            print(f"\nNodes within {args.depth} hops of {args.ticker.upper()}:")
+            for r in results[:20]:
+                labels = ", ".join(r["labels"]) if r["labels"] else "?"
+                name = r["props"].get("name") or r["props"].get("symbol") or r["props"].get("id") or "?"
+                print(f"  [{labels}] {name}")
+
+    elif args.graph_cmd == "peers":
+        from graph.layer import TradingGraph
+        with TradingGraph() as g:
+            peers = g.get_sector_peers(args.ticker.upper())
+            print(f"\nSector peers for {args.ticker.upper()}:")
+            for p in peers:
+                print(f"  {p.get('peer', '?'):<8} {p.get('company', ''):<30} ({p.get('sector', '')})")
+
+    elif args.graph_cmd == "risks":
+        from graph.layer import TradingGraph
+        with TradingGraph() as g:
+            risks = g.get_risks(args.ticker.upper())
+            print(f"\nKnown risks for {args.ticker.upper()}:")
+            for r in risks:
+                print(f"  • {r.get('risk', '?')}")
+
+    elif args.graph_cmd == "biases":
+        from graph.layer import TradingGraph
+        with TradingGraph() as g:
+            biases = g.get_bias_history(args.name)
+            print("\nBias History:")
+            for b in biases:
+                if "occurrences" in b:
+                    print(f"  {b.get('bias', '?'):<25} {b.get('occurrences', 0):>4} occurrences")
+                else:
+                    print(f"  {b.get('bias', '?')}: trade {b.get('trade_id', '?')} ({b.get('outcome', '?')})")
+
+    elif args.graph_cmd == "query":
+        from graph.layer import TradingGraph
+        with TradingGraph() as g:
+            results = g.run_cypher(args.cypher)
+            for r in results:
+                print(r)
+
+    elif args.graph_cmd == "dedupe":
+        from graph.layer import TradingGraph
+        with TradingGraph() as g:
+            count = g.dedupe_entities()
+            print(f"✅ Merged {count} duplicate entities")
+
+    elif args.graph_cmd == "validate":
+        from graph.layer import TradingGraph
+        with TradingGraph() as g:
+            issues = g.validate_constraints()
+            if issues:
+                print("⚠️ Constraint issues found:")
+                for issue in issues:
+                    print(f"  • {issue}")
+            else:
+                print("✅ No constraint issues")
+
+    elif args.graph_cmd == "retry":
+        _retry_pending_commits(limit=args.limit)
+
+    else:
+        print("Unknown graph command. Try: graph init, graph extract, graph status, graph search")
+
+
+def _handle_rag_command(args):
+    """Handle rag subcommands."""
+    from pathlib import Path as _Path
+    from datetime import date as _date
+    import glob
+
+    if args.rag_cmd == "init":
+        from rag.schema import init_schema
+        init_schema()
+        print("✅ pgvector schema initialized")
+
+    elif args.rag_cmd == "reset":
+        confirm = input("This will DELETE ALL embedded documents. Type 'yes' to confirm: ")
+        if confirm.lower() == "yes":
+            from rag.schema import reset_schema
+            reset_schema(confirm=True)
+            print("✅ RAG tables reset")
+        else:
+            print("Aborted")
+
+    elif args.rag_cmd == "embed":
+        from rag.embed import embed_document
+        from rag.exceptions import EmbedError
+
+        files = []
+        if args.file:
+            files = [args.file]
+        elif args.dir:
+            files = list(glob.glob(f"{args.dir}/**/*.yaml", recursive=True))
+            files += list(glob.glob(f"{args.dir}/**/*.yml", recursive=True))
+
+        if not files:
+            print("No files specified. Use file path or --dir")
+            return
+
+        for f in files:
+            try:
+                result = embed_document(f, force=args.force)
+                if result.error_message == "unchanged":
+                    print(f"⏭️ {result.doc_id}: unchanged")
+                else:
+                    print(f"✅ {result.doc_id}: {result.chunk_count} chunks ({result.duration_ms}ms)")
+            except EmbedError as e:
+                print(f"❌ {f}: {e}")
+
+    elif args.rag_cmd == "reembed":
+        from rag.embed import reembed_all
+        count = reembed_all(version=args.version)
+        print(f"✅ Re-embedded {count} documents")
+
+    elif args.rag_cmd == "search":
+        from rag.search import semantic_search
+
+        date_from = None
+        if args.since:
+            date_from = _date.fromisoformat(args.since)
+
+        results = semantic_search(
+            query=args.query,
+            ticker=args.ticker,
+            doc_type=args.doc_type,
+            section=args.section,
+            date_from=date_from,
+            top_k=args.top,
+            min_similarity=args.min_sim,
+        )
+
+        print(f"\nSearch results for: {args.query}")
+        print(f"{'─'*60}")
+        for r in results:
+            print(f"\n[{r.similarity:.3f}] {r.doc_id} ({r.doc_type})")
+            print(f"Section: {r.section_label}")
+            content = r.content[:200].replace("\n", " ")
+            print(f"  {content}...")
+
+    elif args.rag_cmd == "hybrid-search":
+        from rag.search import hybrid_search
+
+        date_from = None
+        if args.since:
+            date_from = _date.fromisoformat(args.since)
+
+        results = hybrid_search(
+            query=args.query,
+            ticker=args.ticker,
+            doc_type=args.doc_type,
+            section=args.section,
+            date_from=date_from,
+            top_k=args.top,
+            vector_weight=args.vector_weight,
+            bm25_weight=args.bm25_weight,
+        )
+
+        print(f"\nHybrid search results for: {args.query}")
+        print(f"Weights: vector={args.vector_weight}, bm25={args.bm25_weight}")
+        print(f"{'─'*60}")
+        for r in results:
+            print(f"\n[{r.similarity:.4f}] {r.doc_id} ({r.doc_type})")
+            print(f"Section: {r.section_label}")
+            content = r.content[:200].replace("\n", " ")
+            print(f"  {content}...")
+
+    elif args.rag_cmd == "migrate":
+        from rag.schema import run_migrations
+        run_migrations()
+        print("✅ RAG migrations complete")
+
+    elif args.rag_cmd == "status":
+        from rag.search import get_rag_stats
+        try:
+            stats = get_rag_stats()
+            print(f"\n{'═'*40}")
+            print("RAG STATUS")
+            print(f"{'═'*40}")
+            print(f"Documents: {stats.document_count}")
+            print(f"Chunks: {stats.chunk_count}")
+            print(f"Model: {stats.embed_model}")
+            print(f"Version: {stats.embed_version}")
+            if stats.doc_types:
+                print("\nBy Type:")
+                for dtype, count in sorted(stats.doc_types.items(), key=lambda x: -x[1]):
+                    print(f"  {dtype:<25} {count:>4}")
+            if stats.tickers:
+                print(f"\nTickers: {', '.join(stats.tickers[:10])}")
+        except Exception as e:
+            print(f"❌ RAG unavailable: {e}")
+
+    elif args.rag_cmd == "list":
+        from rag.search import list_documents
+        docs = list_documents(limit=50)
+        print(f"\n{'doc_id':<30} {'type':<20} {'ticker':<8} {'chunks'}")
+        print(f"{'─'*70}")
+        for d in docs:
+            print(f"{d['doc_id']:<30} {d['doc_type']:<20} {d.get('ticker') or '—':<8} {d['chunk_count']}")
+
+    elif args.rag_cmd == "show":
+        from rag.search import get_document_chunks
+        chunks = get_document_chunks(args.doc_id)
+        if not chunks:
+            print(f"Document not found: {args.doc_id}")
+            return
+        print(f"\nChunks for {args.doc_id}:")
+        for c in chunks:
+            print(f"\n[{c['section_label']}] ({c['content_tokens']} tokens)")
+            print(c["content"][:300])
+            if len(c["content"]) > 300:
+                print("...")
+
+    elif args.rag_cmd == "delete":
+        from rag.embed import delete_document
+        success = delete_document(args.doc_id)
+        if success:
+            print(f"✅ Deleted {args.doc_id}")
+        else:
+            print(f"❌ Document not found: {args.doc_id}")
+
+    elif args.rag_cmd == "validate":
+        print("⚠️ Validation not yet implemented")
+
+    else:
+        print("Unknown rag command. Try: rag init, rag embed, rag search, rag status")
+
+
 # ─── CLI ─────────────────────────────────────────────────────────────────────
 
 def main():
@@ -873,6 +1379,7 @@ def main():
     sub.add_parser("review")
     sub.add_parser("earnings-check")
     sub.add_parser("status")
+    sub.add_parser("health", help="Check all service health")
     sub.add_parser("db-init")
 
     p = sub.add_parser("stock"); p.add_argument("action", choices=["add","enable","disable","set-state","list"])
@@ -885,6 +1392,96 @@ def main():
     p.add_argument("key", nargs="?")
     p.add_argument("value", nargs="?")
     p.add_argument("--category")
+
+    # ─── Graph Commands ───────────────────────────────────────────────────────────
+    graph_parser = sub.add_parser("graph", help="Knowledge graph commands")
+    graph_sub = graph_parser.add_subparsers(dest="graph_cmd")
+
+    graph_sub.add_parser("init", help="Initialize Neo4j schema")
+    graph_sub.add_parser("reset", help="Wipe graph (dev only)")
+
+    p = graph_sub.add_parser("extract", help="Extract from document")
+    p.add_argument("file", nargs="?", help="File to extract")
+    p.add_argument("--dir", help="Directory to extract")
+    p.add_argument("--extractor", default="ollama", choices=["ollama", "claude-api", "openrouter"])
+    p.add_argument("--dry-run", action="store_true", help="Preview without committing")
+
+    p = graph_sub.add_parser("reextract", help="Re-extract documents")
+    p.add_argument("--all", action="store_true")
+    p.add_argument("--since", type=str, help="Date (YYYY-MM-DD)")
+    p.add_argument("--version", type=str, help="Extraction version")
+
+    graph_sub.add_parser("status", help="Show graph statistics")
+
+    p = graph_sub.add_parser("search", help="Search around ticker")
+    p.add_argument("ticker", help="Ticker symbol")
+    p.add_argument("--depth", type=int, default=2)
+
+    p = graph_sub.add_parser("peers", help="Find sector peers")
+    p.add_argument("ticker", help="Ticker symbol")
+
+    p = graph_sub.add_parser("risks", help="Find known risks")
+    p.add_argument("ticker", help="Ticker symbol")
+
+    p = graph_sub.add_parser("biases", help="Show bias history")
+    p.add_argument("--name", help="Filter by bias name")
+
+    p = graph_sub.add_parser("query", help="Raw Cypher query")
+    p.add_argument("cypher", help="Cypher query string")
+
+    graph_sub.add_parser("dedupe", help="Merge duplicate entities")
+    graph_sub.add_parser("validate", help="Check constraint violations")
+
+    p = graph_sub.add_parser("retry", help="Retry pending commits")
+    p.add_argument("--limit", type=int, default=10, help="Max items to retry")
+
+    # ─── RAG Commands ─────────────────────────────────────────────────────────────
+    rag_parser = sub.add_parser("rag", help="RAG/embedding commands")
+    rag_sub = rag_parser.add_subparsers(dest="rag_cmd")
+
+    rag_sub.add_parser("init", help="Initialize pgvector schema")
+    rag_sub.add_parser("reset", help="Drop and recreate tables (dev only)")
+
+    p = rag_sub.add_parser("embed", help="Embed document")
+    p.add_argument("file", nargs="?", help="File to embed")
+    p.add_argument("--dir", help="Directory to embed")
+    p.add_argument("--force", action="store_true", help="Re-embed even if unchanged")
+
+    p = rag_sub.add_parser("reembed", help="Re-embed documents")
+    p.add_argument("--all", action="store_true")
+    p.add_argument("--version", type=str, help="Embed version")
+
+    p = rag_sub.add_parser("search", help="Semantic search")
+    p.add_argument("query", help="Search query")
+    p.add_argument("--ticker", help="Filter by ticker")
+    p.add_argument("--type", dest="doc_type", help="Filter by doc type")
+    p.add_argument("--section", help="Filter by section")
+    p.add_argument("--since", type=str, help="Date filter (YYYY-MM-DD)")
+    p.add_argument("--top", type=int, default=5)
+    p.add_argument("--min-sim", type=float, default=0.3, help="Min similarity")
+
+    p = rag_sub.add_parser("hybrid-search", help="Hybrid BM25 + vector search")
+    p.add_argument("query", help="Search query")
+    p.add_argument("--ticker", help="Filter by ticker")
+    p.add_argument("--type", dest="doc_type", help="Filter by doc type")
+    p.add_argument("--section", help="Filter by section")
+    p.add_argument("--since", type=str, help="Date filter (YYYY-MM-DD)")
+    p.add_argument("--top", type=int, default=5)
+    p.add_argument("--vector-weight", type=float, default=0.7, help="Vector weight (default 0.7)")
+    p.add_argument("--bm25-weight", type=float, default=0.3, help="BM25 weight (default 0.3)")
+
+    p = rag_sub.add_parser("migrate", help="Run schema migrations")
+
+    rag_sub.add_parser("status", help="Show embedding statistics")
+    rag_sub.add_parser("list", help="List embedded documents")
+
+    p = rag_sub.add_parser("show", help="Show document chunks")
+    p.add_argument("doc_id", help="Document ID")
+
+    p = rag_sub.add_parser("delete", help="Delete document")
+    p.add_argument("doc_id", help="Document ID")
+
+    rag_sub.add_parser("validate", help="Check for orphaned chunks")
 
     args = parser.parse_args()
 
@@ -926,6 +1523,9 @@ def main():
 
         elif args.cmd == "status":
             show_status(db)
+
+        elif args.cmd == "health":
+            _check_all_health()
 
         elif args.cmd == "stock":
             if args.action == "list":
@@ -975,6 +1575,15 @@ def main():
                 db.set_setting(args.key, parsed_val)
                 print(f"✅ {args.key} = {parsed_val}")
                 print("  (takes effect on next service tick)")
+
+        # ─── Graph Commands ───────────────────────────────────────────────────────────
+        elif args.cmd == "graph":
+            _handle_graph_command(args)
+
+        # ─── RAG Commands ─────────────────────────────────────────────────────────────
+        elif args.cmd == "rag":
+            _handle_rag_command(args)
+
         else:
             parser.print_help()
 

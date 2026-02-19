@@ -1,0 +1,124 @@
+# Fields to extract entities from, by document type
+# Each field path supports dot notation for nested keys
+
+earnings-analysis:
+  extract_fields:
+    - "phase1_preparation.key_questions"
+    - "phase2_fundamentals.customer_demand.customers[].key_quote"
+    - "phase2_fundamentals.competitive_context.vs_competitors"
+    - "phase2_fundamentals.competitive_context.market_position"
+    - "phase2_fundamentals.business_performance.guidance_summary"
+    - "phase3_technicals.support_resistance"
+    - "phase4_trade_structure.thesis.detailed"
+    - "phase5_risk_management.risks[].risk"
+    - "steel_man.bear_case"
+    - "steel_man.bull_case"
+    - "recent_developments[].event"
+  skip_fields:
+    - "_meta"
+    - "_graph"
+    - "_links"
+    - "ticker"
+    - "earnings_date"
+
+stock-analysis:
+  extract_fields:
+    - "thesis.detailed"
+    - "thesis.edge"
+    - "catalysts[].description"
+    - "catalysts[].expected_impact"
+    - "what_is_priced_in.bull_case"
+    - "what_is_priced_in.bear_case"
+    - "bias_checks[].analysis"
+    - "decision_rationale"
+    - "risks[].risk"
+    - "risks[].mitigation"
+  skip_fields:
+    - "_meta"
+    - "_graph"
+    - "_links"
+    - "ticker"
+
+trade-journal:
+  extract_fields:
+    - "thesis.summary"
+    - "thesis.edge"
+    - "thesis.catalyst"
+    - "execution.entry_rationale"
+    - "execution.exit_rationale"
+    - "review.what_worked[]"
+    - "review.what_failed[]"
+    - "review.lessons[]"
+    - "review.biases_detected[].bias"
+    - "review.biases_detected[].impact"
+  skip_fields:
+    - "_meta"
+    - "_graph"
+    - "_links"
+
+post-trade-review:
+  extract_fields:
+    - "analysis.outcome_vs_thesis"
+    - "analysis.execution_quality"
+    - "lessons[].lesson"
+    - "lessons[].category"
+    - "framework_updates[].update"
+    - "bias_review[].bias"
+    - "bias_review[].manifestation"
+  skip_fields:
+    - "_meta"
+    - "_graph"
+    - "_links"
+
+research-analysis:
+  extract_fields:
+    - "key_finding"
+    - "thesis"
+    - "data_points[].quote"
+    - "data_points[].implication"
+    - "risks[].risk"
+    - "risks[].mitigation"
+    - "implications[].implication"
+  skip_fields:
+    - "_meta"
+    - "_graph"
+    - "_links"
+
+strategy:
+  extract_fields:
+    - "overview.description"
+    - "edge_source"
+    - "entry_rules[].rule"
+    - "exit_rules[].rule"
+    - "known_weaknesses[].weakness"
+    - "known_weaknesses[].countermeasure"
+  skip_fields:
+    - "_meta"
+    - "_graph"
+    - "_links"
+
+learning:
+  extract_fields:
+    - "pattern.description"
+    - "pattern.behavior"
+    - "root_cause.analysis"
+    - "countermeasure.rule"
+    - "evidence.observations[]"
+  skip_fields:
+    - "_meta"
+    - "_graph"
+    - "_links"
+
+ticker-profile:
+  extract_fields:
+    - "company.description"
+    - "company.business_model"
+    - "what_works[]"
+    - "what_to_avoid[]"
+    - "watch_out_for[].risk"
+    - "trading_patterns.tendencies"
+    - "notes[].note"
+  skip_fields:
+    - "_meta"
+    - "_graph"
+    - "_links"

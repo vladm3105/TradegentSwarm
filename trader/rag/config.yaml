@@ -1,0 +1,35 @@
+rag_version: "1.0.0"
+embed_dims: 768
+
+database:
+  url: "postgresql://lightrag:lightrag@localhost:5433/lightrag"
+  schema: "nexus"
+
+embedding:
+  default_provider: ollama
+  fallback_chain:
+    - ollama           # Try local first ($0)
+    - openrouter       # Fallback to cloud
+  timeout_seconds: 30
+  dimensions: 768      # All providers must match
+
+  ollama:
+    base_url: "http://localhost:11434"
+    model: "nomic-embed-text"
+
+  openrouter:
+    api_key: "${OPENROUTER_API_KEY}"
+    model: "openai/text-embedding-3-small"
+    dimensions: 768    # Request truncated output
+
+  openai:
+    api_key: "${OPENAI_API_KEY}"
+    model: "text-embedding-3-small"
+    dimensions: 768
+
+chunking:
+  max_tokens: 1500
+  min_tokens: 50       # Skip very short sections
+
+logging:
+  embed_log: "logs/rag_embed.jsonl"

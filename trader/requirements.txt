@@ -1,2 +1,31 @@
+# Core dependencies
 psycopg[binary]>=3.1
 requests>=2.31
+
+# Knowledge Graph
+neo4j>=5.15.0                    # Neo4j Python driver
+
+# LLM/Embedding
+litellm>=1.40.0                  # Unified LLM/embedding API
+
+# API servers (optional, for MCP servers)
+fastapi>=0.109.0                 # Webhook APIs
+uvicorn>=0.27.0                  # ASGI server
+
+# Token estimation
+tiktoken>=0.5.2                  # Token estimation
+
+# YAML parsing
+pyyaml>=6.0.1                    # YAML parsing
+
+# Rate limiting & resilience
+ratelimit>=2.2.1                 # Rate limiting decorator
+tenacity>=8.2.3                  # Retry with backoff
+
+# MCP SDK
+mcp>=1.0.0                       # MCP server SDK
+
+# Deferred to IPLAN-002 (Phase 9+):
+# sentence-transformers>=2.3.1   # Cross-encoder reranking (~2GB PyTorch)
+# redis>=5.0.1                   # Distributed caching
+# numpy>=1.26.3                  # Graph analytics
