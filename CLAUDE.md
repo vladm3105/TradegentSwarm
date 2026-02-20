@@ -280,6 +280,35 @@ python -m ibmcp --transport sse --port 8100
 
 Server URL: `http://localhost:8100/sse`
 
+### Architecture: IB Gateway as Proxy
+
+```
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐     ┌──────────────────┐
+│  Claude Code    │────▶│   IB MCP Server  │────▶│   IB Gateway    │────▶│  IB Servers      │
+│  (orchestrator) │ SSE │  (localhost:8100)│ API │  (localhost:4002)│ TLS │  (interactivebrokers.com)
+└─────────────────┘     └──────────────────┘     └─────────────────┘     └──────────────────┘
+```
+
+**IB Gateway Docker container** (`nexus-ib-gateway`) acts as a proxy:
+
+1. **Runs headless** in Docker with VNC access (port 5900) for initial login/2FA
+2. **Maintains persistent connection** to Interactive Brokers servers
+3. **Exposes local API** on ports 4001 (live) / 4002 (paper)
+4. **Handles authentication** - stores credentials, manages session renewal
+5. **Rate limiting** - IB enforces 50 requests/second; Gateway handles throttling
+
+**Connection flow:**
+- IB MCP Server connects to IB Gateway via TCP (port 4002)
+- IB Gateway proxies requests to IB servers over TLS
+- Market data, account info, and orders flow through this chain
+
+**VNC Access** (for 2FA or troubleshooting):
+```bash
+# Connect to IB Gateway UI
+vncviewer localhost:5900
+# Password: nexus123 (from VNC_PASS in .env)
+```
+
 ### Available Tools (22 total)
 
 **Market Data**:
