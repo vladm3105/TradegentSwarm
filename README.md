@@ -4,46 +4,52 @@
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           TRADEGENTSWARM                                │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│   tradegent/                 trading/                                   │
-│   ┌──────────────────┐       ┌──────────────────────────────────────┐  │
-│   │  Tradegent        │       │  skills/     (how-to guides)        │  │
-│   │  Platform         │──────▶│  knowledge/  (data & docs)          │  │
-│   │                   │       │  workflows/  (CI/CD & schemas)      │  │
-│   │  • service.py     │       └──────────────────────────────────────┘  │
-│   │  • orchestrator.py│                      │                         │
-│   │  • db_layer.py    │                      ▼                         │
-│   │  • rag/           │              ┌──────────────┐                  │
-│   │  • graph/         │              │  Knowledge   │                  │
-│   └────────┬─────────┘              │  Base (RAG+  │                  │
-│            │                        │  Graph)      │                  │
-│            ▼                        └──────────────┘                   │
-│   ┌─────────────────────────────────────────────┐                      │
-│   │  Docker: PostgreSQL (pgvector) │ Neo4j       │                      │
-│   └─────────────────────────────────────────────┘                      │
-│            │                                                            │
-│            ▼                                                            │
-│   ┌──────────────────────────────────────────┐                         │
-│   │  MCP Servers (Host)                       │                         │
-│   │  • trading-rag   (rag/mcp_server.py)     │                         │
-│   │  • trading-graph (graph/mcp_server.py)   │                         │
-│   │  • IB MCP        :8002/sse               │                         │
-│   │  • Browser MCP   :8003                   │                         │
-│   └───────────────────────────────────────────┘                        │
-│                               │                                         │
-│                               ▼                                         │
-│   ┌──────────────────────────────────────────┐                         │
-│   │  IB Gateway Docker :4002 (socat proxy)   │                         │
-│   │  ├── IBC (automated login)               │                         │
-│   │  ├── Xvfb + VNC :5901                    │                         │
-│   │  └── Paper Trading Account               │                         │
-│   └──────────────────────────────────────────┘                         │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph TRADEGENTSWARM["TRADEGENTSWARM"]
+        direction TB
+
+        subgraph Platform["tradegent/"]
+            service["service.py"]
+            orchestrator["orchestrator.py"]
+            db_layer["db_layer.py"]
+            rag_mod["rag/"]
+            graph_mod["graph/"]
+        end
+
+        subgraph Trading["trading/"]
+            skills["skills/<br/>(how-to guides)"]
+            knowledge["knowledge/<br/>(data & docs)"]
+            workflows["workflows/<br/>(CI/CD & schemas)"]
+        end
+
+        Platform -->|"reads/writes"| Trading
+        Trading --> KB["Knowledge Base<br/>(RAG + Graph)"]
+
+        subgraph Docker["Docker Services"]
+            postgres["PostgreSQL<br/>(pgvector)"]
+            neo4j["Neo4j"]
+        end
+
+        Platform --> Docker
+
+        subgraph MCP["MCP Servers (Host)"]
+            rag_mcp["trading-rag<br/>rag/mcp_server.py"]
+            graph_mcp["trading-graph<br/>graph/mcp_server.py"]
+            ib_mcp["IB MCP<br/>:8002/sse"]
+            browser_mcp["Browser MCP<br/>:8003"]
+        end
+
+        Docker --> MCP
+
+        subgraph IBGateway["IB Gateway Docker :4002"]
+            ibc["IBC (automated login)"]
+            vnc["Xvfb + VNC :5901"]
+            paper["Paper Trading Account"]
+        end
+
+        MCP --> IBGateway
+    end
 ```
 
 ## Repository Structure
