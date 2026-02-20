@@ -8,8 +8,16 @@ import requests
 import yaml
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 # Add trader to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "trader"))
+trader_path = Path(__file__).parent.parent / "trader"
+sys.path.insert(0, str(trader_path))
+
+# Load .env BEFORE importing RAG modules
+rag_env = trader_path / "rag" / ".env"
+if rag_env.exists():
+    load_dotenv(rag_env)
 
 from rag.embed import embed_text
 from rag.search import semantic_search
