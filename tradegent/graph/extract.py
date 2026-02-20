@@ -7,31 +7,30 @@ import os
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 import requests
 import yaml
 from ratelimit import limits, sleep_and_retry
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 try:
     from trader.utils import is_real_document
 except ImportError:
     from utils import is_real_document
 try:
-    from trader.validation import validate_document, get_schema_for_path
+    from trader.validation import get_schema_for_path, validate_document
 except ImportError:
     try:
-        from validation import validate_document, get_schema_for_path
+        from validation import get_schema_for_path, validate_document
     except ImportError:
         validate_document = None
         get_schema_for_path = None
 from . import EXTRACT_VERSION
-from .models import EntityExtraction, RelationExtraction, ExtractionResult
-from .prompts import ENTITY_EXTRACTION_PROMPT, RELATION_EXTRACTION_PROMPT
-from .normalize import normalize_entity, dedupe_entities
-from .layer import TradingGraph
 from .exceptions import ExtractionError, GraphUnavailableError
+from .layer import TradingGraph
+from .models import EntityExtraction, ExtractionResult, RelationExtraction
+from .normalize import dedupe_entities, normalize_entity
+from .prompts import ENTITY_EXTRACTION_PROMPT, RELATION_EXTRACTION_PROMPT
 
 log = logging.getLogger(__name__)
 
@@ -40,26 +39,31 @@ _config_path = Path(__file__).parent / "config.yaml"
 _config: dict = {}
 _field_mappings: dict = {}
 
+
 def _expand_env_vars(content: str) -> str:
     """Expand ${VAR} and ${VAR:-default} patterns in config."""
     import re
+
     # Match ${VAR:-default} or ${VAR}
-    pattern = r'\$\{([A-Z_][A-Z0-9_]*)(?::-([^}]*))?\}'
+    pattern = r"\$\{([A-Z_][A-Z0-9_]*)(?::-([^}]*))?\}"
+
     def replacer(match):
         var_name = match.group(1)
         default = match.group(2) if match.group(2) is not None else ""
         return os.getenv(var_name, default)
+
     return re.sub(pattern, replacer, content)
 
+
 if _config_path.exists():
-    with open(_config_path, "r") as f:
+    with open(_config_path) as f:
         config_content = f.read()
         config_content = _expand_env_vars(config_content)
         _config = yaml.safe_load(config_content)
 
 _field_mappings_path = Path(__file__).parent / "field_mappings.yaml"
 if _field_mappings_path.exists():
-    with open(_field_mappings_path, "r") as f:
+    with open(_field_mappings_path) as f:
         _field_mappings = yaml.safe_load(f)
 
 
@@ -100,7 +104,7 @@ def extract_document(
         raise ExtractionError(f"File not found: {file_path}")
 
     # Parse YAML
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         doc = yaml.safe_load(f)
 
     if not doc:
@@ -110,7 +114,9 @@ def extract_document(
     if validate_document is not None:
         validation_result = validate_document(file_path)
         if not validation_result.valid:
-            log.warning(f"Schema validation failed for {file_path}: {validation_result.error_summary}")
+            log.warning(
+                f"Schema validation failed for {file_path}: {validation_result.error_summary}"
+            )
         elif validation_result.warnings:
             log.debug(f"Validation warnings for {file_path}: {validation_result.warnings}")
 
@@ -177,9 +183,7 @@ def extract_document(
     # Pass 2: Relationship extraction
     if result.entities:
         full_text = _flatten_doc_for_relations(doc, skip_fields)
-        relations = _extract_relations_from_entities(
-            result.entities, full_text, extractor, timeout
-        )
+        relations = _extract_relations_from_entities(result.entities, full_text, extractor, timeout)
         result.relations = relations
 
     # Apply confidence thresholds
@@ -270,7 +274,7 @@ def _get_field_value(doc: dict, field_path: str) -> str | None:
             values = []
             for item in current:
                 if isinstance(item, dict):
-                    remaining = ".".join(parts[parts.index(part) + 1:])
+                    remaining = ".".join(parts[parts.index(part) + 1 :])
                     if remaining:
                         val = _get_field_value(item, remaining)
                         if val:
@@ -295,6 +299,7 @@ def _get_field_value(doc: dict, field_path: str) -> str | None:
 
 def _flatten_doc_for_relations(doc: dict, skip_fields: list[str]) -> str:
     """Flatten document to text for relationship extraction."""
+
     def flatten(obj, prefix=""):
         lines = []
         if isinstance(obj, dict):
@@ -357,7 +362,9 @@ def _get_generation_options() -> dict:
 @limits(calls=45, period=1)  # Ollama rate limit: 45 req/sec
 def _call_ollama_rate_limited(prompt: str, model: str, timeout: int) -> str:
     """Rate-limited Ollama API call."""
-    base_url = _config.get("extraction", {}).get("ollama", {}).get("base_url", "http://localhost:11434")
+    base_url = (
+        _config.get("extraction", {}).get("ollama", {}).get("base_url", "http://localhost:11434")
+    )
     gen_options = _get_generation_options()
 
     payload = {"model": model, "prompt": prompt, "stream": False}
@@ -398,14 +405,11 @@ def _extract_relations_from_entities(
     timeout: int,
 ) -> list[RelationExtraction]:
     """Pass 2: Extract relationships given discovered entities."""
-    entities_json = json.dumps([
-        {"type": e.type, "value": e.value}
-        for e in entities
-    ])
+    entities_json = json.dumps([{"type": e.type, "value": e.value} for e in entities])
 
     prompt = RELATION_EXTRACTION_PROMPT.format(
         entities_json=entities_json,
-        text=full_text[:4000]  # Limit text length
+        text=full_text[:4000],  # Limit text length
     )
 
     if extractor == "ollama":
@@ -422,23 +426,25 @@ def _extract_relations_from_entities(
         from_data = r.get("from", {})
         to_data = r.get("to", {})
 
-        relations.append(RelationExtraction(
-            from_entity=EntityExtraction(
-                type=from_data.get("type", ""),
-                value=from_data.get("value", ""),
+        relations.append(
+            RelationExtraction(
+                from_entity=EntityExtraction(
+                    type=from_data.get("type", ""),
+                    value=from_data.get("value", ""),
+                    confidence=r.get("confidence", 0.5),
+                    evidence="",
+                ),
+                relation=r.get("relation", ""),
+                to_entity=EntityExtraction(
+                    type=to_data.get("type", ""),
+                    value=to_data.get("value", ""),
+                    confidence=r.get("confidence", 0.5),
+                    evidence="",
+                ),
                 confidence=r.get("confidence", 0.5),
-                evidence="",
-            ),
-            relation=r.get("relation", ""),
-            to_entity=EntityExtraction(
-                type=to_data.get("type", ""),
-                value=to_data.get("value", ""),
-                confidence=r.get("confidence", 0.5),
-                evidence="",
-            ),
-            confidence=r.get("confidence", 0.5),
-            evidence=r.get("evidence", ""),
-        ))
+                evidence=r.get("evidence", ""),
+            )
+        )
 
     return relations
 
@@ -451,7 +457,11 @@ def _call_cloud_llm(prompt: str, extractor: str, timeout: int) -> str:
 
     if extractor == "claude-api":
         api_key = os.getenv("ANTHROPIC_API_KEY", "")
-        model = _config.get("extraction", {}).get("claude_api", {}).get("model", "claude-sonnet-4-20250514")
+        model = (
+            _config.get("extraction", {})
+            .get("claude_api", {})
+            .get("model", "claude-sonnet-4-20250514")
+        )
         response = requests.post(
             "https://api.anthropic.com/v1/messages",
             headers={
@@ -472,7 +482,11 @@ def _call_cloud_llm(prompt: str, extractor: str, timeout: int) -> str:
 
     elif extractor == "openrouter":
         api_key = os.getenv("OPENROUTER_API_KEY", "")
-        model = _config.get("extraction", {}).get("openrouter", {}).get("model", "anthropic/claude-3-5-sonnet")
+        model = (
+            _config.get("extraction", {})
+            .get("openrouter", {})
+            .get("model", "anthropic/claude-3-5-sonnet")
+        )
         response = requests.post(
             "https://openrouter.ai/api/v1/chat/completions",
             headers={
@@ -528,7 +542,7 @@ def _parse_json_response(response: str) -> list[dict]:
             response = response.strip()
 
     # Try to find JSON array
-    match = re.search(r'\[.*\]', response, re.DOTALL)
+    match = re.search(r"\[.*\]", response, re.DOTALL)
     if match:
         response = match.group()
 
@@ -581,13 +595,17 @@ def _commit_to_graph(result: ExtractionResult) -> None:
     """Commit extraction result to Neo4j."""
     with TradingGraph() as graph:
         # Create document node
-        graph.merge_node("Document", "id", {
-            "id": result.source_doc_id,
-            "file_path": result.source_file_path,
-            "doc_type": result.source_doc_type,
-            "extraction_version": result.extraction_version,
-            "extracted_at": result.extracted_at.isoformat(),
-        })
+        graph.merge_node(
+            "Document",
+            "id",
+            {
+                "id": result.source_doc_id,
+                "file_path": result.source_file_path,
+                "doc_type": result.source_doc_type,
+                "extraction_version": result.extraction_version,
+                "extracted_at": result.extracted_at.isoformat(),
+            },
+        )
 
         # Create entity nodes
         for entity in result.entities:
@@ -638,28 +656,40 @@ def _queue_pending_commit(result: ExtractionResult) -> None:
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(log_path, "a") as f:
-        f.write(json.dumps({
-            "ts": datetime.utcnow().isoformat(),
-            "doc": result.source_doc_id,
-            "file_path": result.source_file_path,
-            "reason": result.error_message or "unknown",
-            "retry_count": 0,
-        }) + "\n")
+        f.write(
+            json.dumps(
+                {
+                    "ts": datetime.utcnow().isoformat(),
+                    "doc": result.source_doc_id,
+                    "file_path": result.source_file_path,
+                    "reason": result.error_message or "unknown",
+                    "retry_count": 0,
+                }
+            )
+            + "\n"
+        )
 
 
 def _log_extraction(result: ExtractionResult) -> None:
     """Log extraction result to JSONL file."""
-    log_path = Path(_config.get("logging", {}).get("extraction_log", "logs/graph_extractions.jsonl"))
+    log_path = Path(
+        _config.get("logging", {}).get("extraction_log", "logs/graph_extractions.jsonl")
+    )
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(log_path, "a") as f:
-        f.write(json.dumps({
-            "ts": datetime.utcnow().isoformat(),
-            "doc": result.source_doc_id,
-            "doc_type": result.source_doc_type,
-            "extractor": result.extractor,
-            "entities": len(result.entities),
-            "relations": len(result.relations),
-            "committed": result.committed,
-            "error": result.error_message,
-        }) + "\n")
+        f.write(
+            json.dumps(
+                {
+                    "ts": datetime.utcnow().isoformat(),
+                    "doc": result.source_doc_id,
+                    "doc_type": result.source_doc_type,
+                    "extractor": result.extractor,
+                    "entities": len(result.entities),
+                    "relations": len(result.relations),
+                    "committed": result.committed,
+                    "error": result.error_message,
+                }
+            )
+            + "\n"
+        )

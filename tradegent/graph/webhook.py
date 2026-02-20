@@ -1,14 +1,13 @@
 """FastAPI HTTP endpoints for graph operations."""
 
 import logging
-from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from .layer import TradingGraph
+from .exceptions import ExtractionError, GraphUnavailableError
 from .extract import extract_document, extract_text
-from .exceptions import GraphUnavailableError, ExtractionError
+from .layer import TradingGraph
 
 log = logging.getLogger(__name__)
 
@@ -16,6 +15,7 @@ app = FastAPI(title="Trading Graph API", version="1.0.0")
 
 
 # --- Request Models ---
+
 
 class ExtractRequest(BaseModel):
     file_path: str
@@ -37,6 +37,7 @@ class QueryRequest(BaseModel):
 
 
 # --- Endpoints ---
+
 
 @app.post("/api/graph/extract")
 async def api_extract_document(req: ExtractRequest) -> dict:
@@ -179,7 +180,4 @@ async def api_readiness_check() -> dict:
                 "edge_count": stats.total_edges,
             }
     except Exception as e:
-        raise HTTPException(
-            status_code=503,
-            detail={"status": "not_ready", "error": str(e)}
-        )
+        raise HTTPException(status_code=503, detail={"status": "not_ready", "error": str(e)})

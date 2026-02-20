@@ -1,12 +1,11 @@
 """Shared test fixtures for orchestrator and db_layer tests."""
 
-import os
-import pytest
 from unittest.mock import MagicMock, patch
-from pathlib import Path
 
+import pytest
 
 # ─── Environment Setup ───────────────────────────────────────────────────────
+
 
 @pytest.fixture(autouse=True)
 def mock_env(monkeypatch):
@@ -22,6 +21,7 @@ def mock_env(monkeypatch):
 
 
 # ─── Database Fixtures ───────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def mock_db_connection():
@@ -40,12 +40,14 @@ def mock_nexus_db(mock_db_connection):
 
     with patch("tradegent.db_layer.psycopg.connect", return_value=mock_conn):
         from tradegent.db_layer import NexusDB
+
         db = NexusDB()
         db._conn = mock_conn
         yield db
 
 
 # ─── Settings Fixtures ───────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def mock_settings():
@@ -62,6 +64,7 @@ def mock_settings():
 
 
 # ─── Stock Fixtures ──────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def sample_stock():
@@ -104,6 +107,7 @@ def sample_stocks_list(sample_stock):
 
 # ─── Schedule Fixtures ───────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def sample_schedule():
     """Sample schedule data structure."""
@@ -124,6 +128,7 @@ def sample_schedule():
 
 # ─── Analysis Fixtures ───────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def sample_analysis_result():
     """Sample analysis result structure."""
@@ -142,6 +147,7 @@ def sample_analysis_result():
 
 
 # ─── Path Fixtures ───────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def tmp_analyses_dir(tmp_path):

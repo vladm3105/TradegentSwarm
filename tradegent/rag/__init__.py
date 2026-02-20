@@ -3,18 +3,18 @@
 RAG_VERSION = "1.0.0"
 EMBED_DIMS = 768
 
+from .exceptions import (
+    ChunkingError,
+    EmbeddingUnavailableError,
+    EmbedError,
+    RAGError,
+    RAGUnavailableError,
+)
 from .models import (
     ChunkResult,
     EmbedResult,
-    SearchResult,
     HybridContext,
-)
-from .exceptions import (
-    RAGError,
-    RAGUnavailableError,
-    EmbeddingUnavailableError,
-    ChunkingError,
-    EmbedError,
+    SearchResult,
 )
 
 __all__ = [

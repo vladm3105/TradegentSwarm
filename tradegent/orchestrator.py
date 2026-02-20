@@ -19,19 +19,19 @@ Usage:
     python orchestrator.py db-init                            # initialize database schema
 """
 
-import subprocess
-import sys
 import json
-import re
 import logging
 import os
-from datetime import datetime, timedelta
-from pathlib import Path
+import re
+import subprocess
+import sys
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
+from pathlib import Path
 from typing import Any, Optional
 
-from db_layer import NexusDB, Stock, IBScanner, Schedule
+from db_layer import IBScanner, NexusDB, Schedule, Stock
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 
@@ -60,7 +60,7 @@ class Settings:
 
     def __init__(self, db: Optional["NexusDB"] = None):
         self._cache: dict = {}
-        self._last_refresh: Optional[datetime] = None
+        self._last_refresh: datetime | None = None
         self._db = db
         if db:
             self.refresh()
@@ -76,7 +76,7 @@ class Settings:
         except Exception as e:
             log.warning(f"Settings refresh failed (using cached): {e}")
 
-    def _get(self, key: str, env_key: Optional[str] = None, default: Any = None) -> Any:
+    def _get(self, key: str, env_key: str | None = None, default: Any = None) -> Any:
         """Get setting: DB cache → env var → default."""
         # DB cache first
         if key in self._cache:
@@ -86,101 +86,107 @@ class Settings:
             return os.getenv(env_key)
         return default
 
-    def _get_bool(self, key: str, env_key: Optional[str] = None, default: bool = False) -> bool:
+    def _get_bool(self, key: str, env_key: str | None = None, default: bool = False) -> bool:
         """Get a boolean setting with safe coercion (handles string 'false')."""
         val = self._get(key, env_key, default)
         if isinstance(val, bool):
             return val
         if isinstance(val, str):
-            return val.lower() in ('true', '1', 'yes')
+            return val.lower() in ("true", "1", "yes")
         return bool(val)
 
     # ─── Accessors ───────────────────────────────────────────────────
 
     @property
     def claude_cmd(self) -> str:
-        return self._get('claude_cmd', 'CLAUDE_CMD', 'claude')
+        return self._get("claude_cmd", "CLAUDE_CMD", "claude")
 
     @property
     def claude_timeout(self) -> int:
-        return int(self._get('claude_timeout_seconds', 'CLAUDE_TIMEOUT', 600))
+        return int(self._get("claude_timeout_seconds", "CLAUDE_TIMEOUT", 600))
 
     @property
     def allowed_tools_analysis(self) -> str:
-        return self._get('allowed_tools_analysis', None,
-                         'mcp__ib-mcp__*,WebSearch,mcp__brave-search__*,mcp__trading-rag__*,mcp__trading-graph__*')
+        return self._get(
+            "allowed_tools_analysis",
+            None,
+            "mcp__ib-mcp__*,WebSearch,mcp__brave-search__*,mcp__trading-rag__*,mcp__trading-graph__*",
+        )
 
     @property
     def allowed_tools_execution(self) -> str:
-        return self._get('allowed_tools_execution', None,
-                         'mcp__ib-mcp__*,mcp__trading-rag__*,mcp__trading-graph__*')
+        return self._get(
+            "allowed_tools_execution",
+            None,
+            "mcp__ib-mcp__*,mcp__trading-rag__*,mcp__trading-graph__*",
+        )
 
     @property
     def allowed_tools_scanner(self) -> str:
-        return self._get('allowed_tools_scanner', None, 'mcp__ib-mcp__*')
+        return self._get("allowed_tools_scanner", None, "mcp__ib-mcp__*")
 
     @property
     def ib_account(self) -> str:
-        return self._get('ib_account', 'IB_ACCOUNT', 'DU_PAPER')
+        return self._get("ib_account", "IB_ACCOUNT", "DU_PAPER")
 
     @property
     def kb_ingest_enabled(self) -> bool:
         """Enable ingestion to RAG (pgvector) and Graph (Neo4j) after analysis."""
-        return self._get_bool('kb_ingest_enabled', None, True)
+        return self._get_bool("kb_ingest_enabled", None, True)
 
     @property
     def max_daily_analyses(self) -> int:
-        return int(self._get('max_daily_analyses', 'MAX_DAILY_ANALYSES', 15))
+        return int(self._get("max_daily_analyses", "MAX_DAILY_ANALYSES", 15))
 
     @property
     def max_daily_executions(self) -> int:
-        return int(self._get('max_daily_executions', 'MAX_DAILY_EXECUTIONS', 5))
+        return int(self._get("max_daily_executions", "MAX_DAILY_EXECUTIONS", 5))
 
     @property
     def max_concurrent_runs(self) -> int:
-        return int(self._get('max_concurrent_runs', None, 2))
+        return int(self._get("max_concurrent_runs", None, 2))
 
     @property
     def auto_execute_enabled(self) -> bool:
-        return self._get_bool('auto_execute_enabled', None, False)
+        return self._get_bool("auto_execute_enabled", None, False)
 
     @property
     def scanners_enabled(self) -> bool:
-        return self._get_bool('scanners_enabled', None, True)
+        return self._get_bool("scanners_enabled", None, True)
 
     @property
     def kb_query_enabled(self) -> bool:
         """Enable RAG+Graph context injection during analysis."""
-        return self._get_bool('kb_query_enabled', None, True)
+        return self._get_bool("kb_query_enabled", None, True)
 
     @property
     def dry_run_mode(self) -> bool:
-        return self._get_bool('dry_run_mode', None, True)
+        return self._get_bool("dry_run_mode", None, True)
 
     @property
     def scheduler_poll_seconds(self) -> int:
-        return int(self._get('scheduler_poll_seconds', None, 60))
+        return int(self._get("scheduler_poll_seconds", None, 60))
 
     @property
     def earnings_check_hours(self) -> list[int]:
-        val = self._get('earnings_check_hours', None, [6, 7])
+        val = self._get("earnings_check_hours", None, [6, 7])
         return val if isinstance(val, list) else [6, 7]
 
     @property
     def earnings_lookback_days(self) -> int:
-        return int(self._get('earnings_lookback_days', None, 21))
+        return int(self._get("earnings_lookback_days", None, 21))
 
     @property
     def analyses_dir(self) -> Path:
-        return BASE_DIR / self._get('analyses_dir', None, 'analyses')
+        return BASE_DIR / self._get("analyses_dir", None, "analyses")
 
     @property
     def trades_dir(self) -> Path:
-        return BASE_DIR / self._get('trades_dir', None, 'trades')
+        return BASE_DIR / self._get("trades_dir", None, "trades")
 
     @property
     def logs_dir(self) -> Path:
-        return BASE_DIR / self._get('logs_dir', None, 'logs')
+        return BASE_DIR / self._get("logs_dir", None, "logs")
 
 
 # Module-level default (overridden when DB is available)
@@ -188,6 +194,7 @@ cfg = Settings()
 
 
 # ─── Data Models ─────────────────────────────────────────────────────────────
+
 
 class AnalysisType(Enum):
     EARNINGS = "earnings"
@@ -207,39 +214,40 @@ class AnalysisResult:
     confidence: int
     expected_value: float
     raw_output: str
-    parsed_json: Optional[dict] = None
+    parsed_json: dict | None = None
 
 
 @dataclass
 class ExecutionResult:
     analysis_path: Path
     order_placed: bool
-    order_details: Optional[dict] = None
+    order_details: dict | None = None
     reason: str = ""
-    filepath: Optional[Path] = None
+    filepath: Path | None = None
     raw_output: str = ""
 
 
 # ─── Prompt Builders ─────────────────────────────────────────────────────────
 
-def build_analysis_prompt(ticker: str, analysis_type: AnalysisType,
-                          stock: Optional[Stock] = None,
-                          kb_enabled: bool = True) -> str:
+
+def build_analysis_prompt(
+    ticker: str, analysis_type: AnalysisType, stock: Stock | None = None, kb_enabled: bool = True
+) -> str:
     """Build Stage 1 prompt, enriched with stock metadata from DB and KB context."""
 
     stock_ctx = ""
     if stock:
         stock_ctx = f"""
 STOCK CONTEXT (from database):
-- Ticker: {stock.ticker} ({stock.name or 'N/A'})
-- Sector: {stock.sector or 'N/A'}
+- Ticker: {stock.ticker} ({stock.name or "N/A"})
+- Sector: {stock.sector or "N/A"}
 - State: {stock.state} | Priority: {stock.priority}/10
-- Earnings: {stock.next_earnings_date or 'Unknown'} ({'confirmed' if stock.earnings_confirmed else 'unconfirmed'})
-- Beat History: {stock.beat_history or 'Unknown'}
-- Open Position: {stock.has_open_position} ({stock.position_state or 'none'})
+- Earnings: {stock.next_earnings_date or "Unknown"} ({"confirmed" if stock.earnings_confirmed else "unconfirmed"})
+- Beat History: {stock.beat_history or "Unknown"}
+- Open Position: {stock.has_open_position} ({stock.position_state or "none"})
 - Max Position Size: {stock.max_position_pct}%
-- Tags: {', '.join(stock.tags) if stock.tags else 'none'}
-- Notes: {stock.comments or 'none'}
+- Tags: {", ".join(stock.tags) if stock.tags else "none"}
+- Notes: {stock.comments or "none"}
 """
 
     json_block = """
@@ -340,7 +348,7 @@ End with JSON:
 """
 
     elif analysis_type == AnalysisType.REVIEW:
-        return f"""You are a systematic portfolio manager performing a comprehensive review.
+        return """You are a systematic portfolio manager performing a comprehensive review.
 
 DATA GATHERING:
 1. Via IB MCP: Get all current positions, P&L, and account summary
@@ -385,23 +393,24 @@ End with JSON:
 """
 
 
-def build_execution_prompt(analysis_path: Path, analysis_content: str,
-                           stock: Optional[Stock] = None) -> str:
+def build_execution_prompt(
+    analysis_path: Path, analysis_content: str, stock: Stock | None = None
+) -> str:
     """Build Stage 2 prompt for trade execution."""
 
     ticker = analysis_path.stem.split("_")[0]
     stock_ctx = ""
     if stock:
         state_map = {
-            'analysis': f"\n⚠️ CRITICAL: Stock in ANALYSIS state — DO NOT PLACE ORDERS. Log recommendation only.",
-            'paper': f"\n✅ Stock in PAPER state — place orders on paper account {cfg.ib_account}.",
-            'live': f"\n🔴 Stock in LIVE state — requires additional confirmation. DO NOT auto-execute.",
+            "analysis": "\n⚠️ CRITICAL: Stock in ANALYSIS state — DO NOT PLACE ORDERS. Log recommendation only.",
+            "paper": f"\n✅ Stock in PAPER state — place orders on paper account {cfg.ib_account}.",
+            "live": "\n🔴 Stock in LIVE state — requires additional confirmation. DO NOT auto-execute.",
         }
         stock_ctx = f"""
 STOCK STATE FROM DATABASE:
-- State: {stock.state}{state_map.get(stock.state, '')}
+- State: {stock.state}{state_map.get(stock.state, "")}
 - Max Position: {stock.max_position_pct}%
-- Open Position: {stock.has_open_position} ({stock.position_state or 'none'})
+- Open Position: {stock.has_open_position} ({stock.position_state or "none"})
 """
 
     return f"""You are a trade execution agent. Read analysis, validate, place paper orders if appropriate.
@@ -432,7 +441,7 @@ End with JSON:
     "ticker": "{ticker}",
     "action": "ORDER_PLACED/NO_ORDER/RECOMMENDATION_ONLY",
     "gate_passed": true/false,
-    "stock_state": "{stock.state if stock else 'unknown'}",
+    "stock_state": "{stock.state if stock else "unknown"}",
     "reason": "...",
     "order_id": null,
     "order_type": "LIMIT",
@@ -448,8 +457,10 @@ End with JSON:
 
 # ─── Core Functions ──────────────────────────────────────────────────────────
 
-def call_claude_code(prompt: str, allowed_tools: str, label: str,
-                     timeout: Optional[int] = None) -> str:
+
+def call_claude_code(
+    prompt: str, allowed_tools: str, label: str, timeout: int | None = None
+) -> str:
     """Execute a Claude Code CLI call."""
     timeout = timeout or cfg.claude_timeout
 
@@ -460,9 +471,19 @@ def call_claude_code(prompt: str, allowed_tools: str, label: str,
     log.info(f"[{label}] Calling Claude Code...")
     try:
         result = subprocess.run(
-            [cfg.claude_cmd, "--print", "--dangerously-skip-permissions",
-             "--allowedTools", allowed_tools, "-p", prompt],
-            capture_output=True, text=True, timeout=timeout, cwd=str(BASE_DIR),
+            [
+                cfg.claude_cmd,
+                "--print",
+                "--dangerously-skip-permissions",
+                "--allowedTools",
+                allowed_tools,
+                "-p",
+                prompt,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            cwd=str(BASE_DIR),
         )
         if result.returncode != 0:
             log.error(f"[{label}] Error (rc={result.returncode}): {result.stderr[:500]}")
@@ -477,7 +498,7 @@ def call_claude_code(prompt: str, allowed_tools: str, label: str,
         return ""
 
 
-def parse_json_block(text: str) -> Optional[dict]:
+def parse_json_block(text: str) -> dict | None:
     """Extract the last JSON block from output."""
     # Try fenced JSON blocks first
     pattern = r"```json\s*\n(.*?)\n\s*```"
@@ -486,15 +507,15 @@ def parse_json_block(text: str) -> Optional[dict]:
         # Fallback: find balanced braces containing "ticker"
         # Handles nested objects like {"candidates": [{...}]}
         for i in range(len(text) - 1, -1, -1):
-            if text[i] == '}':
+            if text[i] == "}":
                 depth = 0
                 for j in range(i, -1, -1):
-                    if text[j] == '}':
+                    if text[j] == "}":
                         depth += 1
-                    elif text[j] == '{':
+                    elif text[j] == "{":
                         depth -= 1
                     if depth == 0:
-                        candidate = text[j:i+1]
+                        candidate = text[j : i + 1]
                         if '"ticker"' in candidate or '"scanner"' in candidate:
                             matches = [candidate]
                         break
@@ -514,6 +535,7 @@ def kb_ingest_analysis(filepath: Path, metadata: dict):
         return
     try:
         from rag.embed import embed_document
+
         result = embed_document(str(filepath))
         if result.error_message:
             log.warning(f"RAG ingest warning: {result.error_message}")
@@ -527,6 +549,7 @@ def kb_ingest_analysis(filepath: Path, metadata: dict):
 
 # ─── Knowledge Base Context ──────────────────────────────────────────────────
 
+
 def build_kb_context(ticker: str, analysis_type: str) -> str:
     """
     Gather hybrid RAG + Graph context before analysis.
@@ -536,6 +559,7 @@ def build_kb_context(ticker: str, analysis_type: str) -> str:
     """
     try:
         from rag.hybrid import build_analysis_context as rag_context
+
         context = rag_context(ticker, analysis_type)
         if context and len(context) > 100:
             log.info(f"KB context injected for {ticker} ({len(context)} chars)")
@@ -558,6 +582,7 @@ def kb_ingest_file(file_path: str) -> dict:
     # Graph extraction
     try:
         from graph.extract import extract_document
+
         result = extract_document(file_path, commit=True)
         results["graph"] = {
             "entities": len(result.entities),
@@ -570,6 +595,7 @@ def kb_ingest_file(file_path: str) -> dict:
     # RAG embedding
     try:
         from rag.embed import embed_document
+
         result = embed_document(file_path)
         results["rag"] = {
             "chunks": result.chunk_count,
@@ -583,8 +609,10 @@ def kb_ingest_file(file_path: str) -> dict:
 
 # ─── Stage 1: Analysis ──────────────────────────────────────────────────────
 
-def run_analysis(db: NexusDB, ticker: str, analysis_type: AnalysisType,
-                 schedule_id: Optional[int] = None) -> Optional[AnalysisResult]:
+
+def run_analysis(
+    db: NexusDB, ticker: str, analysis_type: AnalysisType, schedule_id: int | None = None
+) -> AnalysisResult | None:
     """Stage 1: Generate analysis via Claude Code."""
 
     timestamp = datetime.now().strftime("%Y%m%dT%H%M")
@@ -595,34 +623,43 @@ def run_analysis(db: NexusDB, ticker: str, analysis_type: AnalysisType,
 
     log.info(f"═══ STAGE 1: ANALYSIS ═══ {ticker} ({analysis_type.value})")
 
-    prompt = build_analysis_prompt(ticker, analysis_type, stock,
-                                    kb_enabled=cfg.kb_query_enabled)
+    prompt = build_analysis_prompt(ticker, analysis_type, stock, kb_enabled=cfg.kb_query_enabled)
     output = call_claude_code(prompt, cfg.allowed_tools_analysis, f"ANALYZE-{ticker}")
 
     if not output:
         if run_id and schedule_id:
-            db.mark_schedule_completed(schedule_id, run_id, 'failed',
-                                       error="Claude Code returned empty")
+            db.mark_schedule_completed(
+                schedule_id, run_id, "failed", error="Claude Code returned empty"
+            )
         return None
 
     filepath.write_text(output)
     parsed = parse_json_block(output)
 
     result = AnalysisResult(
-        ticker=ticker, type=analysis_type, filepath=filepath,
+        ticker=ticker,
+        type=analysis_type,
+        filepath=filepath,
         gate_passed=parsed.get("gate_passed", False) if parsed else False,
         recommendation=parsed.get("recommendation", "UNKNOWN") if parsed else "UNKNOWN",
         confidence=parsed.get("confidence", 0) if parsed else 0,
         expected_value=parsed.get("expected_value_pct", 0.0) if parsed else 0.0,
-        raw_output=output, parsed_json=parsed,
+        raw_output=output,
+        parsed_json=parsed,
     )
 
     # Persist to DB
     if run_id and schedule_id:
-        db.mark_schedule_completed(schedule_id, run_id, 'completed',
-            gate_passed=result.gate_passed, recommendation=result.recommendation,
-            confidence=result.confidence, expected_value=result.expected_value,
-            analysis_file=str(filepath))
+        db.mark_schedule_completed(
+            schedule_id,
+            run_id,
+            "completed",
+            gate_passed=result.gate_passed,
+            recommendation=result.recommendation,
+            confidence=result.confidence,
+            expected_value=result.expected_value,
+            analysis_file=str(filepath),
+        )
 
     if parsed and ticker not in ("PORTFOLIO", "SCAN"):
         try:
@@ -630,22 +667,32 @@ def run_analysis(db: NexusDB, ticker: str, analysis_type: AnalysisType,
         except Exception as e:
             log.warning(f"Save analysis result failed: {e}")
 
-    kb_ingest_analysis(filepath, {"ticker": ticker, "type": analysis_type.value,
-                                   "date": timestamp, "gate_passed": result.gate_passed})
+    kb_ingest_analysis(
+        filepath,
+        {
+            "ticker": ticker,
+            "type": analysis_type.value,
+            "date": timestamp,
+            "gate_passed": result.gate_passed,
+        },
+    )
 
     # Increment service counters
     try:
-        db.increment_service_counter('analyses_total')
-        db.increment_service_counter('today_analyses')
+        db.increment_service_counter("analyses_total")
+        db.increment_service_counter("today_analyses")
     except Exception:
         pass
 
-    log.info(f"Analysis: {ticker} | Gate: {'PASS' if result.gate_passed else 'FAIL'} | "
-             f"Rec: {result.recommendation} | Conf: {result.confidence}%")
+    log.info(
+        f"Analysis: {ticker} | Gate: {'PASS' if result.gate_passed else 'FAIL'} | "
+        f"Rec: {result.recommendation} | Conf: {result.confidence}%"
+    )
     return result
 
 
 # ─── Stage 2: Execution ─────────────────────────────────────────────────────
+
 
 def run_execution(db: NexusDB, analysis_path: Path) -> ExecutionResult:
     """Stage 2: Read analysis, validate, place paper order."""
@@ -658,18 +705,20 @@ def run_execution(db: NexusDB, analysis_path: Path) -> ExecutionResult:
     # Short-circuits
     if '"gate_passed": false' in content or "GATE: ❌ FAIL" in content:
         log.info("Gate FAILED → skip execution")
-        return ExecutionResult(analysis_path=analysis_path, order_placed=False,
-                               reason="Do Nothing gate failed")
+        return ExecutionResult(
+            analysis_path=analysis_path, order_placed=False, reason="Do Nothing gate failed"
+        )
 
-    if stock and stock.state == 'analysis':
+    if stock and stock.state == "analysis":
         log.info(f"{ticker} state=analysis → recommendation only")
 
     prompt = build_execution_prompt(analysis_path, content, stock)
     output = call_claude_code(prompt, cfg.allowed_tools_execution, f"EXECUTE-{ticker}")
 
     if not output:
-        return ExecutionResult(analysis_path=analysis_path, order_placed=False,
-                               reason="Execution call failed")
+        return ExecutionResult(
+            analysis_path=analysis_path, order_placed=False, reason="Execution call failed"
+        )
 
     parsed = parse_json_block(output)
     ts = datetime.now().strftime("%Y%m%dT%H%M")
@@ -681,21 +730,29 @@ def run_execution(db: NexusDB, analysis_path: Path) -> ExecutionResult:
         order_placed=parsed.get("action") == "ORDER_PLACED" if parsed else False,
         order_details=parsed,
         reason=parsed.get("reason", "") if parsed else "Parse failed",
-        filepath=trade_path, raw_output=output,
+        filepath=trade_path,
+        raw_output=output,
     )
 
     if result.order_placed and stock:
-        db.update_stock_position(ticker, True, 'pending')
+        db.update_stock_position(ticker, True, "pending")
 
     # Increment service counters
     try:
-        db.increment_service_counter('executions_total')
-        db.increment_service_counter('today_executions')
+        db.increment_service_counter("executions_total")
+        db.increment_service_counter("today_executions")
     except Exception:
         pass
 
-    kb_ingest_analysis(trade_path, {"ticker": ticker, "type": "trade_execution",
-                                     "date": ts, "order_placed": result.order_placed})
+    kb_ingest_analysis(
+        trade_path,
+        {
+            "ticker": ticker,
+            "type": "trade_execution",
+            "date": ts,
+            "order_placed": result.order_placed,
+        },
+    )
 
     log.info(f"Execution: {ticker} | {'ORDER PLACED' if result.order_placed else 'NO ORDER'}")
     return result
@@ -703,8 +760,14 @@ def run_execution(db: NexusDB, analysis_path: Path) -> ExecutionResult:
 
 # ─── Pipeline Orchestration ──────────────────────────────────────────────────
 
-def run_pipeline(db: NexusDB, ticker: str, analysis_type: AnalysisType,
-                 auto_execute: bool = True, schedule_id: Optional[int] = None):
+
+def run_pipeline(
+    db: NexusDB,
+    ticker: str,
+    analysis_type: AnalysisType,
+    auto_execute: bool = True,
+    schedule_id: int | None = None,
+):
     """Full two-stage pipeline."""
     log.info(f"╔═ PIPELINE: {ticker} ({analysis_type.value}) ═╗")
 
@@ -724,7 +787,7 @@ def run_pipeline(db: NexusDB, ticker: str, analysis_type: AnalysisType,
         return
 
     stock = db.get_stock(ticker)
-    if stock and stock.state == 'analysis':
+    if stock and stock.state == "analysis":
         log.info(f"{ticker} state=analysis → no execution")
         return
 
@@ -737,14 +800,14 @@ def run_watchlist(db: NexusDB, auto_execute: bool = False):
     remaining = cfg.max_daily_analyses - db.get_today_run_count()
     log.info(f"═══ WATCHLIST: {len(stocks)} stocks, {remaining} slots remaining ═══")
 
-    for stock in stocks[:max(0, remaining)]:
+    for stock in stocks[: max(0, remaining)]:
         atype = AnalysisType(stock.default_analysis_type)
         if stock.days_to_earnings is not None and stock.days_to_earnings <= 14:
             atype = AnalysisType.EARNINGS
         run_pipeline(db, stock.ticker, atype, auto_execute=auto_execute)
 
 
-def run_scanners(db: NexusDB, scanner_code: Optional[str] = None):
+def run_scanners(db: NexusDB, scanner_code: str | None = None):
     """Run IB scanners."""
     if not cfg.scanners_enabled:
         log.info("Scanners disabled (scanners_enabled=false)")
@@ -764,11 +827,12 @@ def run_scanners(db: NexusDB, scanner_code: Optional[str] = None):
 
         try:
             output = call_claude_code(
-                build_scanner_prompt(scanner), cfg.allowed_tools_scanner,
-                f"SCAN-{scanner.scanner_code}")
+                build_scanner_prompt(scanner),
+                cfg.allowed_tools_scanner,
+                f"SCAN-{scanner.scanner_code}",
+            )
             if not output:
-                db.complete_scanner_run(run_id, 'failed', 0,
-                                        error="Claude Code returned empty")
+                db.complete_scanner_run(run_id, "failed", 0, error="Claude Code returned empty")
                 continue
 
             ts = datetime.now().strftime("%Y%m%dT%H%M")
@@ -777,26 +841,27 @@ def run_scanners(db: NexusDB, scanner_code: Optional[str] = None):
 
             parsed = parse_json_block(output)
             if not parsed or "candidates" not in parsed:
-                db.complete_scanner_run(run_id, 'completed', 0)
+                db.complete_scanner_run(run_id, "completed", 0)
                 continue
 
             candidates = parsed["candidates"]
             log.info(f"  {len(candidates)} candidates found")
-            db.complete_scanner_run(run_id, 'completed', len(candidates))
+            db.complete_scanner_run(run_id, "completed", len(candidates))
 
             if scanner.auto_add_to_watchlist:
-                for c in candidates[:scanner.max_candidates]:
-                    db.upsert_stock(c["ticker"], is_enabled=True,
-                                    tags=[f"scanner:{scanner.scanner_code}"])
+                for c in candidates[: scanner.max_candidates]:
+                    db.upsert_stock(
+                        c["ticker"], is_enabled=True, tags=[f"scanner:{scanner.scanner_code}"]
+                    )
 
             if scanner.auto_analyze:
                 atype = AnalysisType(scanner.analysis_type)
-                for c in candidates[:scanner.max_candidates]:
+                for c in candidates[: scanner.max_candidates]:
                     run_pipeline(db, c["ticker"], atype, auto_execute=False)
 
         except Exception as e:
             log.error(f"Scanner {scanner.scanner_code} failed: {e}")
-            db.complete_scanner_run(run_id, 'failed', 0, error=str(e))
+            db.complete_scanner_run(run_id, "failed", 0, error=str(e))
 
 
 def run_earnings_check(db: NexusDB):
@@ -811,8 +876,13 @@ def run_earnings_check(db: NexusDB):
         schedules = db.get_earnings_triggered_schedules(stock.ticker, days)
         for sched in schedules:
             log.info(f"  Triggering: {sched.name} for {stock.ticker} (T-{days})")
-            run_pipeline(db, stock.ticker, AnalysisType(sched.analysis_type),
-                         auto_execute=sched.auto_execute, schedule_id=sched.id)
+            run_pipeline(
+                db,
+                stock.ticker,
+                AnalysisType(sched.analysis_type),
+                auto_execute=sched.auto_execute,
+                schedule_id=sched.id,
+            )
 
 
 def run_due_schedules(db: NexusDB):
@@ -832,13 +902,23 @@ def run_due_schedules(db: NexusDB):
                 run_scanners(db, scanner.scanner_code)
 
     task_dispatch = {
-        'analyze_stock': lambda s: run_analysis(db, s.target_ticker, AnalysisType(s.analysis_type), s.id) if s.target_ticker else None,
-        'analyze_watchlist': lambda s: run_watchlist(db, s.auto_execute),
-        'run_scanner': _run_scanner_task,
-        'run_all_scanners': lambda s: run_scanners(db),
-        'pipeline': lambda s: run_pipeline(db, s.target_ticker, AnalysisType(s.analysis_type), s.auto_execute, s.id) if s.target_ticker else None,
-        'portfolio_review': lambda s: run_analysis(db, "PORTFOLIO", AnalysisType.REVIEW, s.id),
-        'postmortem': lambda s: run_analysis(db, s.target_ticker, AnalysisType.POSTMORTEM, s.id) if s.target_ticker else None,
+        "analyze_stock": lambda s: run_analysis(
+            db, s.target_ticker, AnalysisType(s.analysis_type), s.id
+        )
+        if s.target_ticker
+        else None,
+        "analyze_watchlist": lambda s: run_watchlist(db, s.auto_execute),
+        "run_scanner": _run_scanner_task,
+        "run_all_scanners": lambda s: run_scanners(db),
+        "pipeline": lambda s: run_pipeline(
+            db, s.target_ticker, AnalysisType(s.analysis_type), s.auto_execute, s.id
+        )
+        if s.target_ticker
+        else None,
+        "portfolio_review": lambda s: run_analysis(db, "PORTFOLIO", AnalysisType.REVIEW, s.id),
+        "postmortem": lambda s: run_analysis(db, s.target_ticker, AnalysisType.POSTMORTEM, s.id)
+        if s.target_ticker
+        else None,
     }
 
     executed = 0
@@ -853,8 +933,10 @@ def run_due_schedules(db: NexusDB):
             if handler:
                 handler(sched)
                 executed += 1
-            elif sched.task_type == 'custom' and sched.custom_prompt:
-                output = call_claude_code(sched.custom_prompt, cfg.allowed_tools_analysis, f"CUSTOM-{sched.id}")
+            elif sched.task_type == "custom" and sched.custom_prompt:
+                output = call_claude_code(
+                    sched.custom_prompt, cfg.allowed_tools_analysis, f"CUSTOM-{sched.id}"
+                )
                 if output:
                     ts = datetime.now().strftime("%Y%m%dT%H%M")
                     (cfg.analyses_dir / f"custom_{sched.id}_{ts}.md").write_text(output)
@@ -867,25 +949,26 @@ def run_due_schedules(db: NexusDB):
 
 # ─── Status ──────────────────────────────────────────────────────────────────
 
+
 def show_status(db: NexusDB):
     stocks = db.get_enabled_stocks()
     by_state: dict[str, list[Stock]] = {}
     for s in stocks:
         by_state.setdefault(s.state, []).append(s)
 
-    print(f"\n{'═'*60}")
-    print(f"  NEXUS LIGHT - STATUS")
-    print(f"{'═'*60}")
+    print(f"\n{'═' * 60}")
+    print("  NEXUS LIGHT - STATUS")
+    print(f"{'═' * 60}")
 
     print(f"\n  WATCHLIST ({len(stocks)} enabled)")
-    for state in ['analysis', 'paper', 'live']:
+    for state in ["analysis", "paper", "live"]:
         items = by_state.get(state, [])
-        tickers = ', '.join(s.ticker for s in items) if items else '—'
+        tickers = ", ".join(s.ticker for s in items) if items else "—"
         print(f"    {state:>10}: {tickers}")
 
     earnings = db.get_stocks_near_earnings()
     if earnings:
-        print(f"\n  UPCOMING EARNINGS")
+        print("\n  UPCOMING EARNINGS")
         for s in earnings[:5]:
             print(f"    {s.ticker:<6} {str(s.next_earnings_date):<12} (T-{s.days_to_earnings})")
 
@@ -899,26 +982,28 @@ def show_status(db: NexusDB):
     due = db.get_due_schedules()
     print(f"\n  SCHEDULES ({len(schedules)} enabled, {len(due)} due)")
     for sch in schedules[:10]:
-        status = sch.last_run_status or 'never'
+        status = sch.last_run_status or "never"
         print(f"    {(sch.name or '')[:40]:<40} {sch.frequency:<12} [{status}]")
 
     print(f"\n  TODAY: {db.get_today_run_count()} runs (limit {cfg.max_daily_analyses})")
-    print(f"{'═'*60}\n")
+    print(f"{'═' * 60}\n")
 
 
 # ─── Graph and RAG CLI Handlers ──────────────────────────────────────────────
+
 
 def _check_all_health() -> None:
     """Check health of all services: Neo4j, PostgreSQL, Ollama."""
     import requests
 
-    print(f"\n{'═'*50}")
+    print(f"\n{'═' * 50}")
     print("SERVICE HEALTH CHECK")
-    print(f"{'═'*50}\n")
+    print(f"{'═' * 50}\n")
 
     # PostgreSQL + pgvector
     try:
         from rag.schema import health_check as rag_health
+
         if rag_health():
             print("✅ PostgreSQL (pgvector): OK")
         else:
@@ -929,6 +1014,7 @@ def _check_all_health() -> None:
     # Neo4j
     try:
         from graph.layer import TradingGraph
+
         with TradingGraph() as g:
             if g.health_check():
                 print("✅ Neo4j (graph): OK")
@@ -957,9 +1043,10 @@ def _check_all_health() -> None:
     # IB Gateway
     try:
         from ib_insync import IB
+
         ib = IB()
         ib.connect("localhost", 4002, clientId=99, readonly=True, timeout=5)
-        print(f"✅ IB Gateway: Connected")
+        print("✅ IB Gateway: Connected")
         ib.disconnect()
     except Exception as e:
         print(f"⚠️ IB Gateway: {e}")
@@ -967,16 +1054,15 @@ def _check_all_health() -> None:
     # Check pending commits
     pending_file = Path("logs/pending_commits.jsonl")
     if pending_file.exists():
-        import json
-        with open(pending_file, "r") as f:
+        with open(pending_file) as f:
             pending_count = sum(1 for line in f if line.strip())
         if pending_count > 0:
             print(f"\n⚠️ Pending commits: {pending_count} items")
             print("   Run 'python orchestrator.py graph retry' to process")
     else:
-        print(f"\n✅ No pending commits")
+        print("\n✅ No pending commits")
 
-    print(f"\n{'═'*50}\n")
+    print(f"\n{'═' * 50}\n")
 
 
 def _retry_pending_commits(limit: int = 10) -> None:
@@ -989,11 +1075,11 @@ def _retry_pending_commits(limit: int = 10) -> None:
         print("No pending commits file found")
         return
 
-    from graph.extract import extract_document
     from graph.exceptions import ExtractionError, GraphUnavailableError
+    from graph.extract import extract_document
 
     pending_items = []
-    with open(pending_file, "r") as f:
+    with open(pending_file) as f:
         for line in f:
             if line.strip():
                 pending_items.append(json.loads(line))
@@ -1048,11 +1134,11 @@ def _retry_pending_commits(limit: int = 10) -> None:
 
 def _handle_graph_command(args):
     """Handle graph subcommands."""
-    from pathlib import Path as _Path
     import glob
 
     if args.graph_cmd == "init":
         from graph.schema import init_schema
+
         init_schema()
         print("✅ Neo4j schema initialized")
 
@@ -1060,14 +1146,15 @@ def _handle_graph_command(args):
         confirm = input("This will DELETE ALL graph data. Type 'yes' to confirm: ")
         if confirm.lower() == "yes":
             from graph.schema import reset_schema
+
             reset_schema(confirm=True)
             print("✅ Graph reset complete")
         else:
             print("Aborted")
 
     elif args.graph_cmd == "extract":
-        from graph.extract import extract_document
         from graph.exceptions import ExtractionError
+        from graph.extract import extract_document
 
         files = []
         if args.file:
@@ -1089,18 +1176,21 @@ def _handle_graph_command(args):
                     dry_run=args.dry_run,
                 )
                 status = "✅" if result.committed else "⚠️"
-                print(f"{status} {result.source_doc_id}: {len(result.entities)} entities, {len(result.relations)} relations")
+                print(
+                    f"{status} {result.source_doc_id}: {len(result.entities)} entities, {len(result.relations)} relations"
+                )
             except ExtractionError as e:
                 print(f"❌ {f}: {e}")
 
     elif args.graph_cmd == "status":
         from graph.layer import TradingGraph
+
         try:
             with TradingGraph() as g:
                 stats = g.get_stats()
-                print(f"\n{'═'*40}")
+                print(f"\n{'═' * 40}")
                 print("KNOWLEDGE GRAPH STATUS")
-                print(f"{'═'*40}")
+                print(f"{'═' * 40}")
                 print(f"Total Nodes: {stats.total_nodes}")
                 print(f"Total Edges: {stats.total_edges}")
                 if stats.node_counts:
@@ -1116,24 +1206,34 @@ def _handle_graph_command(args):
 
     elif args.graph_cmd == "search":
         from graph.layer import TradingGraph
+
         with TradingGraph() as g:
             results = g.find_related(args.ticker.upper(), depth=args.depth)
             print(f"\nNodes within {args.depth} hops of {args.ticker.upper()}:")
             for r in results[:20]:
                 labels = ", ".join(r["labels"]) if r["labels"] else "?"
-                name = r["props"].get("name") or r["props"].get("symbol") or r["props"].get("id") or "?"
+                name = (
+                    r["props"].get("name")
+                    or r["props"].get("symbol")
+                    or r["props"].get("id")
+                    or "?"
+                )
                 print(f"  [{labels}] {name}")
 
     elif args.graph_cmd == "peers":
         from graph.layer import TradingGraph
+
         with TradingGraph() as g:
             peers = g.get_sector_peers(args.ticker.upper())
             print(f"\nSector peers for {args.ticker.upper()}:")
             for p in peers:
-                print(f"  {p.get('peer', '?'):<8} {p.get('company', ''):<30} ({p.get('sector', '')})")
+                print(
+                    f"  {p.get('peer', '?'):<8} {p.get('company', ''):<30} ({p.get('sector', '')})"
+                )
 
     elif args.graph_cmd == "risks":
         from graph.layer import TradingGraph
+
         with TradingGraph() as g:
             risks = g.get_risks(args.ticker.upper())
             print(f"\nKnown risks for {args.ticker.upper()}:")
@@ -1142,6 +1242,7 @@ def _handle_graph_command(args):
 
     elif args.graph_cmd == "biases":
         from graph.layer import TradingGraph
+
         with TradingGraph() as g:
             biases = g.get_bias_history(args.name)
             print("\nBias History:")
@@ -1149,10 +1250,13 @@ def _handle_graph_command(args):
                 if "occurrences" in b:
                     print(f"  {b.get('bias', '?'):<25} {b.get('occurrences', 0):>4} occurrences")
                 else:
-                    print(f"  {b.get('bias', '?')}: trade {b.get('trade_id', '?')} ({b.get('outcome', '?')})")
+                    print(
+                        f"  {b.get('bias', '?')}: trade {b.get('trade_id', '?')} ({b.get('outcome', '?')})"
+                    )
 
     elif args.graph_cmd == "query":
         from graph.layer import TradingGraph
+
         with TradingGraph() as g:
             results = g.run_cypher(args.cypher)
             for r in results:
@@ -1160,12 +1264,14 @@ def _handle_graph_command(args):
 
     elif args.graph_cmd == "dedupe":
         from graph.layer import TradingGraph
+
         with TradingGraph() as g:
             count = g.dedupe_entities()
             print(f"✅ Merged {count} duplicate entities")
 
     elif args.graph_cmd == "validate":
         from graph.layer import TradingGraph
+
         with TradingGraph() as g:
             issues = g.validate_constraints()
             if issues:
@@ -1184,12 +1290,12 @@ def _handle_graph_command(args):
 
 def _handle_rag_command(args):
     """Handle rag subcommands."""
-    from pathlib import Path as _Path
-    from datetime import date as _date
     import glob
+    from datetime import date as _date
 
     if args.rag_cmd == "init":
         from rag.schema import init_schema
+
         init_schema()
         print("✅ pgvector schema initialized")
 
@@ -1197,6 +1303,7 @@ def _handle_rag_command(args):
         confirm = input("This will DELETE ALL embedded documents. Type 'yes' to confirm: ")
         if confirm.lower() == "yes":
             from rag.schema import reset_schema
+
             reset_schema(confirm=True)
             print("✅ RAG tables reset")
         else:
@@ -1223,12 +1330,15 @@ def _handle_rag_command(args):
                 if result.error_message == "unchanged":
                     print(f"⏭️ {result.doc_id}: unchanged")
                 else:
-                    print(f"✅ {result.doc_id}: {result.chunk_count} chunks ({result.duration_ms}ms)")
+                    print(
+                        f"✅ {result.doc_id}: {result.chunk_count} chunks ({result.duration_ms}ms)"
+                    )
             except EmbedError as e:
                 print(f"❌ {f}: {e}")
 
     elif args.rag_cmd == "reembed":
         from rag.embed import reembed_all
+
         count = reembed_all(version=args.version)
         print(f"✅ Re-embedded {count} documents")
 
@@ -1250,7 +1360,7 @@ def _handle_rag_command(args):
         )
 
         print(f"\nSearch results for: {args.query}")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
         for r in results:
             print(f"\n[{r.similarity:.3f}] {r.doc_id} ({r.doc_type})")
             print(f"Section: {r.section_label}")
@@ -1277,7 +1387,7 @@ def _handle_rag_command(args):
 
         print(f"\nHybrid search results for: {args.query}")
         print(f"Weights: vector={args.vector_weight}, bm25={args.bm25_weight}")
-        print(f"{'─'*60}")
+        print(f"{'─' * 60}")
         for r in results:
             print(f"\n[{r.similarity:.4f}] {r.doc_id} ({r.doc_type})")
             print(f"Section: {r.section_label}")
@@ -1286,16 +1396,18 @@ def _handle_rag_command(args):
 
     elif args.rag_cmd == "migrate":
         from rag.schema import run_migrations
+
         run_migrations()
         print("✅ RAG migrations complete")
 
     elif args.rag_cmd == "status":
         from rag.search import get_rag_stats
+
         try:
             stats = get_rag_stats()
-            print(f"\n{'═'*40}")
+            print(f"\n{'═' * 40}")
             print("RAG STATUS")
-            print(f"{'═'*40}")
+            print(f"{'═' * 40}")
             print(f"Documents: {stats.document_count}")
             print(f"Chunks: {stats.chunk_count}")
             print(f"Model: {stats.embed_model}")
@@ -1311,14 +1423,18 @@ def _handle_rag_command(args):
 
     elif args.rag_cmd == "list":
         from rag.search import list_documents
+
         docs = list_documents(limit=50)
         print(f"\n{'doc_id':<30} {'type':<20} {'ticker':<8} {'chunks'}")
-        print(f"{'─'*70}")
+        print(f"{'─' * 70}")
         for d in docs:
-            print(f"{d['doc_id']:<30} {d['doc_type']:<20} {d.get('ticker') or '—':<8} {d['chunk_count']}")
+            print(
+                f"{d['doc_id']:<30} {d['doc_type']:<20} {d.get('ticker') or '—':<8} {d['chunk_count']}"
+            )
 
     elif args.rag_cmd == "show":
         from rag.search import get_document_chunks
+
         chunks = get_document_chunks(args.doc_id)
         if not chunks:
             print(f"Document not found: {args.doc_id}")
@@ -1332,6 +1448,7 @@ def _handle_rag_command(args):
 
     elif args.rag_cmd == "delete":
         from rag.embed import delete_document
+
         success = delete_document(args.doc_id)
         if success:
             print(f"✅ Deleted {args.doc_id}")
@@ -1347,17 +1464,26 @@ def _handle_rag_command(args):
 
 # ─── CLI ─────────────────────────────────────────────────────────────────────
 
+
 def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Nexus Light v2.2")
     sub = parser.add_subparsers(dest="cmd")
 
-    p = sub.add_parser("analyze"); p.add_argument("ticker"); p.add_argument("--type", default="stock", choices=["earnings","stock","postmortem"])
-    p = sub.add_parser("execute"); p.add_argument("analysis_file")
-    p = sub.add_parser("pipeline"); p.add_argument("ticker"); p.add_argument("--type", default="stock", choices=["earnings","stock"]); p.add_argument("--no-execute", action="store_true")
-    p = sub.add_parser("watchlist"); p.add_argument("--auto-execute", action="store_true")
-    p = sub.add_parser("scan"); p.add_argument("--scanner")
+    p = sub.add_parser("analyze")
+    p.add_argument("ticker")
+    p.add_argument("--type", default="stock", choices=["earnings", "stock", "postmortem"])
+    p = sub.add_parser("execute")
+    p.add_argument("analysis_file")
+    p = sub.add_parser("pipeline")
+    p.add_argument("ticker")
+    p.add_argument("--type", default="stock", choices=["earnings", "stock"])
+    p.add_argument("--no-execute", action="store_true")
+    p = sub.add_parser("watchlist")
+    p.add_argument("--auto-execute", action="store_true")
+    p = sub.add_parser("scan")
+    p.add_argument("--scanner")
     sub.add_parser("run-due")
     sub.add_parser("review")
     sub.add_parser("earnings-check")
@@ -1365,10 +1491,14 @@ def main():
     sub.add_parser("health", help="Check all service health")
     sub.add_parser("db-init")
 
-    p = sub.add_parser("stock"); p.add_argument("action", choices=["add","enable","disable","set-state","list"])
-    p.add_argument("ticker", nargs="?"); p.add_argument("--state", choices=["analysis","paper","live"])
-    p.add_argument("--tags", nargs="*"); p.add_argument("--priority", type=int)
-    p.add_argument("--earnings-date"); p.add_argument("--comment")
+    p = sub.add_parser("stock")
+    p.add_argument("action", choices=["add", "enable", "disable", "set-state", "list"])
+    p.add_argument("ticker", nargs="?")
+    p.add_argument("--state", choices=["analysis", "paper", "live"])
+    p.add_argument("--tags", nargs="*")
+    p.add_argument("--priority", type=int)
+    p.add_argument("--earnings-date")
+    p.add_argument("--comment")
 
     p = sub.add_parser("settings", help="View or update settings")
     p.add_argument("action", choices=["list", "get", "set"], nargs="?", default="list")
@@ -1472,22 +1602,31 @@ def main():
         # Initialize settings from DB for all commands
         global cfg
         cfg = Settings(db)
-        sys.modules[__name__].__dict__['cfg'] = cfg
+        sys.modules[__name__].__dict__["cfg"] = cfg
 
         if args.cmd == "db-init":
-            db.init_schema(); print("✅ Schema initialized")
+            db.init_schema()
+            print("✅ Schema initialized")
 
         elif args.cmd == "analyze":
             r = run_analysis(db, args.ticker.upper(), AnalysisType(args.type))
-            if r: print(f"File: {r.filepath}\nGate: {'PASS' if r.gate_passed else 'FAIL'}\nRec: {r.recommendation} ({r.confidence}%)")
+            if r:
+                print(
+                    f"File: {r.filepath}\nGate: {'PASS' if r.gate_passed else 'FAIL'}\nRec: {r.recommendation} ({r.confidence}%)"
+                )
 
         elif args.cmd == "execute":
             p = Path(args.analysis_file)
-            if not p.exists(): print(f"Not found: {p}"); sys.exit(1)
-            r = run_execution(db, p); print(f"Order: {r.order_placed} | {r.reason}")
+            if not p.exists():
+                print(f"Not found: {p}")
+                sys.exit(1)
+            r = run_execution(db, p)
+            print(f"Order: {r.order_placed} | {r.reason}")
 
         elif args.cmd == "pipeline":
-            run_pipeline(db, args.ticker.upper(), AnalysisType(args.type), auto_execute=not args.no_execute)
+            run_pipeline(
+                db, args.ticker.upper(), AnalysisType(args.type), auto_execute=not args.no_execute
+            )
 
         elif args.cmd == "watchlist":
             run_watchlist(db, args.auto_execute)
@@ -1513,23 +1652,30 @@ def main():
         elif args.cmd == "stock":
             if args.action == "list":
                 print(f"\n{'Ticker':<8} {'State':<10} {'Pri':<4} {'Earnings':<12} {'Tags'}")
-                print("─"*60)
+                print("─" * 60)
                 for s in db.get_enabled_stocks():
-                    tags = ','.join(s.tags[:3]) if s.tags else ''
-                    earn = str(s.next_earnings_date) if s.next_earnings_date else '—'
+                    tags = ",".join(s.tags[:3]) if s.tags else ""
+                    earn = str(s.next_earnings_date) if s.next_earnings_date else "—"
                     print(f"{s.ticker:<8} {s.state:<10} {s.priority:<4} {earn:<12} {tags}")
             elif args.action == "add" and args.ticker:
                 kw = {}
-                if args.state: kw['state'] = args.state
-                if args.tags: kw['tags'] = args.tags
-                if args.priority: kw['priority'] = args.priority
-                if args.comment: kw['comments'] = args.comment
-                if args.earnings_date: kw['next_earnings_date'] = args.earnings_date
+                if args.state:
+                    kw["state"] = args.state
+                if args.tags:
+                    kw["tags"] = args.tags
+                if args.priority:
+                    kw["priority"] = args.priority
+                if args.comment:
+                    kw["comments"] = args.comment
+                if args.earnings_date:
+                    kw["next_earnings_date"] = args.earnings_date
                 s = db.upsert_stock(args.ticker.upper(), **kw)
                 print(f"✅ {s.ticker if s else args.ticker.upper()}")
-            elif args.action in ("enable","disable") and args.ticker:
-                db.upsert_stock(args.ticker.upper(), is_enabled=(args.action=="enable"))
-                print(f"✅ {args.ticker.upper()} {'enabled' if args.action=='enable' else 'disabled'}")
+            elif args.action in ("enable", "disable") and args.ticker:
+                db.upsert_stock(args.ticker.upper(), is_enabled=(args.action == "enable"))
+                print(
+                    f"✅ {args.ticker.upper()} {'enabled' if args.action == 'enable' else 'disabled'}"
+                )
             elif args.action == "set-state" and args.ticker and args.state:
                 db.upsert_stock(args.ticker.upper(), state=args.state)
                 print(f"✅ {args.ticker.upper()} → {args.state}")
@@ -1539,7 +1685,7 @@ def main():
                 all_settings = db.get_all_settings()
                 cat = args.category
                 print(f"\n{'Key':<35} {'Value':<25}")
-                print("─"*60)
+                print("─" * 60)
                 for k, v in sorted(all_settings.items()):
                     print(f"{k:<35} {str(v):<25}")
             elif args.action == "get" and args.key:
@@ -1551,6 +1697,7 @@ def main():
             elif args.action == "set" and args.key and args.value:
                 # Try to parse as JSON, fall back to string
                 import json as _json
+
                 try:
                     parsed_val = _json.loads(args.value)
                 except _json.JSONDecodeError:

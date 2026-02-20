@@ -1,22 +1,23 @@
 """Unit tests for rag/search.py with mocked database."""
 
-import pytest
 from datetime import date
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
+import pytest
+
+from rag.exceptions import RAGUnavailableError
+from rag.models import RAGStats, SearchResult
 from rag.search import (
-    semantic_search,
-    hybrid_search,
-    get_similar_analyses,
+    _build_hybrid_query,
+    _build_search_query,
+    get_document_chunks,
     get_learnings_for_topic,
     get_rag_stats,
+    get_similar_analyses,
+    hybrid_search,
     list_documents,
-    get_document_chunks,
-    _build_search_query,
-    _build_hybrid_query,
+    semantic_search,
 )
-from rag.models import SearchResult, RAGStats
-from rag.exceptions import RAGUnavailableError
 
 
 class TestBuildSearchQuery:
@@ -24,9 +25,7 @@ class TestBuildSearchQuery:
 
     def test_basic_query(self):
         embedding = [0.1] * 768
-        sql, params = _build_search_query(
-            embedding, None, None, None, None, None, top_k=5
-        )
+        sql, params = _build_search_query(embedding, None, None, None, None, None, top_k=5)
 
         assert "embedding <=> %s::vector" in sql
         assert "LIMIT %s" in sql
@@ -35,8 +34,13 @@ class TestBuildSearchQuery:
     def test_ticker_filter(self):
         embedding = [0.1] * 768
         sql, params = _build_search_query(
-            embedding, ticker="NVDA", doc_type=None, section=None,
-            date_from=None, date_to=None, top_k=5
+            embedding,
+            ticker="NVDA",
+            doc_type=None,
+            section=None,
+            date_from=None,
+            date_to=None,
+            top_k=5,
         )
 
         assert "c.ticker = %s" in sql
@@ -45,8 +49,13 @@ class TestBuildSearchQuery:
     def test_doc_type_filter(self):
         embedding = [0.1] * 768
         sql, params = _build_search_query(
-            embedding, ticker=None, doc_type="earnings-analysis",
-            section=None, date_from=None, date_to=None, top_k=5
+            embedding,
+            ticker=None,
+            doc_type="earnings-analysis",
+            section=None,
+            date_from=None,
+            date_to=None,
+            top_k=5,
         )
 
         assert "c.doc_type = %s" in sql
@@ -55,8 +64,13 @@ class TestBuildSearchQuery:
     def test_section_filter(self):
         embedding = [0.1] * 768
         sql, params = _build_search_query(
-            embedding, ticker=None, doc_type=None, section="thesis",
-            date_from=None, date_to=None, top_k=5
+            embedding,
+            ticker=None,
+            doc_type=None,
+            section="thesis",
+            date_from=None,
+            date_to=None,
+            top_k=5,
         )
 
         assert "c.section_label ILIKE %s" in sql
@@ -65,8 +79,13 @@ class TestBuildSearchQuery:
     def test_date_range_filter(self):
         embedding = [0.1] * 768
         sql, params = _build_search_query(
-            embedding, ticker=None, doc_type=None, section=None,
-            date_from=date(2025, 1, 1), date_to=date(2025, 12, 31), top_k=5
+            embedding,
+            ticker=None,
+            doc_type=None,
+            section=None,
+            date_from=date(2025, 1, 1),
+            date_to=date(2025, 12, 31),
+            top_k=5,
         )
 
         assert "c.doc_date >= %s" in sql
@@ -84,8 +103,17 @@ class TestSemanticSearch:
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_cursor.fetchall.return_value = [
-            ("doc-001", "/path/to/doc.yaml", "earnings-analysis", "NVDA",
-             date(2025, 1, 1), "Thesis", "Long NVDA", 100, 0.2),  # distance 0.2 = similarity 0.8
+            (
+                "doc-001",
+                "/path/to/doc.yaml",
+                "earnings-analysis",
+                "NVDA",
+                date(2025, 1, 1),
+                "Thesis",
+                "Long NVDA",
+                100,
+                0.2,
+            ),  # distance 0.2 = similarity 0.8
         ]
         mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
@@ -106,8 +134,17 @@ class TestSemanticSearch:
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_cursor.fetchall.return_value = [
-            ("doc-001", "/path/to/doc.yaml", "earnings-analysis", "NVDA",
-             date(2025, 1, 1), "Thesis", "Long NVDA", 100, 0.8),  # distance 0.8 = similarity 0.2 (below threshold)
+            (
+                "doc-001",
+                "/path/to/doc.yaml",
+                "earnings-analysis",
+                "NVDA",
+                date(2025, 1, 1),
+                "Thesis",
+                "Long NVDA",
+                100,
+                0.8,
+            ),  # distance 0.8 = similarity 0.2 (below threshold)
         ]
         mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
@@ -349,8 +386,17 @@ class TestHybridSearch:
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_cursor.fetchall.return_value = [
-            ("doc-001", "/path/to/doc.yaml", "earnings-analysis", "NVDA",
-             date(2025, 1, 1), "Thesis", "Long NVDA on data center", 100, 0.025),
+            (
+                "doc-001",
+                "/path/to/doc.yaml",
+                "earnings-analysis",
+                "NVDA",
+                date(2025, 1, 1),
+                "Thesis",
+                "Long NVDA on data center",
+                100,
+                0.025,
+            ),
         ]
         mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
@@ -371,8 +417,17 @@ class TestHybridSearch:
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_cursor.fetchall.return_value = [
-            ("doc-001", "/path", "earnings-analysis", "NVDA",
-             date(2025, 1, 1), "Thesis", "content", 100, 0.005),  # Below min_score
+            (
+                "doc-001",
+                "/path",
+                "earnings-analysis",
+                "NVDA",
+                date(2025, 1, 1),
+                "Thesis",
+                "content",
+                100,
+                0.005,
+            ),  # Below min_score
         ]
         mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)

@@ -2,14 +2,13 @@
 
 import logging
 from datetime import date
-from typing import Any
 
 import psycopg
 
-from .models import SearchResult, RAGStats
-from .embedding_client import get_embedding, get_embed_dimensions
-from .schema import get_database_url
+from .embedding_client import get_embed_dimensions, get_embedding
 from .exceptions import RAGUnavailableError
+from .models import RAGStats, SearchResult
+from .schema import get_database_url
 
 log = logging.getLogger(__name__)
 
@@ -73,16 +72,18 @@ def semantic_search(
         if similarity < min_similarity:
             continue
 
-        results.append(SearchResult(
-            doc_id=row[0],
-            file_path=row[1],
-            doc_type=row[2],
-            ticker=row[3],
-            doc_date=row[4],
-            section_label=row[5],
-            content=row[6],
-            similarity=similarity,
-        ))
+        results.append(
+            SearchResult(
+                doc_id=row[0],
+                file_path=row[1],
+                doc_type=row[2],
+                ticker=row[3],
+                doc_date=row[4],
+                section_label=row[5],
+                content=row[6],
+                similarity=similarity,
+            )
+        )
 
     return results
 
@@ -168,16 +169,18 @@ def hybrid_search(
         if hybrid_score < min_score:
             continue
 
-        results.append(SearchResult(
-            doc_id=row[0],
-            file_path=row[1],
-            doc_type=row[2],
-            ticker=row[3],
-            doc_date=row[4],
-            section_label=row[5],
-            content=row[6],
-            similarity=hybrid_score,  # Using hybrid score as similarity
-        ))
+        results.append(
+            SearchResult(
+                doc_id=row[0],
+                file_path=row[1],
+                doc_type=row[2],
+                ticker=row[3],
+                doc_date=row[4],
+                section_label=row[5],
+                content=row[6],
+                similarity=hybrid_score,  # Using hybrid score as similarity
+            )
+        )
 
     return results
 
@@ -268,8 +271,14 @@ def _build_hybrid_query(
 
     # Build params: embedding, filter_params (for vector), query, query, filter_params (for bm25), weights, top_k
     # Format embedding as PostgreSQL vector string (no spaces)
-    emb_str = '[' + ','.join(str(x) for x in embedding) + ']'
-    params = [emb_str] + filter_params + [query, query] + filter_params + [vector_weight, bm25_weight, top_k]
+    emb_str = "[" + ",".join(str(x) for x in embedding) + "]"
+    params = (
+        [emb_str]
+        + filter_params
+        + [query, query]
+        + filter_params
+        + [vector_weight, bm25_weight, top_k]
+    )
 
     return sql, params
 
@@ -431,14 +440,17 @@ def get_document_chunks(doc_id: str) -> list[dict]:
     try:
         with psycopg.connect(get_database_url()) as conn:
             with conn.cursor() as cur:
-                cur.execute("""
+                cur.execute(
+                    """
                     SELECT c.section_path, c.section_label, c.chunk_index,
                            c.content, c.content_tokens
                     FROM nexus.rag_chunks c
                     JOIN nexus.rag_documents d ON c.doc_id = d.id
                     WHERE d.doc_id = %s
                     ORDER BY c.section_path, c.chunk_index
-                """, (doc_id,))
+                """,
+                    (doc_id,),
+                )
                 rows = cur.fetchall()
     except Exception as e:
         raise RAGUnavailableError(f"Query failed: {e}")
@@ -475,7 +487,7 @@ def _build_search_query(
         WHERE 1=1
     """
     # Format embedding as PostgreSQL vector string (no spaces)
-    emb_str = '[' + ','.join(str(x) for x in embedding) + ']'
+    emb_str = "[" + ",".join(str(x) for x in embedding) + "]"
     params = [emb_str]
 
     if ticker:

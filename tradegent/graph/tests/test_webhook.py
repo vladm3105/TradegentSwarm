@@ -1,9 +1,8 @@
 """Tests for FastAPI webhook endpoints."""
 
-import pytest
 from unittest.mock import MagicMock, patch
 
-from graph.exceptions import GraphUnavailableError, ExtractionError
+from graph.exceptions import ExtractionError, GraphUnavailableError
 from graph.models import ExtractionResult, GraphStats
 
 

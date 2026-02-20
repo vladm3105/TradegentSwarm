@@ -3,11 +3,8 @@
 import logging
 import re
 from pathlib import Path
-from typing import Any
 
 import yaml
-
-from .exceptions import NormalizationError
 
 log = logging.getLogger(__name__)
 
@@ -16,7 +13,7 @@ _aliases_path = Path(__file__).parent / "aliases.yaml"
 _aliases: dict = {}
 
 if _aliases_path.exists():
-    with open(_aliases_path, "r") as f:
+    with open(_aliases_path) as f:
         _aliases = yaml.safe_load(f)
 
 
@@ -97,7 +94,7 @@ def disambiguate_entity(entity: dict, context: str) -> dict:
     has_ticker_context = any(ind in context.lower() for ind in ticker_indicators)
 
     # Check for price pattern near value
-    price_pattern = re.compile(r'\$\d+|\d+\.\d{2}')
+    price_pattern = re.compile(r"\$\d+|\d+\.\d{2}")
     has_price_near = bool(price_pattern.search(evidence))
 
     # Company vs Ticker disambiguation
@@ -150,7 +147,7 @@ def standardize_separators(value: str) -> str:
 def normalize_type(entity_type: str) -> str:
     """Normalize entity type to PascalCase."""
     # Remove spaces and underscores, capitalize each word
-    parts = re.split(r'[\s_-]+', entity_type)
+    parts = re.split(r"[\s_-]+", entity_type)
     return "".join(part.capitalize() for part in parts)
 
 
@@ -177,7 +174,7 @@ def normalize_company(value: str) -> str:
     clean_name = name
     for suffix in suffixes:
         if clean_name.endswith(suffix):
-            clean_name = clean_name[:-len(suffix)]
+            clean_name = clean_name[: -len(suffix)]
             break
 
     return name

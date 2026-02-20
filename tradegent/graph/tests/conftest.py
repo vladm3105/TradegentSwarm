@@ -1,15 +1,16 @@
 """Pytest fixtures for graph layer tests."""
 
-import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 @pytest.fixture
 def sample_earnings_yaml():
     """Load sample earnings analysis fixture."""
     fixture_path = Path(__file__).parent / "fixtures" / "sample_earnings.yaml"
-    with open(fixture_path, "r") as f:
+    with open(fixture_path) as f:
         return f.read()
 
 
@@ -17,7 +18,7 @@ def sample_earnings_yaml():
 def sample_trade_yaml():
     """Load sample trade journal fixture."""
     fixture_path = Path(__file__).parent / "fixtures" / "sample_trade.yaml"
-    with open(fixture_path, "r") as f:
+    with open(fixture_path) as f:
         return f.read()
 
 
@@ -25,7 +26,7 @@ def sample_trade_yaml():
 def sample_research_yaml():
     """Load sample research analysis fixture."""
     fixture_path = Path(__file__).parent / "fixtures" / "sample_research.yaml"
-    with open(fixture_path, "r") as f:
+    with open(fixture_path) as f:
         return f.read()
 
 
@@ -53,7 +54,7 @@ def mock_neo4j():
 def mock_ollama():
     """Mock Ollama API for extraction tests."""
     with patch("graph.extract._call_ollama_rate_limited") as mock:
-        mock.return_value = '[]'
+        mock.return_value = "[]"
         yield mock
 
 
@@ -83,7 +84,9 @@ def mock_config():
 def test_client():
     """FastAPI test client for webhook tests."""
     from starlette.testclient import TestClient
+
     from graph.webhook import app
+
     return TestClient(app)
 
 

@@ -1,5 +1,9 @@
 # TradegentSwarm
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![CI](https://github.com/vladm3105/TradegentSwarm/actions/workflows/ci.yml/badge.svg)](https://github.com/vladm3105/TradegentSwarm/actions/workflows/ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+
 **Tradegent** — AI-driven trading platform that combines automated market analysis, trade execution, and a structured knowledge base. A multi-agent swarm powered by Claude Code CLI, Interactive Brokers for market data/execution, and a hybrid RAG+Graph system for knowledge persistence.
 
 ## Architecture
@@ -477,6 +481,15 @@ pytest graph/tests/              # Graph tests
 - CI/CD runs on all PRs and pushes
 - Secrets in commits will be blocked
 
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on:
+
+- Development environment setup
+- Code style and linting
+- Testing requirements
+- Pull request process
+
 ## License
 
-Private repository.
+This project is licensed under the MIT License - see [LICENSE](LICENSE) for details.

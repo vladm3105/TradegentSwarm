@@ -1,7 +1,8 @@
 """YAML-to-text conversion rules for embedding."""
 
 import re
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 
 def yaml_to_text(key: str, value: Any, depth: int = 0) -> str:
@@ -104,18 +105,18 @@ def humanize_key(key: str) -> str:
     }
 
     # Split on underscores and numbers
-    parts = re.split(r'[_]', key)
+    parts = re.split(r"[_]", key)
     result = []
 
     for part in parts:
         # Check for number suffix (e.g., "8q" → "(8Q)")
-        num_match = re.match(r'^(\d+)([a-z]+)$', part)
+        num_match = re.match(r"^(\d+)([a-z]+)$", part)
         if num_match:
             result.append(f"({num_match.group(1).upper()}{num_match.group(2).upper()})")
             continue
 
         # Check for phase prefix
-        phase_match = re.match(r'^phase(\d+)$', part.lower())
+        phase_match = re.match(r"^phase(\d+)$", part.lower())
         if phase_match:
             result.append(f"Phase {phase_match.group(1)}")
             continue

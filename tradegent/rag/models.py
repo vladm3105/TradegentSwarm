@@ -1,19 +1,19 @@
 """Data classes for RAG operations."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any
 
 
 @dataclass
 class ChunkResult:
     """Single chunk from a document."""
-    section_path: str            # YAML path: "phase2_fundamentals.competitive_context"
-    section_label: str           # Human-readable: "Competitive Context"
-    chunk_index: int             # 0 for first chunk of section
-    content: str                 # Flattened text
-    content_tokens: int          # Token count
-    prepared_text: str           # With context prefix for embedding
+
+    section_path: str  # YAML path: "phase2_fundamentals.competitive_context"
+    section_label: str  # Human-readable: "Competitive Context"
+    chunk_index: int  # 0 for first chunk of section
+    content: str  # Flattened text
+    content_tokens: int  # Token count
+    prepared_text: str  # With context prefix for embedding
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""
@@ -29,6 +29,7 @@ class ChunkResult:
 @dataclass
 class EmbedResult:
     """Result of embedding a document."""
+
     doc_id: str
     file_path: str
     doc_type: str
@@ -59,6 +60,7 @@ class EmbedResult:
 @dataclass
 class SearchResult:
     """Single search result."""
+
     doc_id: str
     file_path: str
     doc_type: str
@@ -66,7 +68,7 @@ class SearchResult:
     doc_date: date | None
     section_label: str
     content: str
-    similarity: float            # 0.0 - 1.0 (cosine similarity)
+    similarity: float  # 0.0 - 1.0 (cosine similarity)
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""
@@ -85,10 +87,11 @@ class SearchResult:
 @dataclass
 class HybridContext:
     """Combined vector + graph context for Claude."""
+
     ticker: str
     vector_results: list[SearchResult]
-    graph_context: dict          # From TradingGraph.get_ticker_context()
-    formatted: str               # Ready-to-use context block
+    graph_context: dict  # From TradingGraph.get_ticker_context()
+    formatted: str  # Ready-to-use context block
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""
@@ -103,11 +106,12 @@ class HybridContext:
 @dataclass
 class RAGStats:
     """RAG system statistics."""
+
     document_count: int
     chunk_count: int
     embed_model: str
     embed_version: str
-    doc_types: dict[str, int]    # {"earnings-analysis": 10, ...}
+    doc_types: dict[str, int]  # {"earnings-analysis": 10, ...}
     tickers: list[str]
     last_embed: datetime | None
 

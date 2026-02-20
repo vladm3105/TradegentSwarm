@@ -1,13 +1,14 @@
 """Unit tests for graph/query.py."""
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from graph.query import (
+    QUERIES,
     get_query,
     list_queries,
     run_preset_query,
-    QUERIES,
 )
 
 

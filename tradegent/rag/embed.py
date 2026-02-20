@@ -16,19 +16,19 @@ try:
 except ImportError:
     from utils import is_real_document
 try:
-    from trader.validation import validate_document, get_schema_for_path
+    from trader.validation import get_schema_for_path, validate_document
 except ImportError:
     try:
-        from validation import validate_document, get_schema_for_path
+        from validation import get_schema_for_path, validate_document
     except ImportError:
         validate_document = None
         get_schema_for_path = None
 from . import RAG_VERSION
-from .models import EmbedResult, ChunkResult
 from .chunk import chunk_yaml_document
 from .embedding_client import get_embedding, get_embeddings_batch
+from .exceptions import EmbedError
+from .models import ChunkResult, EmbedResult
 from .schema import get_database_url
-from .exceptions import EmbedError, RAGUnavailableError
 
 log = logging.getLogger(__name__)
 
@@ -36,18 +36,23 @@ log = logging.getLogger(__name__)
 _config_path = Path(__file__).parent / "config.yaml"
 _config: dict = {}
 
+
 def _expand_env_vars(content: str) -> str:
     """Expand ${VAR} and ${VAR:-default} patterns in config."""
     import re
-    pattern = r'\$\{([A-Z_][A-Z0-9_]*)(?::-([^}]*))?\}'
+
+    pattern = r"\$\{([A-Z_][A-Z0-9_]*)(?::-([^}]*))?\}"
+
     def replacer(match):
         var_name = match.group(1)
         default = match.group(2) if match.group(2) is not None else ""
         return os.getenv(var_name, default)
+
     return re.sub(pattern, replacer, content)
 
+
 if _config_path.exists():
-    with open(_config_path, "r") as f:
+    with open(_config_path) as f:
         config_content = f.read()
         config_content = _expand_env_vars(config_content)
         _config = yaml.safe_load(config_content)
@@ -83,7 +88,7 @@ def embed_document(file_path: str, force: bool = False) -> EmbedResult:
         raise EmbedError(f"File not found: {file_path}")
 
     # Parse YAML
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         doc = yaml.safe_load(f)
 
     if not doc:
@@ -93,7 +98,9 @@ def embed_document(file_path: str, force: bool = False) -> EmbedResult:
     if validate_document is not None:
         validation_result = validate_document(file_path)
         if not validation_result.valid:
-            log.warning(f"Schema validation failed for {file_path}: {validation_result.error_summary}")
+            log.warning(
+                f"Schema validation failed for {file_path}: {validation_result.error_summary}"
+            )
         elif validation_result.warnings:
             log.debug(f"Validation warnings for {file_path}: {validation_result.warnings}")
 
@@ -120,7 +127,9 @@ def embed_document(file_path: str, force: bool = False) -> EmbedResult:
                 ticker=ticker,
                 doc_date=doc_date,
                 chunk_count=existing.get("chunk_count", 0),
-                embed_model=_config.get("embedding", {}).get("ollama", {}).get("model", "nomic-embed-text"),
+                embed_model=_config.get("embedding", {})
+                .get("ollama", {})
+                .get("model", "nomic-embed-text"),
                 embed_version=RAG_VERSION,
                 duration_ms=0,
                 error_message="unchanged",
@@ -255,8 +264,7 @@ def delete_document(doc_id: str) -> bool:
         with psycopg.connect(get_database_url()) as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "DELETE FROM nexus.rag_documents WHERE doc_id = %s RETURNING id",
-                    (doc_id,)
+                    "DELETE FROM nexus.rag_documents WHERE doc_id = %s RETURNING id", (doc_id,)
                 )
                 result = cur.fetchone()
             conn.commit()
@@ -284,7 +292,7 @@ def reembed_all(version: str | None = None) -> int:
                 if version:
                     cur.execute(
                         "SELECT file_path FROM nexus.rag_documents WHERE embed_version = %s",
-                        (version,)
+                        (version,),
                     )
                 else:
                     cur.execute("SELECT file_path FROM nexus.rag_documents")
@@ -318,7 +326,7 @@ def _get_document_by_id(doc_id: str) -> dict | None:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT file_hash, chunk_count FROM nexus.rag_documents WHERE doc_id = %s",
-                    (doc_id,)
+                    (doc_id,),
                 )
                 row = cur.fetchone()
                 if row:
@@ -345,7 +353,8 @@ def _store_document(
     with psycopg.connect(get_database_url()) as conn:
         with conn.cursor() as cur:
             # Upsert document
-            cur.execute("""
+            cur.execute(
+                """
                 INSERT INTO nexus.rag_documents
                     (doc_id, file_path, doc_type, ticker, doc_date, quarter,
                      chunk_count, embed_version, embed_model, file_hash)
@@ -362,27 +371,48 @@ def _store_document(
                     file_hash = EXCLUDED.file_hash,
                     updated_at = now()
                 RETURNING id
-            """, (doc_id, file_path, doc_type, ticker, doc_date, quarter,
-                  len(chunks), RAG_VERSION, embed_model, file_hash))
+            """,
+                (
+                    doc_id,
+                    file_path,
+                    doc_type,
+                    ticker,
+                    doc_date,
+                    quarter,
+                    len(chunks),
+                    RAG_VERSION,
+                    embed_model,
+                    file_hash,
+                ),
+            )
 
             doc_pk = cur.fetchone()[0]
 
             # Delete existing chunks
-            cur.execute(
-                "DELETE FROM nexus.rag_chunks WHERE doc_id = %s",
-                (doc_pk,)
-            )
+            cur.execute("DELETE FROM nexus.rag_chunks WHERE doc_id = %s", (doc_pk,))
 
             # Insert new chunks
             for chunk, embedding in zip(chunks, embeddings):
-                cur.execute("""
+                cur.execute(
+                    """
                     INSERT INTO nexus.rag_chunks
                         (doc_id, section_path, section_label, chunk_index,
                          content, content_tokens, embedding, doc_type, ticker, doc_date)
                     VALUES (%s, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s)
-                """, (doc_pk, chunk.section_path, chunk.section_label, chunk.chunk_index,
-                      chunk.content, chunk.content_tokens, str(embedding),
-                      doc_type, ticker, doc_date))
+                """,
+                    (
+                        doc_pk,
+                        chunk.section_path,
+                        chunk.section_label,
+                        chunk.chunk_index,
+                        chunk.content,
+                        chunk.content_tokens,
+                        str(embedding),
+                        doc_type,
+                        ticker,
+                        doc_date,
+                    ),
+                )
 
         conn.commit()
 
@@ -431,13 +461,18 @@ def _log_embed(result: EmbedResult) -> None:
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(log_path, "a") as f:
-        f.write(json.dumps({
-            "ts": datetime.utcnow().isoformat(),
-            "doc": result.doc_id,
-            "doc_type": result.doc_type,
-            "model": result.embed_model,
-            "chunks": result.chunk_count,
-            "duration_ms": result.duration_ms,
-            "status": "success" if not result.error_message else "error",
-            "error": result.error_message,
-        }) + "\n")
+        f.write(
+            json.dumps(
+                {
+                    "ts": datetime.utcnow().isoformat(),
+                    "doc": result.doc_id,
+                    "doc_type": result.doc_type,
+                    "model": result.embed_model,
+                    "chunks": result.chunk_count,
+                    "duration_ms": result.duration_ms,
+                    "status": "success" if not result.error_message else "error",
+                    "error": result.error_message,
+                }
+            )
+            + "\n"
+        )

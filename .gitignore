@@ -32,3 +32,6 @@ coverage.xml
 # Logs
 *.log
 logs/
+
+# Temporary files
+tmp/

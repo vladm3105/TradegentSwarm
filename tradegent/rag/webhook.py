@@ -2,16 +2,15 @@
 
 import logging
 from datetime import date
-from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from .embed import embed_document, embed_text, delete_document
-from .search import semantic_search, get_rag_stats, list_documents, get_document_chunks
-from .hybrid import get_hybrid_context, build_analysis_context
+from .embed import delete_document, embed_document, embed_text
+from .exceptions import EmbedError, RAGUnavailableError
+from .hybrid import get_hybrid_context
 from .schema import health_check
-from .exceptions import RAGUnavailableError, EmbedError
+from .search import get_document_chunks, get_rag_stats, list_documents, semantic_search
 
 log = logging.getLogger(__name__)
 
@@ -19,6 +18,7 @@ app = FastAPI(title="Trading RAG API", version="1.0.0")
 
 
 # --- Request Models ---
+
 
 class EmbedRequest(BaseModel):
     file_path: str
@@ -50,6 +50,7 @@ class HybridContextRequest(BaseModel):
 
 
 # --- Endpoints ---
+
 
 @app.post("/api/rag/embed")
 async def api_embed_document(req: EmbedRequest) -> dict:
@@ -189,7 +190,4 @@ async def api_readiness_check() -> dict:
             "chunk_count": stats.chunk_count,
         }
     except Exception as e:
-        raise HTTPException(
-            status_code=503,
-            detail={"status": "not_ready", "error": str(e)}
-        )
+        raise HTTPException(status_code=503, detail={"status": "not_ready", "error": str(e)})

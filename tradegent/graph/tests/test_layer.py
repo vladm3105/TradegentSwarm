@@ -1,11 +1,12 @@
 """Unit tests for graph/layer.py with mocked Neo4j."""
 
-import pytest
-from unittest.mock import patch, MagicMock, PropertyMock
+from unittest.mock import MagicMock, patch
 
+import pytest
+
+from graph.exceptions import GraphUnavailableError
 from graph.layer import TradingGraph
 from graph.models import GraphStats
-from graph.exceptions import GraphUnavailableError
 
 
 class TestTradingGraphConnection:
@@ -32,6 +33,7 @@ class TestTradingGraphConnection:
     @patch("graph.layer.GraphDatabase")
     def test_connection_failure_raises(self, mock_db):
         from neo4j.exceptions import ServiceUnavailable
+
         mock_db.driver.side_effect = ServiceUnavailable("Connection refused")
 
         with pytest.raises(GraphUnavailableError):
@@ -138,10 +140,12 @@ class TestQueries:
         mock_driver = MagicMock()
         mock_session = MagicMock()
         mock_result = MagicMock()
-        mock_result.__iter__ = lambda self: iter([
-            {"labels": ["Company"], "props": {"name": "NVIDIA"}},
-            {"labels": ["Sector"], "props": {"name": "Semiconductors"}},
-        ])
+        mock_result.__iter__ = lambda self: iter(
+            [
+                {"labels": ["Company"], "props": {"name": "NVIDIA"}},
+                {"labels": ["Sector"], "props": {"name": "Semiconductors"}},
+            ]
+        )
         mock_session.run.return_value = mock_result
         mock_driver.session.return_value.__enter__ = MagicMock(return_value=mock_session)
         mock_driver.session.return_value.__exit__ = MagicMock(return_value=False)
@@ -158,10 +162,12 @@ class TestQueries:
         mock_driver = MagicMock()
         mock_session = MagicMock()
         mock_result = MagicMock()
-        mock_result.__iter__ = lambda self: iter([
-            {"peer": "AMD", "company": "AMD Inc", "sector": "Semiconductors"},
-            {"peer": "INTC", "company": "Intel", "sector": "Semiconductors"},
-        ])
+        mock_result.__iter__ = lambda self: iter(
+            [
+                {"peer": "AMD", "company": "AMD Inc", "sector": "Semiconductors"},
+                {"peer": "INTC", "company": "Intel", "sector": "Semiconductors"},
+            ]
+        )
         mock_session.run.return_value = mock_result
         mock_driver.session.return_value.__enter__ = MagicMock(return_value=mock_session)
         mock_driver.session.return_value.__exit__ = MagicMock(return_value=False)
@@ -178,9 +184,11 @@ class TestQueries:
         mock_driver = MagicMock()
         mock_session = MagicMock()
         mock_result = MagicMock()
-        mock_result.__iter__ = lambda self: iter([
-            {"risk": "Export controls", "description": "China restrictions"},
-        ])
+        mock_result.__iter__ = lambda self: iter(
+            [
+                {"risk": "Export controls", "description": "China restrictions"},
+            ]
+        )
         mock_session.run.return_value = mock_result
         mock_driver.session.return_value.__enter__ = MagicMock(return_value=mock_session)
         mock_driver.session.return_value.__exit__ = MagicMock(return_value=False)
@@ -203,17 +211,21 @@ class TestStats:
 
         # Mock node counts
         node_result = MagicMock()
-        node_result.__iter__ = lambda self: iter([
-            {"label": "Ticker", "count": 10},
-            {"label": "Company", "count": 8},
-        ])
+        node_result.__iter__ = lambda self: iter(
+            [
+                {"label": "Ticker", "count": 10},
+                {"label": "Company", "count": 8},
+            ]
+        )
 
         # Mock edge counts
         edge_result = MagicMock()
-        edge_result.__iter__ = lambda self: iter([
-            {"relationship": "ISSUED", "count": 8},
-            {"relationship": "ANALYZES", "count": 15},
-        ])
+        edge_result.__iter__ = lambda self: iter(
+            [
+                {"relationship": "ISSUED", "count": 8},
+                {"relationship": "ANALYZES", "count": 15},
+            ]
+        )
 
         # Mock last extraction
         extract_result = MagicMock()
@@ -241,9 +253,11 @@ class TestRunCypher:
         mock_driver = MagicMock()
         mock_session = MagicMock()
         mock_result = MagicMock()
-        mock_result.__iter__ = lambda self: iter([
-            {"symbol": "NVDA", "name": "NVIDIA"},
-        ])
+        mock_result.__iter__ = lambda self: iter(
+            [
+                {"symbol": "NVDA", "name": "NVIDIA"},
+            ]
+        )
         mock_session.run.return_value = mock_result
         mock_driver.session.return_value.__enter__ = MagicMock(return_value=mock_session)
         mock_driver.session.return_value.__exit__ = MagicMock(return_value=False)
@@ -252,7 +266,7 @@ class TestRunCypher:
         with TradingGraph() as graph:
             results = graph.run_cypher(
                 "MATCH (t:Ticker {symbol: $symbol}) RETURN t.symbol AS symbol, t.name AS name",
-                {"symbol": "NVDA"}
+                {"symbol": "NVDA"},
             )
 
         assert len(results) == 1

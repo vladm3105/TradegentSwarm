@@ -1,10 +1,9 @@
 """Neo4j schema initialization and management."""
 
 import logging
-from pathlib import Path
 
-from .layer import TradingGraph
 from .exceptions import SchemaError
+from .layer import TradingGraph
 
 log = logging.getLogger(__name__)
 
@@ -63,7 +62,7 @@ def set_schema_version(version: str) -> None:
             MERGE (m:_Metadata {key: 'schema_version'})
             SET m.value = $version
             """,
-            {"version": version}
+            {"version": version},
         )
 
 

@@ -1,22 +1,21 @@
 """Unit tests for graph/extract.py."""
 
-import json
-import pytest
 from datetime import datetime
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
+import pytest
+
+from graph.exceptions import ExtractionError
 from graph.extract import (
-    extract_document,
-    extract_text,
-    _get_field_value,
+    _apply_confidence_thresholds,
     _flatten_doc_for_relations,
+    _get_field_value,
     _infer_doc_type,
     _parse_json_response,
-    _apply_confidence_thresholds,
+    extract_document,
+    extract_text,
 )
-from graph.models import ExtractionResult, EntityExtraction
-from graph.exceptions import ExtractionError
+from graph.models import EntityExtraction, ExtractionResult
 
 
 class TestGetFieldValue:
@@ -129,7 +128,10 @@ class TestApplyConfidenceThresholds:
             EntityExtraction(type="Ticker", value="NVDA", confidence=0.9, evidence=""),
         ]
 
-        with patch("graph.extract._config", {"extraction": {"commit_threshold": 0.7, "flag_threshold": 0.5}}):
+        with patch(
+            "graph.extract._config",
+            {"extraction": {"commit_threshold": 0.7, "flag_threshold": 0.5}},
+        ):
             filtered = _apply_confidence_thresholds(result)
 
         assert len(filtered.entities) == 1
@@ -149,7 +151,10 @@ class TestApplyConfidenceThresholds:
             EntityExtraction(type="Ticker", value="NVDA", confidence=0.6, evidence=""),
         ]
 
-        with patch("graph.extract._config", {"extraction": {"commit_threshold": 0.7, "flag_threshold": 0.5}}):
+        with patch(
+            "graph.extract._config",
+            {"extraction": {"commit_threshold": 0.7, "flag_threshold": 0.5}},
+        ):
             filtered = _apply_confidence_thresholds(result)
 
         assert len(filtered.entities) == 1
@@ -169,7 +174,10 @@ class TestApplyConfidenceThresholds:
             EntityExtraction(type="Ticker", value="NVDA", confidence=0.3, evidence=""),
         ]
 
-        with patch("graph.extract._config", {"extraction": {"commit_threshold": 0.7, "flag_threshold": 0.5}}):
+        with patch(
+            "graph.extract._config",
+            {"extraction": {"commit_threshold": 0.7, "flag_threshold": 0.5}},
+        ):
             filtered = _apply_confidence_thresholds(result)
 
         assert len(filtered.entities) == 0
@@ -197,9 +205,14 @@ class TestExtractText:
     """Tests for text extraction (mocked)."""
 
     @patch("graph.extract._call_ollama_rate_limited")
-    @patch("graph.extract._config", {"extraction": {"timeout_seconds": 30, "commit_threshold": 0.7, "flag_threshold": 0.5}})
+    @patch(
+        "graph.extract._config",
+        {"extraction": {"timeout_seconds": 30, "commit_threshold": 0.7, "flag_threshold": 0.5}},
+    )
     def test_extracts_from_text(self, mock_ollama):
-        mock_ollama.return_value = '[{"type": "Ticker", "value": "NVDA", "confidence": 0.9, "evidence": "test"}]'
+        mock_ollama.return_value = (
+            '[{"type": "Ticker", "value": "NVDA", "confidence": 0.9, "evidence": "test"}]'
+        )
 
         result = extract_text(
             text="NVDA is a strong buy for AI data center growth",

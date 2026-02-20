@@ -5,9 +5,10 @@ They require a running PostgreSQL instance with pgvector.
 Can be skipped with: pytest -m "not integration"
 """
 
-import pytest
 from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 # Mark all tests in this module as integration tests
 pytestmark = pytest.mark.integration
@@ -18,6 +19,7 @@ def database_available():
     """Check if PostgreSQL is available for integration tests."""
     try:
         from rag.schema import health_check
+
         return health_check()
     except Exception:
         return False
@@ -34,14 +36,14 @@ class TestEmbeddingRoundTrip:
 
     @pytest.mark.skipif(
         "not config.getoption('--run-integration')",
-        reason="Integration tests require --run-integration flag"
+        reason="Integration tests require --run-integration flag",
     )
     def test_embed_and_search(self, database_available, fixtures_path):
         """Embed a document and search for it."""
         if not database_available:
             pytest.skip("PostgreSQL not available")
 
-        from rag.embed import embed_document, delete_document
+        from rag.embed import delete_document, embed_document
         from rag.search import semantic_search
 
         earnings_path = fixtures_path / "sample_earnings.yaml"
@@ -96,9 +98,10 @@ class TestHybridContextPipeline:
 
     def test_format_context_structure(self):
         """Test context formatting produces valid markdown."""
+        from datetime import date
+
         from rag.hybrid import format_context
         from rag.models import SearchResult
-        from datetime import date
 
         vector_results = [
             SearchResult(
@@ -135,7 +138,7 @@ class TestRAGSchemaOperations:
 
     @pytest.mark.skipif(
         "not config.getoption('--run-integration')",
-        reason="Integration tests require --run-integration flag"
+        reason="Integration tests require --run-integration flag",
     )
     def test_schema_init(self, database_available):
         """Test schema initialization."""
@@ -149,7 +152,7 @@ class TestRAGSchemaOperations:
 
     @pytest.mark.skipif(
         "not config.getoption('--run-integration')",
-        reason="Integration tests require --run-integration flag"
+        reason="Integration tests require --run-integration flag",
     )
     def test_get_stats(self, database_available):
         """Test statistics retrieval."""

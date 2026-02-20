@@ -1,18 +1,18 @@
 """Unit tests for rag/chunk.py."""
 
+from unittest.mock import mock_open, patch
+
 import pytest
-from pathlib import Path
-from unittest.mock import patch, mock_open
 
 from rag.chunk import (
+    _get_nested_value,
+    _infer_doc_type,
     chunk_yaml_document,
     chunk_yaml_section,
     prepare_chunk_text,
-    _get_nested_value,
-    _infer_doc_type,
 )
-from rag.models import ChunkResult
 from rag.exceptions import ChunkingError
+from rag.models import ChunkResult
 
 
 class TestPrepareChunkText:
@@ -163,7 +163,9 @@ class TestChunkYamlDocument:
             chunk_yaml_document("/path/to/empty.yaml")
 
     @patch("rag.chunk._section_mappings", {})
-    @patch("builtins.open", mock_open(read_data="ticker: NVDA\nthesis: Long NVDA\n_meta:\n  id: test"))
+    @patch(
+        "builtins.open", mock_open(read_data="ticker: NVDA\nthesis: Long NVDA\n_meta:\n  id: test")
+    )
     @patch("pathlib.Path.exists", return_value=True)
     def test_chunks_simple_document(self, mock_exists):
         chunks = chunk_yaml_document("/path/to/doc.yaml", min_tokens=1)
@@ -171,8 +173,19 @@ class TestChunkYamlDocument:
         # Should have chunks for ticker and thesis (not _meta)
         assert len(chunks) >= 1
 
-    @patch("rag.chunk._section_mappings", {"earnings-analysis": {"sections": [{"path": "thesis", "label": "Thesis"}], "skip": ["_meta"]}})
-    @patch("builtins.open", mock_open(read_data="_meta:\n  doc_type: earnings-analysis\nthesis: Strong demand signal"))
+    @patch(
+        "rag.chunk._section_mappings",
+        {
+            "earnings-analysis": {
+                "sections": [{"path": "thesis", "label": "Thesis"}],
+                "skip": ["_meta"],
+            }
+        },
+    )
+    @patch(
+        "builtins.open",
+        mock_open(read_data="_meta:\n  doc_type: earnings-analysis\nthesis: Strong demand signal"),
+    )
     @patch("pathlib.Path.exists", return_value=True)
     def test_uses_section_mappings(self, mock_exists):
         chunks = chunk_yaml_document("/path/to/earnings.yaml", min_tokens=1)

@@ -1,9 +1,8 @@
 """Tests for tradegent/orchestrator.py"""
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
-from pathlib import Path
-import json
 
 
 class TestSettings:
@@ -14,15 +13,18 @@ class TestSettings:
         _, mock_cursor = mock_db_connection
 
         # Mock get_all_settings return
-        mock_nexus_db.get_all_settings = MagicMock(return_value={
-            "dry_run_mode": True,
-            "auto_execute_enabled": False,
-            "max_daily_analyses": 15,
-            "scheduler_poll_seconds": 60,
-        })
+        mock_nexus_db.get_all_settings = MagicMock(
+            return_value={
+                "dry_run_mode": True,
+                "auto_execute_enabled": False,
+                "max_daily_analyses": 15,
+                "scheduler_poll_seconds": 60,
+            }
+        )
 
         with patch("tradegent.orchestrator.NexusDB", return_value=mock_nexus_db):
             from tradegent.orchestrator import Settings
+
             settings = Settings(mock_nexus_db)
 
             assert settings.dry_run_mode is True
@@ -31,14 +33,17 @@ class TestSettings:
 
     def test_settings_refresh(self, mock_nexus_db):
         """Test settings refresh from database."""
-        mock_nexus_db.get_all_settings = MagicMock(return_value={
-            "dry_run_mode": False,
-            "auto_execute_enabled": True,
-            "max_daily_analyses": 20,
-        })
+        mock_nexus_db.get_all_settings = MagicMock(
+            return_value={
+                "dry_run_mode": False,
+                "auto_execute_enabled": True,
+                "max_daily_analyses": 20,
+            }
+        )
 
         with patch("tradegent.orchestrator.NexusDB", return_value=mock_nexus_db):
             from tradegent.orchestrator import Settings
+
             settings = Settings(mock_nexus_db)
 
             # Change the mock return value
@@ -146,6 +151,7 @@ class TestFileOperations:
     def test_load_analysis_file(self, tmp_analyses_dir):
         """Test loading analysis from file."""
         import yaml
+
         from tradegent.orchestrator import load_analysis_file
 
         # Create a test file
@@ -268,10 +274,12 @@ class TestRateLimiting:
 
     def test_daily_limit_not_exceeded(self, mock_nexus_db):
         """Test when daily limit is not exceeded."""
-        mock_nexus_db.get_service_status = MagicMock(return_value={
-            "today_analyses": 5,
-            "today_executions": 2,
-        })
+        mock_nexus_db.get_service_status = MagicMock(
+            return_value={
+                "today_analyses": 5,
+                "today_executions": 2,
+            }
+        )
 
         status = mock_nexus_db.get_service_status()
 
@@ -280,10 +288,12 @@ class TestRateLimiting:
 
     def test_daily_limit_exceeded(self, mock_nexus_db):
         """Test when daily limit is exceeded."""
-        mock_nexus_db.get_service_status = MagicMock(return_value={
-            "today_analyses": 15,
-            "today_executions": 5,
-        })
+        mock_nexus_db.get_service_status = MagicMock(
+            return_value={
+                "today_analyses": 15,
+                "today_executions": 5,
+            }
+        )
 
         status = mock_nexus_db.get_service_status()
 

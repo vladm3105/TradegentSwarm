@@ -31,24 +31,24 @@ Architecture:
     └─────────────────────────────────────────────┘
 """
 
-import os
-import sys
-import signal
-import time
 import logging
+import os
+import signal
+import sys
 import threading
+import time
 from datetime import datetime
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from typing import Optional
 from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).parent))
-from db_layer import NexusDB
 import orchestrator
+from db_layer import NexusDB
 from orchestrator import (
-    Settings, cfg,
-    run_due_schedules, run_earnings_check,
+    Settings,
+    run_due_schedules,
+    run_earnings_check,
 )
 
 ET = ZoneInfo("America/New_York")
@@ -66,6 +66,7 @@ log = logging.getLogger("nexus-service")
 
 # ─── Health Check HTTP Server ────────────────────────────────────────────────
 
+
 class HealthHandler(BaseHTTPRequestHandler):
     """
     Secure HTTP handler for Docker/Cloud Run health checks.
@@ -75,6 +76,7 @@ class HealthHandler(BaseHTTPRequestHandler):
     - Optional token authentication (HEALTH_CHECK_TOKEN env var)
     - Minimal information exposure in authenticated vs unauthenticated mode
     """
+
     db_ref: NexusDB = None
     auth_token: str = None
 
@@ -94,7 +96,7 @@ class HealthHandler(BaseHTTPRequestHandler):
             try:
                 # Always respond to health check for liveness probes
                 status = self.db_ref.get_service_status() if self.db_ref else None
-                is_healthy = status and status.get('state') in ('running', 'starting')
+                is_healthy = status and status.get("state") in ("running", "starting")
 
                 if is_healthy:
                     self.send_response(200)
@@ -102,17 +104,20 @@ class HealthHandler(BaseHTTPRequestHandler):
                     self.end_headers()
 
                     import json
+
                     # Only expose detailed metrics if authenticated
                     if self._check_auth():
-                        body = json.dumps({
-                            "status": "healthy",
-                            "state": status.get('state'),
-                            "uptime_since": str(status.get('started_at')),
-                            "last_heartbeat": str(status.get('last_heartbeat')),
-                            "ticks": status.get('ticks_total', 0),
-                            "today_analyses": status.get('today_analyses', 0),
-                            "today_executions": status.get('today_executions', 0),
-                        })
+                        body = json.dumps(
+                            {
+                                "status": "healthy",
+                                "state": status.get("state"),
+                                "uptime_since": str(status.get("started_at")),
+                                "last_heartbeat": str(status.get("last_heartbeat")),
+                                "ticks": status.get("ticks_total", 0),
+                                "today_analyses": status.get("today_analyses", 0),
+                                "today_executions": status.get("today_executions", 0),
+                            }
+                        )
                     else:
                         # Minimal response for unauthenticated requests
                         body = json.dumps({"status": "healthy"})
@@ -155,6 +160,7 @@ def start_health_server(db: NexusDB, port: int = 8080):
 
 # ─── Service Core ────────────────────────────────────────────────────────────
 
+
 class NexusService:
     """
     Long-running orchestrator service.
@@ -170,9 +176,9 @@ class NexusService:
 
     def __init__(self):
         self._running = False
-        self._db: Optional[NexusDB] = None
+        self._db: NexusDB | None = None
         self._health_server = None
-        self._last_earnings_check: Optional[datetime] = None
+        self._last_earnings_check: datetime | None = None
 
         # Wire up signal handlers for graceful shutdown
         signal.signal(signal.SIGTERM, self._handle_signal)
@@ -203,9 +209,11 @@ class NexusService:
 
         # Initialize settings from DB
         orchestrator.cfg = Settings(self._db)
-        log.info(f"Settings loaded: poll={orchestrator.cfg.scheduler_poll_seconds}s, "
-                 f"dry_run={orchestrator.cfg.dry_run_mode}, "
-                 f"auto_execute={orchestrator.cfg.auto_execute_enabled}")
+        log.info(
+            f"Settings loaded: poll={orchestrator.cfg.scheduler_poll_seconds}s, "
+            f"dry_run={orchestrator.cfg.dry_run_mode}, "
+            f"auto_execute={orchestrator.cfg.auto_execute_enabled}"
+        )
 
         # Mark service started
         self._db.mark_service_started()
@@ -219,16 +227,16 @@ class NexusService:
 
         # Enter main loop
         self._running = True
-        self._db.heartbeat('running')
+        self._db.heartbeat("running")
         log.info("Service running — entering main loop")
 
         try:
             self._main_loop()
         except Exception as e:
             log.error(f"Fatal error in main loop: {e}", exc_info=True)
-            self._db.heartbeat('error', current_task=str(e)[:200])
-            self._db.increment_service_counter('errors_total')
-            self._db.increment_service_counter('today_errors')
+            self._db.heartbeat("error", current_task=str(e)[:200])
+            self._db.increment_service_counter("errors_total")
+            self._db.increment_service_counter("today_errors")
         finally:
             self._shutdown()
 
@@ -241,11 +249,11 @@ class NexusService:
                 self._tick()
             except Exception as e:
                 log.error(f"Tick error: {e}", exc_info=True)
-                self._db.increment_service_counter('errors_total')
-                self._db.increment_service_counter('today_errors')
+                self._db.increment_service_counter("errors_total")
+                self._db.increment_service_counter("today_errors")
 
             tick_ms = int((time.monotonic() - tick_start) * 1000)
-            self._db.heartbeat('running', tick_duration_ms=tick_ms)
+            self._db.heartbeat("running", tick_duration_ms=tick_ms)
 
             # Sleep for configured interval (re-read from DB each cycle)
             poll_seconds = orchestrator.cfg.scheduler_poll_seconds
@@ -261,7 +269,7 @@ class NexusService:
         orchestrator.cfg.refresh()
 
         # 3. Check and execute due schedules
-        self._db.heartbeat('running', current_task='checking due schedules')
+        self._db.heartbeat("running", current_task="checking due schedules")
         run_due_schedules(self._db)
 
         # 4. Check earnings triggers (during configured hours)
@@ -269,15 +277,20 @@ class NexusService:
         earnings_hours = orchestrator.cfg.earnings_check_hours
         is_trading_day = now.weekday() < 5
 
-        if (now.hour in earnings_hours and is_trading_day and
-                (self._last_earnings_check is None or
-                 (now - self._last_earnings_check).total_seconds() > 3600)):
-            self._db.heartbeat('running', current_task='earnings check')
+        if (
+            now.hour in earnings_hours
+            and is_trading_day
+            and (
+                self._last_earnings_check is None
+                or (now - self._last_earnings_check).total_seconds() > 3600
+            )
+        ):
+            self._db.heartbeat("running", current_task="earnings check")
             run_earnings_check(self._db)
             self._last_earnings_check = now
 
         # 5. Clear current task
-        self._db.heartbeat('running', current_task=None)
+        self._db.heartbeat("running", current_task=None)
 
     def _interruptible_sleep(self, seconds: int):
         """Sleep that can be interrupted by SIGTERM/SIGINT."""
@@ -328,6 +341,7 @@ class NexusService:
 
 # ─── CLI ─────────────────────────────────────────────────────────────────────
 
+
 def show_health(db: NexusDB):
     """Print service health status."""
     status = db.get_service_status()
@@ -337,9 +351,9 @@ def show_health(db: NexusDB):
 
     settings = db.get_all_settings()
 
-    print(f"\n{'═'*55}")
-    print(f"  NEXUS LIGHT SERVICE HEALTH")
-    print(f"{'═'*55}")
+    print(f"\n{'═' * 55}")
+    print("  NEXUS LIGHT SERVICE HEALTH")
+    print(f"{'═' * 55}")
     print(f"  State:          {status.get('state', 'unknown')}")
     print(f"  PID:            {status.get('pid', '—')}")
     print(f"  Host:           {status.get('hostname', '—')}")
@@ -349,23 +363,27 @@ def show_health(db: NexusDB):
     print(f"  Current Task:   {status.get('current_task', '(idle)')}")
     print(f"  Version:        {status.get('version', '—')}")
 
-    print(f"\n  Lifetime Totals:")
+    print("\n  Lifetime Totals:")
     print(f"    Ticks:        {status.get('ticks_total', 0)}")
     print(f"    Analyses:     {status.get('analyses_total', 0)}")
     print(f"    Executions:   {status.get('executions_total', 0)}")
     print(f"    Errors:       {status.get('errors_total', 0)}")
 
     print(f"\n  Today ({status.get('today_date', '—')}):")
-    print(f"    Analyses:     {status.get('today_analyses', 0)} / {settings.get('max_daily_analyses', '?')}")
-    print(f"    Executions:   {status.get('today_executions', 0)} / {settings.get('max_daily_executions', '?')}")
+    print(
+        f"    Analyses:     {status.get('today_analyses', 0)} / {settings.get('max_daily_analyses', '?')}"
+    )
+    print(
+        f"    Executions:   {status.get('today_executions', 0)} / {settings.get('max_daily_executions', '?')}"
+    )
     print(f"    Errors:       {status.get('today_errors', 0)}")
 
-    print(f"\n  Key Settings:")
+    print("\n  Key Settings:")
     print(f"    Poll interval: {settings.get('scheduler_poll_seconds', '?')}s")
     print(f"    Dry run mode:  {settings.get('dry_run_mode', '?')}")
     print(f"    Auto execute:  {settings.get('auto_execute_enabled', '?')}")
     print(f"    Scanners:      {settings.get('scanners_enabled', '?')}")
-    print(f"{'═'*55}\n")
+    print(f"{'═' * 55}\n")
 
 
 def main():

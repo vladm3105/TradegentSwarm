@@ -1,7 +1,6 @@
 """Unit tests for rag/tokens.py."""
 
-import pytest
-from rag.tokens import estimate_tokens, truncate_to_tokens, split_by_tokens
+from rag.tokens import estimate_tokens, split_by_tokens, truncate_to_tokens
 
 
 class TestEstimateTokens:

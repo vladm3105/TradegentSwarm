@@ -4,8 +4,8 @@ import re
 from pathlib import Path
 
 # ISO 8601 date pattern for real document detection
-REAL_DOC_PATTERN = re.compile(r'\d{8}T\d{4}')
-TEMPLATE_NAMES = {'template', 'sample', 'example', 'test'}
+REAL_DOC_PATTERN = re.compile(r"\d{8}T\d{4}")
+TEMPLATE_NAMES = {"template", "sample", "example", "test"}
 
 
 def is_real_document(file_path: str) -> bool:

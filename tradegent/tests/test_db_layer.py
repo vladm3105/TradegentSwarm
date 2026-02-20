@@ -1,8 +1,8 @@
 """Tests for tradegent/db_layer.py"""
 
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import MagicMock, patch, call
-from datetime import datetime, date
 
 
 class TestNexusDBConnection:
@@ -14,6 +14,7 @@ class TestNexusDBConnection:
 
         with patch("tradegent.db_layer.psycopg.connect", return_value=mock_conn) as mock_connect:
             from tradegent.db_layer import NexusDB
+
             db = NexusDB()
             db.connect()
 
@@ -27,7 +28,8 @@ class TestNexusDBConnection:
         monkeypatch.setenv("PG_PORT", "5434")
 
         with patch("tradegent.db_layer.psycopg.connect", return_value=mock_conn) as mock_connect:
-            from tradegent.db_layer import NexusDB, get_dsn
+            from tradegent.db_layer import get_dsn
+
             dsn = get_dsn()
 
             assert "custom-host" in dsn

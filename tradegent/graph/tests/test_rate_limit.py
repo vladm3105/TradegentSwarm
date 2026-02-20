@@ -1,8 +1,9 @@
 """Tests for rate limiting and retry decorators in extract module."""
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 import requests
-from unittest.mock import patch, MagicMock
 
 
 class TestRateLimitDecorator:
@@ -16,12 +17,15 @@ class TestRateLimitDecorator:
         assert hasattr(_call_ollama_rate_limited, "__wrapped__")
 
     @patch("graph.extract.requests.post")
-    @patch("graph.extract._config", {
-        "extraction": {
-            "ollama": {"base_url": "http://localhost:11434", "model": "test"},
-            "timeout_seconds": 30,
-        }
-    })
+    @patch(
+        "graph.extract._config",
+        {
+            "extraction": {
+                "ollama": {"base_url": "http://localhost:11434", "model": "test"},
+                "timeout_seconds": 30,
+            }
+        },
+    )
     def test_ollama_call_success(self, mock_post):
         """Rate-limited Ollama call succeeds."""
         from graph.extract import _call_ollama_rate_limited
@@ -40,14 +44,17 @@ class TestRetryOnTimeout:
     """Tests for @retry decorator handling Timeout errors."""
 
     @patch("graph.extract._call_ollama_rate_limited")
-    @patch("graph.extract._config", {
-        "extraction": {
-            "commit_threshold": 0.7,
-            "flag_threshold": 0.5,
-            "timeout_seconds": 30,
-            "ollama": {"base_url": "http://localhost:11434", "model": "test"},
-        }
-    })
+    @patch(
+        "graph.extract._config",
+        {
+            "extraction": {
+                "commit_threshold": 0.7,
+                "flag_threshold": 0.5,
+                "timeout_seconds": 30,
+                "ollama": {"base_url": "http://localhost:11434", "model": "test"},
+            }
+        },
+    )
     def test_retry_on_timeout_succeeds_after_retry(self, mock_ollama):
         """Retry succeeds after initial Timeout."""
         from graph.extract import _extract_entities_from_field
@@ -55,7 +62,7 @@ class TestRetryOnTimeout:
         # First call times out, second succeeds
         mock_ollama.side_effect = [
             requests.Timeout("Connection timed out"),
-            '[]',
+            "[]",
         ]
 
         # Should not raise, retries succeed
@@ -65,18 +72,22 @@ class TestRetryOnTimeout:
         assert mock_ollama.call_count == 2
 
     @patch("graph.extract._call_ollama_rate_limited")
-    @patch("graph.extract._config", {
-        "extraction": {
-            "commit_threshold": 0.7,
-            "flag_threshold": 0.5,
-            "timeout_seconds": 30,
-            "ollama": {"base_url": "http://localhost:11434", "model": "test"},
-        }
-    })
+    @patch(
+        "graph.extract._config",
+        {
+            "extraction": {
+                "commit_threshold": 0.7,
+                "flag_threshold": 0.5,
+                "timeout_seconds": 30,
+                "ollama": {"base_url": "http://localhost:11434", "model": "test"},
+            }
+        },
+    )
     def test_retry_exhausted_on_repeated_timeout(self, mock_ollama):
         """Raises after max retries exhausted on Timeout."""
-        from graph.extract import _extract_entities_from_field
         from tenacity import RetryError
+
+        from graph.extract import _extract_entities_from_field
 
         # All 3 attempts time out
         mock_ollama.side_effect = requests.Timeout("Connection timed out")
@@ -91,14 +102,17 @@ class TestRetryOnConnectionError:
     """Tests for @retry decorator handling ConnectionError."""
 
     @patch("graph.extract._call_ollama_rate_limited")
-    @patch("graph.extract._config", {
-        "extraction": {
-            "commit_threshold": 0.7,
-            "flag_threshold": 0.5,
-            "timeout_seconds": 30,
-            "ollama": {"base_url": "http://localhost:11434", "model": "test"},
-        }
-    })
+    @patch(
+        "graph.extract._config",
+        {
+            "extraction": {
+                "commit_threshold": 0.7,
+                "flag_threshold": 0.5,
+                "timeout_seconds": 30,
+                "ollama": {"base_url": "http://localhost:11434", "model": "test"},
+            }
+        },
+    )
     def test_retry_on_connection_error(self, mock_ollama):
         """Retry on ConnectionError."""
         from graph.extract import _extract_entities_from_field
@@ -107,7 +121,7 @@ class TestRetryOnConnectionError:
         mock_ollama.side_effect = [
             requests.ConnectionError("Connection refused"),
             requests.ConnectionError("Connection refused"),
-            '[]',
+            "[]",
         ]
 
         result = _extract_entities_from_field("test text", "ollama", 30)
@@ -116,18 +130,22 @@ class TestRetryOnConnectionError:
         assert mock_ollama.call_count == 3
 
     @patch("graph.extract._call_ollama_rate_limited")
-    @patch("graph.extract._config", {
-        "extraction": {
-            "commit_threshold": 0.7,
-            "flag_threshold": 0.5,
-            "timeout_seconds": 30,
-            "ollama": {"base_url": "http://localhost:11434", "model": "test"},
-        }
-    })
+    @patch(
+        "graph.extract._config",
+        {
+            "extraction": {
+                "commit_threshold": 0.7,
+                "flag_threshold": 0.5,
+                "timeout_seconds": 30,
+                "ollama": {"base_url": "http://localhost:11434", "model": "test"},
+            }
+        },
+    )
     def test_retry_exhausted_on_connection_error(self, mock_ollama):
         """Raises after max retries on ConnectionError."""
-        from graph.extract import _extract_entities_from_field
         from tenacity import RetryError
+
+        from graph.extract import _extract_entities_from_field
 
         mock_ollama.side_effect = requests.ConnectionError("Connection refused")
 
@@ -141,14 +159,17 @@ class TestNoRetryOnOtherErrors:
     """Tests that non-retriable errors are not retried."""
 
     @patch("graph.extract._call_ollama_rate_limited")
-    @patch("graph.extract._config", {
-        "extraction": {
-            "commit_threshold": 0.7,
-            "flag_threshold": 0.5,
-            "timeout_seconds": 30,
-            "ollama": {"base_url": "http://localhost:11434", "model": "test"},
-        }
-    })
+    @patch(
+        "graph.extract._config",
+        {
+            "extraction": {
+                "commit_threshold": 0.7,
+                "flag_threshold": 0.5,
+                "timeout_seconds": 30,
+                "ollama": {"base_url": "http://localhost:11434", "model": "test"},
+            }
+        },
+    )
     def test_no_retry_on_http_error(self, mock_ollama):
         """HTTP errors (4xx/5xx) are not retried."""
         from graph.extract import _extract_entities_from_field
@@ -164,14 +185,17 @@ class TestNoRetryOnOtherErrors:
         assert mock_ollama.call_count == 1
 
     @patch("graph.extract._call_ollama_rate_limited")
-    @patch("graph.extract._config", {
-        "extraction": {
-            "commit_threshold": 0.7,
-            "flag_threshold": 0.5,
-            "timeout_seconds": 30,
-            "ollama": {"base_url": "http://localhost:11434", "model": "test"},
-        }
-    })
+    @patch(
+        "graph.extract._config",
+        {
+            "extraction": {
+                "commit_threshold": 0.7,
+                "flag_threshold": 0.5,
+                "timeout_seconds": 30,
+                "ollama": {"base_url": "http://localhost:11434", "model": "test"},
+            }
+        },
+    )
     def test_no_retry_on_value_error(self, mock_ollama):
         """ValueError is not retried."""
         from graph.extract import _extract_entities_from_field

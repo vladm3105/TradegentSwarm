@@ -1,12 +1,11 @@
 """Unit tests for rag/flatten.py."""
 
-import pytest
 from rag.flatten import (
-    yaml_to_text,
-    humanize_key,
-    flatten_list,
     flatten_dict_list,
+    flatten_list,
+    humanize_key,
     section_to_text,
+    yaml_to_text,
 )
 
 

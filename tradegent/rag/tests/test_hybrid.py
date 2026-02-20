@@ -1,14 +1,13 @@
 """Unit tests for rag/hybrid.py."""
 
-import pytest
 from datetime import date
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from rag.hybrid import (
-    get_hybrid_context,
     build_analysis_context,
     format_context,
     get_bias_warnings,
+    get_hybrid_context,
     get_strategy_recommendations,
 )
 from rag.models import HybridContext, SearchResult

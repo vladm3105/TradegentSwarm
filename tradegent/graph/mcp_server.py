@@ -3,8 +3,6 @@
 import asyncio
 import json
 import logging
-import os
-import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -21,7 +19,7 @@ else:
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
+from mcp.types import TextContent, Tool
 
 log = logging.getLogger(__name__)
 
@@ -42,12 +40,12 @@ TOOLS = [
                     "type": "string",
                     "default": "ollama",
                     "enum": ["ollama", "claude-api", "openrouter"],
-                    "description": "LLM backend for extraction"
+                    "description": "LLM backend for extraction",
                 },
                 "commit": {
                     "type": "boolean",
                     "default": True,
-                    "description": "Whether to commit to Neo4j"
+                    "description": "Whether to commit to Neo4j",
                 },
             },
             "required": ["file_path"],
@@ -166,9 +164,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
 async def _execute_tool(name: str, args: dict) -> dict:
     """Execute a tool and return result."""
-    from .layer import TradingGraph
     from .extract import extract_document, extract_text
-    from .exceptions import GraphUnavailableError, ExtractionError
+    from .layer import TradingGraph
 
     if name == "graph_extract":
         result = extract_document(
@@ -190,10 +187,7 @@ async def _execute_tool(name: str, args: dict) -> dict:
 
     elif name == "graph_search":
         with TradingGraph() as graph:
-            results = graph.find_related(
-                args["ticker"].upper(),
-                depth=args.get("depth", 2)
-            )
+            results = graph.find_related(args["ticker"].upper(), depth=args.get("depth", 2))
             return {"results": results}
 
     elif name == "graph_peers":

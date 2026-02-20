@@ -1,10 +1,9 @@
 """Combined vector + graph context builder."""
 
 import logging
-from typing import Any
 
 from .models import HybridContext, SearchResult
-from .search import semantic_search, get_similar_analyses, get_learnings_for_topic
+from .search import get_learnings_for_topic, get_similar_analyses, semantic_search
 
 log = logging.getLogger(__name__)
 
@@ -193,18 +192,23 @@ def get_bias_warnings(ticker: str) -> list[dict]:
         with TradingGraph() as graph:
             if graph.health_check():
                 # Get biases detected in trades for this ticker
-                bias_history = graph.run_cypher("""
+                bias_history = graph.run_cypher(
+                    """
                     MATCH (b:Bias)-[:DETECTED_IN]->(t:Trade)-[:TRADED]->(tk:Ticker {symbol: $symbol})
                     RETURN b.name AS bias, t.outcome AS outcome, count(*) AS occurrences
                     ORDER BY occurrences DESC
-                """, {"symbol": ticker.upper()})
+                """,
+                    {"symbol": ticker.upper()},
+                )
 
                 for row in bias_history:
-                    warnings.append({
-                        "bias": row["bias"],
-                        "occurrences": row["occurrences"],
-                        "last_outcome": row["outcome"],
-                    })
+                    warnings.append(
+                        {
+                            "bias": row["bias"],
+                            "occurrences": row["occurrences"],
+                            "last_outcome": row["outcome"],
+                        }
+                    )
 
     except Exception as e:
         log.warning(f"Could not get bias warnings: {e}")
@@ -231,19 +235,24 @@ def get_strategy_recommendations(ticker: str) -> list[dict]:
             from graph.layer import TradingGraph
         with TradingGraph() as graph:
             if graph.health_check():
-                strategies = graph.run_cypher("""
+                strategies = graph.run_cypher(
+                    """
                     MATCH (s:Strategy)-[r:WORKS_FOR]->(tk:Ticker {symbol: $symbol})
                     WHERE r.sample_size >= 3
                     RETURN s.name AS strategy, r.win_rate AS win_rate, r.sample_size AS trades
                     ORDER BY r.win_rate DESC
-                """, {"symbol": ticker.upper()})
+                """,
+                    {"symbol": ticker.upper()},
+                )
 
                 for row in strategies:
-                    recommendations.append({
-                        "strategy": row["strategy"],
-                        "win_rate": row["win_rate"],
-                        "trades": row["trades"],
-                    })
+                    recommendations.append(
+                        {
+                            "strategy": row["strategy"],
+                            "win_rate": row["win_rate"],
+                            "trades": row["trades"],
+                        }
+                    )
 
     except Exception as e:
         log.warning(f"Could not get strategy recommendations: {e}")

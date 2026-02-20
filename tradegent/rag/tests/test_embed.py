@@ -1,20 +1,19 @@
 """Unit tests for rag/embed.py with mocked database."""
 
-import pytest
 from datetime import date
-from pathlib import Path
-from unittest.mock import patch, MagicMock, mock_open
+from unittest.mock import MagicMock, mock_open, patch
+
+import pytest
 
 from rag.embed import (
+    _compute_file_hash,
+    _infer_doc_type,
+    _parse_date,
+    delete_document,
     embed_document,
     embed_text,
-    delete_document,
     reembed_all,
-    _compute_file_hash,
-    _parse_date,
-    _infer_doc_type,
 )
-from rag.models import EmbedResult
 from rag.exceptions import EmbedError
 
 
@@ -110,11 +109,23 @@ class TestEmbedDocument:
     @patch("rag.embed._store_document")
     @patch("rag.embed._log_embed")
     @patch("pathlib.Path.exists", return_value=True)
-    @patch("builtins.open", mock_open(read_data="ticker: NVDA\n_meta:\n  id: test-001\n  doc_type: earnings-analysis"))
+    @patch(
+        "builtins.open",
+        mock_open(read_data="ticker: NVDA\n_meta:\n  id: test-001\n  doc_type: earnings-analysis"),
+    )
     def test_embeds_new_document(
-        self, mock_exists, mock_log, mock_store, mock_embed_batch, mock_chunk, mock_hash, mock_get_doc, mock_is_real
+        self,
+        mock_exists,
+        mock_log,
+        mock_store,
+        mock_embed_batch,
+        mock_chunk,
+        mock_hash,
+        mock_get_doc,
+        mock_is_real,
     ):
         from rag.models import ChunkResult
+
         mock_chunk.return_value = [
             ChunkResult(
                 section_path="thesis",

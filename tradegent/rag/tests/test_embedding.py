@@ -1,13 +1,13 @@
 """Unit tests for rag/embedding_client.py."""
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from rag.embedding_client import (
     EmbeddingClient,
-    get_embedding_client,
     get_embedding,
-    get_embeddings_batch,
+    get_embedding_client,
 )
 from rag.exceptions import EmbeddingUnavailableError
 
@@ -90,9 +90,7 @@ class TestOpenRouterEmbedding:
     @patch.dict("os.environ", {"OPENROUTER_API_KEY": "test-key"})
     def test_openrouter_embed_success(self, mock_post):
         mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "data": [{"embedding": [0.1, 0.2, 0.3] * 256}]
-        }
+        mock_response.json.return_value = {"data": [{"embedding": [0.1, 0.2, 0.3] * 256}]}
         mock_post.return_value = mock_response
 
         config = {
@@ -123,9 +121,7 @@ class TestFallbackChain:
         ollama_response.raise_for_status.side_effect = Exception("Ollama down")
 
         openrouter_response = MagicMock()
-        openrouter_response.json.return_value = {
-            "data": [{"embedding": [0.1] * 768}]
-        }
+        openrouter_response.json.return_value = {"data": [{"embedding": [0.1] * 768}]}
 
         mock_post.side_effect = [
             Exception("Ollama down"),
@@ -168,9 +164,7 @@ class TestBatchEmbedding:
     @patch("requests.post")
     def test_batch_embedding(self, mock_post):
         mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "embeddings": [[0.1] * 768]
-        }
+        mock_response.json.return_value = {"embeddings": [[0.1] * 768]}
         mock_post.return_value = mock_response
 
         config = {
@@ -203,6 +197,9 @@ class TestSingleton:
         mock_response.json.return_value = {"embeddings": [[0.1] * 768]}
         mock_post.return_value = mock_response
 
-        with patch("rag.embedding_client._config", {"embedding": {"fallback_chain": ["ollama"], "dimensions": 768}}):
+        with patch(
+            "rag.embedding_client._config",
+            {"embedding": {"fallback_chain": ["ollama"], "dimensions": 768}},
+        ):
             embedding = get_embedding("test")
             assert len(embedding) == 768

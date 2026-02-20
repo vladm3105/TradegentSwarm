@@ -1,16 +1,15 @@
 """Unit tests for graph/normalize.py."""
 
-import pytest
 from graph.normalize import (
-    normalize_entity,
-    normalize_ticker,
+    dedupe_entities,
     normalize_bias,
+    normalize_entity,
     normalize_pattern,
     normalize_strategy,
+    normalize_ticker,
+    normalize_type,
     resolve_ticker,
     standardize_separators,
-    normalize_type,
-    dedupe_entities,
 )
 
 

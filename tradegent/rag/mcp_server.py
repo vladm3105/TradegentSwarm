@@ -3,9 +3,6 @@
 import asyncio
 import json
 import logging
-import os
-import sys
-from datetime import date
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -22,7 +19,7 @@ else:
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
+from mcp.types import TextContent, Tool
 
 log = logging.getLogger(__name__)
 
@@ -42,7 +39,7 @@ TOOLS = [
                 "force": {
                     "type": "boolean",
                     "default": False,
-                    "description": "Re-embed even if unchanged"
+                    "description": "Re-embed even if unchanged",
                 },
             },
             "required": ["file_path"],
@@ -134,9 +131,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 async def _execute_tool(name: str, args: dict) -> dict:
     """Execute a tool and return result."""
     from .embed import embed_document, embed_text
-    from .search import semantic_search, get_similar_analyses, get_rag_stats
     from .hybrid import get_hybrid_context
-    from .exceptions import RAGUnavailableError, EmbedError
+    from .search import get_rag_stats, get_similar_analyses, semantic_search
 
     if name == "rag_embed":
         result = embed_document(

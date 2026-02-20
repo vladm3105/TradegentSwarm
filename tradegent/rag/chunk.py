@@ -6,10 +6,10 @@ from typing import Any
 
 import yaml
 
+from .exceptions import ChunkingError
+from .flatten import humanize_key, section_to_text
 from .models import ChunkResult
 from .tokens import estimate_tokens, split_by_tokens
-from .flatten import section_to_text, humanize_key
-from .exceptions import ChunkingError
 
 log = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ _section_mappings_path = Path(__file__).parent / "section_mappings.yaml"
 _section_mappings: dict = {}
 
 if _section_mappings_path.exists():
-    with open(_section_mappings_path, "r") as f:
+    with open(_section_mappings_path) as f:
         _section_mappings = yaml.safe_load(f)
 
 
@@ -72,7 +72,7 @@ def chunk_yaml_document(
     if not Path(file_path).exists():
         raise ChunkingError(f"File not found: {file_path}")
 
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         doc = yaml.safe_load(f)
 
     if not doc:
@@ -93,14 +93,16 @@ def chunk_yaml_document(
     # If no specific sections defined, use all top-level keys
     if not sections:
         sections = [
-            {"path": k, "label": humanize_key(k)}
-            for k in doc.keys()
-            if k not in skip_sections
+            {"path": k, "label": humanize_key(k)} for k in doc.keys() if k not in skip_sections
         ]
 
     for section in sections:
         section_path = section["path"] if isinstance(section, dict) else section
-        section_label = section.get("label", humanize_key(section_path)) if isinstance(section, dict) else humanize_key(section)
+        section_label = (
+            section.get("label", humanize_key(section_path))
+            if isinstance(section, dict)
+            else humanize_key(section)
+        )
 
         # Get section data
         section_data = _get_nested_value(doc, section_path)
@@ -128,14 +130,16 @@ def chunk_yaml_document(
             chunks.extend(sub_chunks)
         else:
             prepared = prepare_chunk_text(section_label, content, ticker, doc_type)
-            chunks.append(ChunkResult(
-                section_path=section_path,
-                section_label=section_label,
-                chunk_index=0,
-                content=content,
-                content_tokens=token_count,
-                prepared_text=prepared,
-            ))
+            chunks.append(
+                ChunkResult(
+                    section_path=section_path,
+                    section_label=section_label,
+                    chunk_index=0,
+                    content=content,
+                    content_tokens=token_count,
+                    prepared_text=prepared,
+                )
+            )
 
     return chunks
 
@@ -173,14 +177,16 @@ def chunk_yaml_section(
                 # Save current chunk
                 combined = "\n\n".join(current_content)
                 prepared = prepare_chunk_text(section_label, combined, ticker, doc_type)
-                chunks.append(ChunkResult(
-                    section_path=section_path,
-                    section_label=section_label,
-                    chunk_index=chunk_index,
-                    content=combined,
-                    content_tokens=current_tokens,
-                    prepared_text=prepared,
-                ))
+                chunks.append(
+                    ChunkResult(
+                        section_path=section_path,
+                        section_label=section_label,
+                        chunk_index=chunk_index,
+                        content=combined,
+                        content_tokens=current_tokens,
+                        prepared_text=prepared,
+                    )
+                )
                 chunk_index += 1
                 current_content = [para]
                 current_tokens = para_tokens
@@ -192,28 +198,32 @@ def chunk_yaml_section(
         if current_content:
             combined = "\n\n".join(current_content)
             prepared = prepare_chunk_text(section_label, combined, ticker, doc_type)
-            chunks.append(ChunkResult(
-                section_path=section_path,
-                section_label=section_label,
-                chunk_index=chunk_index,
-                content=combined,
-                content_tokens=current_tokens,
-                prepared_text=prepared,
-            ))
+            chunks.append(
+                ChunkResult(
+                    section_path=section_path,
+                    section_label=section_label,
+                    chunk_index=chunk_index,
+                    content=combined,
+                    content_tokens=current_tokens,
+                    prepared_text=prepared,
+                )
+            )
     else:
         # Split by token count
         sub_texts = split_by_tokens(content, max_tokens, overlap=50)
         for i, sub_text in enumerate(sub_texts):
             tokens = estimate_tokens(sub_text)
             prepared = prepare_chunk_text(section_label, sub_text, ticker, doc_type)
-            chunks.append(ChunkResult(
-                section_path=section_path,
-                section_label=section_label,
-                chunk_index=i,
-                content=sub_text,
-                content_tokens=tokens,
-                prepared_text=prepared,
-            ))
+            chunks.append(
+                ChunkResult(
+                    section_path=section_path,
+                    section_label=section_label,
+                    chunk_index=i,
+                    content=sub_text,
+                    content_tokens=tokens,
+                    prepared_text=prepared,
+                )
+            )
 
     return chunks
 

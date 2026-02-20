@@ -18,18 +18,23 @@ DEFAULT_EMBED_DIMS = 1536  # OpenAI text-embedding-3-large with truncation
 _config_path = Path(__file__).parent / "config.yaml"
 _config: dict = {}
 
+
 def _expand_env_vars(content: str) -> str:
     """Expand ${VAR} and ${VAR:-default} patterns in config."""
     import re
-    pattern = r'\$\{([A-Z_][A-Z0-9_]*)(?::-([^}]*))?\}'
+
+    pattern = r"\$\{([A-Z_][A-Z0-9_]*)(?::-([^}]*))?\}"
+
     def replacer(match):
         var_name = match.group(1)
         default = match.group(2) if match.group(2) is not None else ""
         return os.getenv(var_name, default)
+
     return re.sub(pattern, replacer, content)
 
+
 if _config_path.exists():
-    with open(_config_path, "r") as f:
+    with open(_config_path) as f:
         config_content = f.read()
         config_content = _expand_env_vars(config_content)
         _config = yaml.safe_load(config_content)
@@ -55,7 +60,9 @@ class EmbeddingClient:
             self.fallback_chain = [default_provider] + fallback_chain
         elif default_provider:
             # Move default_provider to front of fallback_chain
-            self.fallback_chain = [default_provider] + [p for p in fallback_chain if p != default_provider]
+            self.fallback_chain = [default_provider] + [
+                p for p in fallback_chain if p != default_provider
+            ]
         else:
             self.fallback_chain = fallback_chain
         self.dimensions = int(embedding_config.get("dimensions", DEFAULT_EMBED_DIMS))
@@ -93,13 +100,9 @@ class EmbeddingClient:
                 errors.append(f"{provider}: {e}")
                 continue
 
-        raise EmbeddingUnavailableError(
-            f"All embedding providers failed: {'; '.join(errors)}"
-        )
+        raise EmbeddingUnavailableError(f"All embedding providers failed: {'; '.join(errors)}")
 
-    def get_embeddings_batch(
-        self, texts: list[str], batch_size: int = 10
-    ) -> list[list[float]]:
+    def get_embeddings_batch(self, texts: list[str], batch_size: int = 10) -> list[list[float]]:
         """
         Batch embedding for multiple texts.
 
@@ -113,7 +116,7 @@ class EmbeddingClient:
         embeddings = []
 
         for i in range(0, len(texts), batch_size):
-            batch = texts[i:i + batch_size]
+            batch = texts[i : i + batch_size]
 
             for text in batch:
                 embedding = self.get_embedding(text)
@@ -143,9 +146,7 @@ class EmbeddingClient:
         embedding = embeddings[0]
 
         if len(embedding) != self.dimensions:
-            log.warning(
-                f"Dimension mismatch: got {len(embedding)}, expected {self.dimensions}"
-            )
+            log.warning(f"Dimension mismatch: got {len(embedding)}, expected {self.dimensions}")
 
         return embedding
 
@@ -176,7 +177,7 @@ class EmbeddingClient:
         embedding = result["data"][0]["embedding"]
 
         # Truncate to configured dimensions if needed
-        return embedding[:self.dimensions]
+        return embedding[: self.dimensions]
 
     def _openai_embed(self, text: str) -> list[float]:
         """OpenAI embedding (alternative fallback)."""

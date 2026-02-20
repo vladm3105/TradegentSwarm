@@ -9,12 +9,12 @@ import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 import yaml
 
 try:
     from jsonschema import Draft7Validator, ValidationError
+
     HAS_JSONSCHEMA = True
 except ImportError:
     HAS_JSONSCHEMA = False
@@ -48,10 +48,10 @@ class ValidationResult:
 
     valid: bool
     file_path: str
-    schema_name: Optional[str] = None
+    schema_name: str | None = None
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
-    document: Optional[dict] = None
+    document: dict | None = None
 
     @property
     def error_summary(self) -> str:
@@ -64,7 +64,7 @@ class ValidationResult:
 class DocumentValidator:
     """Validates trading documents against JSON schemas."""
 
-    def __init__(self, schema_dir: Optional[Path] = None):
+    def __init__(self, schema_dir: Path | None = None):
         """
         Initialize validator.
 
@@ -78,7 +78,7 @@ class DocumentValidator:
         if not HAS_JSONSCHEMA:
             log.warning("jsonschema not installed - validation disabled")
 
-    def load_schema(self, schema_name: str) -> Optional[dict]:
+    def load_schema(self, schema_name: str) -> dict | None:
         """Load and cache a JSON schema."""
         if schema_name in self._schema_cache:
             return self._schema_cache[schema_name]
@@ -97,7 +97,7 @@ class DocumentValidator:
             log.error(f"Invalid JSON schema {schema_name}: {e}")
             return None
 
-    def get_schema_for_file(self, file_path: str) -> Optional[str]:
+    def get_schema_for_file(self, file_path: str) -> str | None:
         """Determine which schema to use based on file path."""
         return get_schema_for_path(file_path)
 
@@ -232,7 +232,7 @@ class DocumentValidator:
             return result
 
 
-def get_schema_for_path(file_path: str) -> Optional[str]:
+def get_schema_for_path(file_path: str) -> str | None:
     """
     Determine which schema to use based on file path.
 
@@ -281,7 +281,7 @@ def validate_document(file_path: str) -> ValidationResult:
 
 
 # Global validator instance for reuse
-_validator: Optional[DocumentValidator] = None
+_validator: DocumentValidator | None = None
 
 
 def get_validator() -> DocumentValidator:

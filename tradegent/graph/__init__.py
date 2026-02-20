@@ -3,18 +3,18 @@
 SCHEMA_VERSION = "1.0.0"
 EXTRACT_VERSION = "1.0.0"
 
-from .models import (
-    EntityExtraction,
-    RelationExtraction,
-    ExtractionResult,
-    GraphStats,
-)
 from .exceptions import (
+    ExtractionError,
     GraphError,
     GraphUnavailableError,
-    ExtractionError,
     NormalizationError,
     SchemaError,
+)
+from .models import (
+    EntityExtraction,
+    ExtractionResult,
+    GraphStats,
+    RelationExtraction,
 )
 
 __all__ = [

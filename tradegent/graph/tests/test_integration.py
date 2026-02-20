@@ -5,9 +5,10 @@ They require a running Neo4j instance and can be skipped with:
     pytest -m "not integration"
 """
 
-import pytest
 from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 # Mark all tests in this module as integration tests
 pytestmark = pytest.mark.integration
@@ -18,6 +19,7 @@ def neo4j_available():
     """Check if Neo4j is available for integration tests."""
     try:
         from graph.layer import TradingGraph
+
         with TradingGraph() as graph:
             return graph.health_check()
     except Exception:
@@ -35,7 +37,7 @@ class TestExtractionRoundTrip:
 
     @pytest.mark.skipif(
         "not config.getoption('--run-integration')",
-        reason="Integration tests require --run-integration flag"
+        reason="Integration tests require --run-integration flag",
     )
     def test_extract_and_query_earnings(self, neo4j_available, fixtures_path):
         """Extract earnings analysis and query the graph."""
@@ -43,7 +45,6 @@ class TestExtractionRoundTrip:
             pytest.skip("Neo4j not available")
 
         from graph.extract import extract_document
-        from graph.layer import TradingGraph
 
         # Extract the sample earnings document
         earnings_path = fixtures_path / "sample_earnings.yaml"
@@ -57,7 +58,7 @@ class TestExtractionRoundTrip:
 
     @pytest.mark.skipif(
         "not config.getoption('--run-integration')",
-        reason="Integration tests require --run-integration flag"
+        reason="Integration tests require --run-integration flag",
     )
     def test_extract_and_query_trade(self, neo4j_available, fixtures_path):
         """Extract trade journal and query biases."""
@@ -79,7 +80,7 @@ class TestGraphSchemaOperations:
 
     @pytest.mark.skipif(
         "not config.getoption('--run-integration')",
-        reason="Integration tests require --run-integration flag"
+        reason="Integration tests require --run-integration flag",
     )
     def test_schema_init(self, neo4j_available):
         """Test schema initialization."""
@@ -94,7 +95,7 @@ class TestGraphSchemaOperations:
 
     @pytest.mark.skipif(
         "not config.getoption('--run-integration')",
-        reason="Integration tests require --run-integration flag"
+        reason="Integration tests require --run-integration flag",
     )
     def test_get_stats(self, neo4j_available):
         """Test statistics retrieval."""

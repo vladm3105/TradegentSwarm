@@ -2,25 +2,26 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
 
 
 @dataclass
 class EntityExtraction:
     """Single extracted entity."""
-    type: str                    # PascalCase: Ticker, Company, Bias, etc.
-    value: str                   # Title Case: "NVIDIA", "Loss Aversion"
-    confidence: float            # 0.0 - 1.0
-    evidence: str                # Quote from source text
+
+    type: str  # PascalCase: Ticker, Company, Bias, etc.
+    value: str  # Title Case: "NVIDIA", "Loss Aversion"
+    confidence: float  # 0.0 - 1.0
+    evidence: str  # Quote from source text
     properties: dict = field(default_factory=dict)
-    needs_review: bool = False   # True if 0.5 <= confidence < 0.7
+    needs_review: bool = False  # True if 0.5 <= confidence < 0.7
 
 
 @dataclass
 class RelationExtraction:
     """Single extracted relationship."""
+
     from_entity: EntityExtraction
-    relation: str                # UPPER_SNAKE: COMPETES_WITH, AFFECTED_BY
+    relation: str  # UPPER_SNAKE: COMPETES_WITH, AFFECTED_BY
     to_entity: EntityExtraction
     confidence: float
     evidence: str
@@ -30,12 +31,13 @@ class RelationExtraction:
 @dataclass
 class ExtractionResult:
     """Complete extraction result for a document."""
+
     source_doc_id: str
     source_doc_type: str
     source_file_path: str
     source_text_hash: str
     extracted_at: datetime
-    extractor: str               # ollama, claude, openrouter
+    extractor: str  # ollama, claude, openrouter
     extraction_version: str
 
     entities: list[EntityExtraction] = field(default_factory=list)
@@ -89,8 +91,9 @@ class ExtractionResult:
 @dataclass
 class GraphStats:
     """Graph statistics for status command."""
-    node_counts: dict[str, int]      # {"Ticker": 45, "Company": 32, ...}
-    edge_counts: dict[str, int]      # {"ISSUED": 45, "COMPETES_WITH": 12, ...}
+
+    node_counts: dict[str, int]  # {"Ticker": 45, "Company": 32, ...}
+    edge_counts: dict[str, int]  # {"ISSUED": 45, "COMPETES_WITH": 12, ...}
     total_nodes: int
     total_edges: int
     last_extraction: datetime | None

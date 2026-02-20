@@ -38,7 +38,7 @@ def init_schema() -> None:
     if not schema_path.exists():
         raise RAGUnavailableError(f"Schema file not found: {schema_path}")
 
-    with open(schema_path, "r") as f:
+    with open(schema_path) as f:
         schema_sql = f.read()
 
     try:
@@ -94,15 +94,11 @@ def verify_schema() -> dict:
         with psycopg.connect(get_database_url()) as conn:
             with conn.cursor() as cur:
                 # Check pgvector extension
-                cur.execute(
-                    "SELECT 1 FROM pg_extension WHERE extname = 'vector'"
-                )
+                cur.execute("SELECT 1 FROM pg_extension WHERE extname = 'vector'")
                 results["pgvector_enabled"] = cur.fetchone() is not None
 
                 # Check schema exists
-                cur.execute(
-                    "SELECT 1 FROM information_schema.schemata WHERE schema_name = 'nexus'"
-                )
+                cur.execute("SELECT 1 FROM information_schema.schemata WHERE schema_name = 'nexus'")
                 results["schema_exists"] = cur.fetchone() is not None
 
                 # List tables
@@ -176,13 +172,13 @@ def run_migrations() -> None:
                         continue
 
                     log.info(f"Applying migration: {migration_file.name}")
-                    with open(migration_file, "r") as f:
+                    with open(migration_file) as f:
                         migration_sql = f.read()
 
                     cur.execute(migration_sql)
                     cur.execute(
                         "INSERT INTO nexus.rag_migrations (filename) VALUES (%s)",
-                        (migration_file.name,)
+                        (migration_file.name,),
                     )
                     log.info(f"Applied migration: {migration_file.name}")
 

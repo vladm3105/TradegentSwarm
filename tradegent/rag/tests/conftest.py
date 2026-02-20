@@ -1,23 +1,32 @@
 """Pytest fixtures for RAG layer tests."""
 
-import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 @pytest.fixture
 def sample_earnings_yaml():
     """Load sample earnings analysis fixture."""
-    fixture_path = Path(__file__).parent.parent.parent / "graph" / "tests" / "fixtures" / "sample_earnings.yaml"
-    with open(fixture_path, "r") as f:
+    fixture_path = (
+        Path(__file__).parent.parent.parent
+        / "graph"
+        / "tests"
+        / "fixtures"
+        / "sample_earnings.yaml"
+    )
+    with open(fixture_path) as f:
         return f.read()
 
 
 @pytest.fixture
 def sample_trade_yaml():
     """Load sample trade journal fixture."""
-    fixture_path = Path(__file__).parent.parent.parent / "graph" / "tests" / "fixtures" / "sample_trade.yaml"
-    with open(fixture_path, "r") as f:
+    fixture_path = (
+        Path(__file__).parent.parent.parent / "graph" / "tests" / "fixtures" / "sample_trade.yaml"
+    )
+    with open(fixture_path) as f:
         return f.read()
 
 
@@ -44,9 +53,7 @@ def mock_embedding_client():
     """Mock embedding client for tests."""
     with patch("rag.embedding_client.requests.post") as mock_post:
         mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "embeddings": [[0.1] * 768]
-        }
+        mock_response.json.return_value = {"embeddings": [[0.1] * 768]}
         mock_post.return_value = mock_response
         yield mock_post
 

@@ -1,15 +1,15 @@
 """Neo4j graph layer for trading knowledge."""
 
-import os
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
 from neo4j import GraphDatabase
-from neo4j.exceptions import ServiceUnavailable, AuthError
+from neo4j.exceptions import AuthError, ServiceUnavailable
 
-from .models import GraphStats
 from .exceptions import GraphUnavailableError, SchemaError
+from .models import GraphStats
 
 log = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ class TradingGraph:
         if not schema_path.exists():
             raise SchemaError(f"Schema file not found: {schema_path}")
 
-        with open(schema_path, "r") as f:
+        with open(schema_path) as f:
             schema_content = f.read()
 
         # Split into individual statements (skip comments and empty lines)
@@ -125,7 +125,7 @@ class TradingGraph:
         migration_files = sorted(migrations_dir.glob("*.cypher"))
         for migration_file in migration_files:
             log.info(f"Running migration: {migration_file.name}")
-            with open(migration_file, "r") as f:
+            with open(migration_file) as f:
                 migration_content = f.read()
             with self._driver.session(database=self.database) as session:
                 for stmt in migration_content.split(";"):
@@ -314,10 +314,14 @@ class TradingGraph:
         with self._driver.session(database=self.database) as session:
             result = session.run(query, symbol=symbol)
             record = result.single()
-            return {
-                "suppliers": [s for s in record["suppliers"] if s],
-                "customers": [c for c in record["customers"] if c],
-            } if record else {"suppliers": [], "customers": []}
+            return (
+                {
+                    "suppliers": [s for s in record["suppliers"] if s],
+                    "customers": [c for c in record["customers"] if c],
+                }
+                if record
+                else {"suppliers": [], "customers": []}
+            )
 
     def get_ticker_context(self, symbol: str) -> dict:
         """
@@ -339,28 +343,32 @@ class TradingGraph:
 
     # Allowed Cypher query patterns for security validation
     # Only these patterns are permitted in run_cypher when called externally
-    SAFE_QUERY_PATTERNS = frozenset([
-        # Read-only patterns
-        "MATCH",
-        "RETURN",
-        "WHERE",
-        "WITH",
-        "ORDER BY",
-        "LIMIT",
-        "OPTIONAL MATCH",
-        "UNION",
-        "CALL",
-    ])
+    SAFE_QUERY_PATTERNS = frozenset(
+        [
+            # Read-only patterns
+            "MATCH",
+            "RETURN",
+            "WHERE",
+            "WITH",
+            "ORDER BY",
+            "LIMIT",
+            "OPTIONAL MATCH",
+            "UNION",
+            "CALL",
+        ]
+    )
 
-    DANGEROUS_KEYWORDS = frozenset([
-        "DELETE",
-        "DETACH DELETE",
-        "REMOVE",
-        "DROP",
-        "CREATE CONSTRAINT",
-        "CREATE INDEX",
-        "SET",  # Only dangerous without MERGE context
-    ])
+    DANGEROUS_KEYWORDS = frozenset(
+        [
+            "DELETE",
+            "DETACH DELETE",
+            "REMOVE",
+            "DROP",
+            "CREATE CONSTRAINT",
+            "CREATE INDEX",
+            "SET",  # Only dangerous without MERGE context
+        ]
+    )
 
     def _validate_cypher_query(self, query: str, allow_writes: bool = False) -> bool:
         """
@@ -498,6 +506,8 @@ class TradingGraph:
             result = session.run(orphan_query)
             record = result.single()
             if record and record["orphaned"] > 0:
-                issues.append(f"Found {record['orphaned']} Analysis nodes without ANALYZES relationship")
+                issues.append(
+                    f"Found {record['orphaned']} Analysis nodes without ANALYZES relationship"
+                )
 
         return issues
