@@ -1,0 +1,213 @@
+# Stock Analysis Template
+# Output: knowledge/analysis/stock/MSFT_20260220T1805.yaml
+
+_meta:
+  id: "MSFT_20260220T1805"
+  type: stock-analysis
+  version: 1
+  created: "2026-02-20T18:05:00-05:00"
+  status: "active"
+
+ticker: "MSFT"
+current_price: 397.05
+analysis_date: "2026-02-20"
+analysis_type: "technical"
+
+# Phase 1: Catalyst
+catalyst:
+  type: "technical"
+  description: "Oversold bounce at major 6-month support ($392-395) after 28% decline from October highs. No immediate hard catalyst but massive gap to analyst targets."
+  specificity: "medium"
+  timing: "near_term"
+  catalyst_score: 6
+
+# Phase 2: Market Environment
+market_environment:
+  regime: "bull_pullback"
+  sector: "Technology"
+  sector_trend: "lagging"
+  vix_level: 18.0
+  vix_environment: "normal"
+  environment_score: 5
+
+# Phase 3: Technical Analysis
+technical:
+  trend:
+    primary_weekly: "down"
+    intermediate_daily: "down"
+    short_term: "sideways"
+
+  moving_averages:
+    vs_20d: "below"
+    vs_50d: "below"
+    vs_200d: "below"
+    alignment: "bearish"
+
+  patterns:
+    pattern_identified: "potential double bottom at $392-395 support"
+    completion_status: "forming"
+    measured_target: 430.00
+
+  key_levels:
+    immediate_support: 392.00
+    immediate_resistance: 405.00
+    major_support: 380.00
+    major_resistance: 435.00
+
+  volume:
+    trend: "decreasing"
+    vs_average: "at"
+
+  momentum:
+    rsi: 32
+    rsi_trend: "flat"
+    relative_strength_vs_spy: "underperforming"
+
+  technical_score: 5
+
+# Phase 4: Fundamentals
+fundamentals:
+  valuation:
+    pe_ratio: 28.50
+    pe_vs_peers: "fair"
+    pe_vs_history: "cheap"
+    ps_ratio: 10.50
+
+  growth:
+    revenue_growth_yoy: 17.00
+    earnings_growth_yoy: 15.00
+    trajectory: "stable"
+
+  quality:
+    profit_margin: 36.00
+    roe: 38.00
+    free_cash_flow: 22000000000.00
+    debt_to_equity: 0.35
+
+  insider_activity:
+    recent_buys: 0
+    recent_sells: 5
+    net_direction: "neutral"
+
+  red_flags:
+    declining_revenue: false
+    rising_debt: false
+    insider_selling: false
+    accounting_concerns: false
+
+  fundamental_score: 7
+
+# Phase 5: Sentiment
+sentiment:
+  analyst:
+    buy: 35
+    hold: 8
+    sell: 2
+    avg_target: 603.00
+    recent_changes: "mixed"
+
+  short_interest:
+    pct_float: 0.80
+    days_to_cover: 1.5
+    trend: "stable"
+
+  options:
+    put_call_ratio: 1.20
+    unusual_flow: "none"
+
+  contrarian_signal: true
+  sentiment_score: 7
+
+# Phase 6: Scenarios
+scenarios:
+  bull_case:
+    probability: 0.25
+    description: "Azure growth stabilizes, AI monetization accelerates, technical bounce to 50D MA"
+    target_price: 440.00
+    return_pct: 10.80
+    timeline_days: 45
+    key_driver: "Earnings beat and positive Azure commentary"
+
+  base_case:
+    probability: 0.50
+    description: "Range-bound consolidation with gradual recovery as oversold conditions normalize"
+    target_price: 420.00
+    return_pct: 5.80
+    timeline_days: 45
+    key_driver: "Mean reversion and market stabilization"
+
+  bear_case:
+    probability: 0.25
+    description: "Further Azure deceleration fears, break below $392 support"
+    target_price: 370.00
+    return_pct: -6.80
+    timeline_days: 45
+    key_driver: "Cloud spend pullback concerns, macro weakness"
+
+  expected_value: 3.88
+
+# Phase 7: Risk Management
+risk_management:
+  entry:
+    trigger: "Break above $405 with volume OR successful retest of $392-395 support"
+    price: 398.00
+    order_type: "limit"
+
+  stop_loss:
+    price: 388.00
+    basis: "technical_level"
+    type: "hard"
+    distance_pct: 2.50
+
+  position_size:
+    account_risk_pct: 1.00
+    dollar_risk: 1000.00
+    shares: 100
+    position_value: 39800.00
+    portfolio_pct: 3.50
+
+  risk_reward:
+    risk_dollars: 1000.00
+    risk_pct: 2.50
+    reward_dollars: 2200.00
+    reward_pct: 5.50
+    ratio: 2.2
+
+  targets:
+    target_1: 420.00
+    target_1_sell_pct: 50
+    target_2: 440.00
+    target_2_sell_pct: 50
+
+  time_stop:
+    days: 30
+    action: "reassess thesis and close if no movement"
+
+# Scoring & Recommendation
+scoring:
+  catalyst_score: 1.50
+  environment_score: 0.75
+  technical_score: 1.25
+  risk_reward_score: 1.75
+  sentiment_score: 0.70
+
+  weighted_total: 5.95
+
+recommendation: "WATCH"
+
+rationale: |
+  MSFT is deeply oversold (-28% from October highs) with strong fundamentals
+  (Azure 38% growth, $50B cloud run rate, 90% Fortune 500 Copilot adoption)
+  and massive analyst upside targets ($594-631 vs $397 current). However, the
+  trend is clearly down, stock is lagging peers significantly, and lacks an
+  immediate catalyst. The $392-395 support zone is critical. A confirmed
+  bounce with improved relative strength would upgrade to BUY.
+
+# If WATCH, specify trigger
+watchlist_trigger: "Break above $405 with volume confirmation OR successful retest of $392-395 support with bullish reversal candle"
+
+# Links
+_links:
+  trade_journal: ""
+  post_review: ""
+  ticker_profile: "MSFT"
