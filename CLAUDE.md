@@ -1,6 +1,6 @@
 # Trading Light Pilot - Claude Code Instructions
 
-AI-driven trading platform using Claude Code CLI, Interactive Brokers, and LightRAG. This is an **AI-first project** with agent automation.
+AI-driven trading platform using Claude Code CLI, Interactive Brokers, and a hybrid RAG+Graph knowledge system. This is an **AI-first project** with agent automation.
 
 ## Project Structure
 
@@ -20,7 +20,7 @@ trading_light_pilot/
 └── trading/                 # Trading Knowledge System
     ├── skills/              # Agent skill definitions (SKILL.md + template.yaml)
     ├── knowledge/           # Trading data & analyses (YAML documents)
-    └── workflows/           # CI/CD & LightRAG schemas
+    └── workflows/           # CI/CD & validation schemas
 ```
 
 ## Claude Code Skills
@@ -94,17 +94,41 @@ When a skill is invoked (auto or manual):
 
 ## Trader Platform
 
+### Environment Variables
+
+Required environment variables for running the orchestrator (set in `.env` or export):
+
+```bash
+# PostgreSQL (pgvector for RAG embeddings)
+export PG_USER=lightrag
+export PG_PASS=<password>
+export PG_DB=lightrag
+export PG_HOST=localhost
+export PG_PORT=5433
+
+# Neo4j (Knowledge Graph)
+export NEO4J_URI=bolt://localhost:7688
+export NEO4J_USER=neo4j
+export NEO4J_PASS=<password>
+```
+
 ### Running Commands
 ```bash
 cd trader
+
+# Set environment variables first (or source .env)
+export PG_USER=lightrag PG_PASS=... PG_DB=lightrag PG_HOST=localhost PG_PORT=5433
+export NEO4J_URI=bolt://localhost:7688 NEO4J_USER=neo4j NEO4J_PASS=...
+
 python orchestrator.py --help     # CLI commands
+python orchestrator.py analyze NVDA --type stock  # Run analysis
 python service.py                 # Start daemon
 ```
 
 ### Infrastructure
 ```bash
 cd trader
-docker compose up -d              # Start PostgreSQL, IB Gateway, Neo4j, LightRAG
+docker compose up -d              # Start PostgreSQL, IB Gateway, Neo4j
 docker compose logs -f            # View logs
 ```
 
@@ -238,7 +262,23 @@ Input: {"cypher": "MATCH (t:Ticker {symbol: $ticker})-[r]->(n) RETURN type(r), n
 
 Access Interactive Brokers TWS/Gateway for market data, portfolio, and trading.
 
-**Source**: `/opt/data/trading/mcp_ib`
+**Server**: `ib-mcp` | **Source**: `/opt/data/trading/mcp_ib` | **Transport**: SSE
+
+### Starting the Server
+
+The IB MCP server runs in SSE mode for reliable connection:
+
+```bash
+cd /opt/data/trading/mcp_ib
+PYTHONPATH=src \
+IB_GATEWAY_HOST=localhost \
+IB_GATEWAY_PORT=4002 \
+IB_CLIENT_ID=2 \
+IB_READONLY=true \
+python -m ibmcp --transport sse --port 8100
+```
+
+Server URL: `http://localhost:8100/sse`
 
 ### Available Tools (22 total)
 
@@ -296,18 +336,18 @@ Access Interactive Brokers TWS/Gateway for market data, portfolio, and trading.
 
 ```yaml
 # Get stock price
-Tool: get_stock_price
+Tool: mcp__ib-mcp__get_stock_price
 Input: {"symbol": "NVDA"}
 
 # Get historical data
-Tool: get_historical_data
+Tool: mcp__ib-mcp__get_historical_data
 Input: {"symbol": "NVDA", "duration": "1 D", "bar_size": "5 mins"}
 
 # Get portfolio P&L
-Tool: get_pnl
+Tool: mcp__ib-mcp__get_pnl
 
 # Search symbols
-Tool: search_symbols
+Tool: mcp__ib-mcp__search_symbols
 Input: {"pattern": "NVDA"}
 ```
 
@@ -315,7 +355,7 @@ Input: {"pattern": "NVDA"}
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `IB_GATEWAY_HOST` | host.docker.internal | TWS/Gateway hostname |
+| `IB_GATEWAY_HOST` | localhost | TWS/Gateway hostname |
 | `IB_GATEWAY_PORT` | 4002 | API port (7496=TWS live, 7497=TWS paper, 4001=Gateway live, 4002=Gateway paper) |
 | `IB_CLIENT_ID` | 2 | Unique client ID |
 | `IB_READONLY` | true | Read-only mode (blocks order placement) |
@@ -422,10 +462,12 @@ Host github.com
 
 ## Important Notes
 
-- **Use MCP servers as primary interface** for RAG (`trading-rag`) and Graph (`trading-graph`) operations
+- **Use MCP servers as primary interface** for IB (`ib-mcp`), RAG (`trading-rag`), and Graph (`trading-graph`) operations
+- **IB MCP runs via SSE** at `http://localhost:8100/sse` - start it before running analyses
 - Do not commit `.env` files (contains credentials)
 - IB Gateway requires valid paper trading account
-- LightRAG syncs trading knowledge for semantic search
+- RAG (pgvector) handles semantic search, Graph (Neo4j) handles entity relationships
 - Scanner configs in `knowledge/scanners/` encode trading edge - treat as sensitive
 - Skills auto-invoke based on conversation context - no manual `/command` needed
 - Always use the SSH git push command with `LD_LIBRARY_PATH=` fix when in conda environment
+- Set all PG_* and NEO4J_* environment variables before running orchestrator
