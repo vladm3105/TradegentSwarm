@@ -15,7 +15,7 @@ organically from live trading activity — not backfilled from templates.
 
 1. **Live extraction only** — graph is populated when skills create real analyses, not by batch-processing template files
 2. **Domain-specific entities** — 16 trading entity types (Bias, Catalyst, Strategy, etc.) that generic RAG tools miss
-3. **OpenAI extraction** — gpt-4o-mini for fast, accurate entity extraction (~8s/doc, 12x faster than Ollama)
+3. **Configurable extraction** — Default Ollama (free), OpenAI gpt-4o-mini recommended for speed (~8s/doc vs ~100s/doc)
 4. **Field-by-field processing** — each text field sent individually to LLM (avoids the timeout that killed LightRAG)
 5. **Normalize on ingest** — dedup, name standardization, and alias resolution at write time
 
@@ -24,10 +24,10 @@ organically from live trading activity — not backfilled from templates.
 | Factor | LightRAG | Custom Graph |
 |--------|----------|-------------|
 | Entity types | Generic (Person, Org, Location) | Trading-specific (Bias, Catalyst, Strategy) |
-| Extraction model | Requires fast cloud model ($) | OpenAI gpt-4o-mini (~$0.001/doc) |
+| Extraction model | Requires fast cloud model ($) | Configurable (Ollama free, OpenAI ~$0.001/doc) |
 | `_graph` sections | Ignores them entirely | Can use as schema hints |
 | Domain accuracy | Low — misses trading concepts | High — prompt-engineered for trading |
-| Operational cost | High latency, timeouts | Fast (8s/doc), reliable |
+| Operational cost | High latency, timeouts | Configurable speed/cost tradeoff |
 
 ---
 
@@ -419,31 +419,38 @@ All extraction modes support multiple LLM backends via unified interface:
 
 | Backend | Config Key | Models | Cost | Use Case |
 |---------|------------|--------|------|----------|
-| **Ollama** (local) | `ollama` | qwen3:8b, llama3, mistral | $0 | Default for batch, always available |
-| **Claude** (in-context) | `claude` | claude-3-5-sonnet | Included | Real-time during skills |
-| **LiteLLM + OpenRouter** | `openrouter` | claude-3-5-sonnet, gpt-4o, mistral-large | ~$0.001-0.01/call | Backup when Ollama slow, quality boost |
-| **Claude API** (direct) | `claude-api` | claude-3-5-sonnet, claude-3-haiku | ~$0.003/call | Standalone scripts, high quality |
+| **Ollama** (local) | `ollama` | qwen3:8b, llama3, mistral | $0 | Default, always available |
+| **OpenAI** (recommended) | `openai` | gpt-4o-mini | ~$0.001/doc | Fast, high quality |
+| **OpenRouter** | `openrouter` | claude-3-5-sonnet, gpt-4o, mistral-large | ~$0.001-0.01/call | Flexible model selection |
+| **Claude API** (direct) | `claude-api` | claude-sonnet-4 | ~$0.003/call | Standalone scripts, high quality |
 
-**Fallback chain** (configurable in `trader/graph/config.yaml`):
+**Fallback chain** (configurable in `tradegent/graph/config.yaml`):
 
 ```yaml
 extraction:
-  default_extractor: ollama
+  # EXTRACT_PROVIDER env var selects default
+  default_extractor: "${EXTRACT_PROVIDER:-${LLM_PROVIDER:-ollama}}"
   fallback_chain:
     - ollama           # Try local first ($0)
     - openrouter       # Fallback to cloud if Ollama fails/times out
   timeout_seconds: 30
 
-  # LiteLLM/OpenRouter config
-  openrouter:
-    api_key: ${OPENROUTER_API_KEY}
-    model: "anthropic/claude-3-5-sonnet"  # or "openai/gpt-4o", "mistralai/mistral-large"
-    fallback_model: "anthropic/claude-3-haiku"  # cheaper fallback
+  ollama:
+    base_url: "${LLM_BASE_URL:-http://localhost:11434}"
+    model: "${LLM_MODEL:-qwen3:8b}"
 
-  # Direct Claude API (when not using OpenRouter)
+  openrouter:
+    api_key: "${OPENROUTER_API_KEY:-${LLM_API_KEY}}"
+    model: "${LLM_MODEL:-anthropic/claude-3-5-sonnet}"
+    fallback_model: "anthropic/claude-3-haiku"
+
+  openai:
+    api_key: "${OPENAI_API_KEY:-${LLM_API_KEY}}"
+    model: "${LLM_MODEL:-gpt-4o-mini}"
+
   claude_api:
-    api_key: ${ANTHROPIC_API_KEY}
-    model: "claude-3-5-sonnet-20241022"
+    api_key: "${LLM_API_KEY}"
+    model: "${LLM_MODEL:-claude-sonnet-4-20250514}"
 ```
 
 **LiteLLM benefits**:
@@ -495,7 +502,7 @@ extraction:
 
 ### 4.4 Extraction Logging
 
-Extractions are logged to `trader/logs/graph_extractions.jsonl` (one JSON line
+Extractions are logged to `tradegent/logs/graph_extractions.jsonl` (one JSON line
 per extraction run). No file-based staging area — the log serves as audit trail
 and can be replayed if needed.
 
@@ -518,7 +525,7 @@ and can be replayed if needed.
 | **Cross-doc merge** | Same entity from 3 docs | Single node, merged properties |
 | **Self-reference** | `this` in relations | Resolved to `_meta.id` at extraction time |
 
-Alias tables are stored in `trader/graph/aliases.yaml`:
+Alias tables are stored in `tradegent/graph/aliases.yaml`:
 ```yaml
 tickers:
   GOOG: GOOGL
@@ -618,7 +625,7 @@ with TradingGraph() as g:
 For external systems (CI/CD, monitoring tools, other services):
 
 ```python
-# trader/graph/webhook.py — FastAPI endpoints
+# tradegent/graph/webhook.py — FastAPI endpoints
 
 POST /api/graph/extract
 {
@@ -670,7 +677,7 @@ uvicorn trader.graph.webhook:app --host 0.0.0.0 --port 8080
 ## 7. File Structure
 
 ```
-trader/
+tradegent/
 ├── graph/
 │   ├── __init__.py           # Package init, SCHEMA_VERSION, EXTRACT_VERSION
 │   ├── schema.py             # Neo4j schema init (run constraints/indexes)
@@ -895,7 +902,7 @@ ORDER BY performance_change ASC
 ### Dependencies
 
 ```
-# trader/requirements.txt additions
+# tradegent/requirements.txt additions
 neo4j>=5.0.0        # Neo4j Python driver
 pyyaml>=6.0         # YAML parsing (likely already installed)
 requests>=2.28.0    # Ollama API calls (likely already installed)
@@ -924,7 +931,7 @@ Once Phase 1 is validated, the following can be removed:
 |--------------|----------|
 | **Ollama timeout** | Retry 2x with exponential backoff (10s, 30s), then skip field and log |
 | **Malformed JSON from LLM** | Log raw response, skip extraction, continue to next field |
-| **Neo4j connection failure** | Queue extraction result to `trader/logs/pending_commits.jsonl`, retry on next run |
+| **Neo4j connection failure** | Queue extraction result to `tradegent/logs/pending_commits.jsonl`, retry on next run |
 | **Partial document extraction** | Commit successful entities, log failed fields for re-processing |
 
 ### 11.2 Graceful Degradation
@@ -1006,7 +1013,7 @@ Migration strategy:
 | **Rename label/relationship** | Create migration script, run in maintenance window |
 | **Remove label/relationship** | Deprecate first, remove after 30 days |
 
-Migration scripts stored in `trader/graph/migrations/` with naming: `v1_0_0_to_v1_1_0.cypher`
+Migration scripts stored in `tradegent/graph/migrations/` with naming: `v1_0_0_to_v1_1_0.cypher`
 
 ---
 
@@ -1031,7 +1038,7 @@ Migration scripts stored in `trader/graph/migrations/` with naming: `v1_0_0_to_v
 ### 13.3 Test Fixtures
 
 ```text
-trader/graph/tests/
+tradegent/graph/tests/
 ├── fixtures/
 │   ├── sample_earnings.yaml     # Synthetic earnings analysis
 │   ├── sample_trade.yaml        # Synthetic trade journal
@@ -1637,7 +1644,7 @@ def enrich_analysis_context(ticker: str) -> dict:
 Combine graph structure with vector similarity for optimal context:
 
 ```python
-# trader/graph/hybrid_context.py
+# tradegent/graph/hybrid_context.py
 
 class HybridContextBuilder:
     """Combine graph traversal with RAG similarity for analysis context."""
@@ -1667,7 +1674,7 @@ class HybridContextBuilder:
 Automatically update graph intelligence after trade completion:
 
 ```python
-# trader/graph/feedback.py
+# tradegent/graph/feedback.py
 
 def process_trade_outcome(trade_id: str):
     """Update graph intelligence based on trade outcome."""

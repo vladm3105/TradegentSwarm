@@ -21,7 +21,7 @@ Together with the Neo4j knowledge graph, this forms a **hybrid RAG** system:
 1. **Section-level chunking** — YAML documents are split by semantic section (thesis, risks, catalysts), not by token count
 2. **Metadata-first filtering** — filter by ticker, doc type, date range *before* vector search (fast + precise)
 3. **Same PostgreSQL instance** — no new infrastructure; pgvector is already available in `nexus-postgres`
-4. **OpenAI embeddings** — `text-embedding-3-large` (3072 dims) for best quality at ~$2/year; Ollama fallback available
+4. **OpenAI embeddings** — `text-embedding-3-large` (1536 dims via API truncation) for best quality at ~$2/year; Ollama fallback available
 5. **Incremental indexing** — embed documents as skills produce them, no batch backfill of templates
 
 ### Key Decision: Why Not LightRAG?
@@ -102,7 +102,7 @@ CREATE TABLE IF NOT EXISTS nexus.rag_chunks (
     content_tokens  INTEGER,                         -- Approximate token count
     
     -- Embedding
-    embedding       vector(768) NOT NULL,             -- nomic-embed-text output
+    embedding       vector(1536) NOT NULL,             -- nomic-embed-text output
     
     -- Denormalized metadata for filtered search (avoids JOINs)
     doc_type        VARCHAR(50) NOT NULL,
@@ -171,43 +171,46 @@ CREATE INDEX idx_rag_chunks_embedding
 
 ### 2.1 Embedding Providers
 
-Embeddings use Ollama by default (free, local) with LiteLLM/OpenRouter as a cloud fallback.
+Embeddings use a configurable provider (default Ollama, recommended OpenAI) with fallback chain support.
 
 | Provider | Model | Dimensions | Context | Cost | Speed | Use Case |
 |----------|-------|-----------|---------|------|-------|----------|
-| **Ollama** (default) | `nomic-embed-text` | 768 | 2048 tokens | $0 | ~50ms/chunk | Primary — always try first |
-| **LiteLLM → OpenRouter** | `openai/text-embedding-3-small` | 768* | 8191 tokens | ~$0.00002/chunk | ~100ms/chunk | Fallback when Ollama unavailable |
-| **LiteLLM → OpenAI direct** | `text-embedding-3-small` | 768* | 8191 tokens | ~$0.00002/chunk | ~80ms/chunk | Alternative cloud provider |
+| **OpenAI** (recommended) | `text-embedding-3-large` | 1536* | 8191 tokens | ~$0.00013/1K tokens | ~80ms/chunk | Best quality, API truncation to 1536 |
+| **Ollama** (free) | `nomic-embed-text` | 768 | 2048 tokens | $0 | ~50ms/chunk | Local, free, but lower quality |
+| **OpenRouter** | `openai/text-embedding-3-small` | 1536* | 8191 tokens | ~$0.00002/chunk | ~100ms/chunk | Pay-per-use cloud fallback |
 
-\* OpenAI models output 1536 dims by default; truncate to 768 via `dimensions` param for compatibility.
+\* OpenAI text-embedding-3-large outputs 3072 dims by default; we use API-level truncation to 1536 dims because pgvector's HNSW index has a 2000 dimension limit.
+
+> **Important**: All providers in the fallback chain MUST output the same dimensionality. Mixing dimensions corrupts vector search.
 
 ### 2.2 Fallback Chain
 
-Configured in `trader/rag/config.yaml`:
+Configured in `tradegent/rag/config.yaml`:
 
 ```yaml
 embedding:
-  default_provider: ollama
+  # EMBED_PROVIDER env var selects default (recommended: openai)
+  default_provider: "${EMBED_PROVIDER:-ollama}"
   fallback_chain:
     - ollama           # Try local first ($0)
     - openrouter       # Fallback to cloud if Ollama fails/unavailable
   timeout_seconds: 30
-  dimensions: 768      # All providers must output this dimension
+  dimensions: "${EMBED_DIMENSIONS:-1536}"   # All providers must match
 
   ollama:
-    base_url: "http://localhost:11434"
-    model: "nomic-embed-text"
+    base_url: "${LLM_BASE_URL:-http://localhost:11434}"
+    model: "${EMBED_MODEL:-nomic-embed-text}"
 
   openrouter:
-    api_key: ${OPENROUTER_API_KEY}
-    model: "openai/text-embedding-3-small"
-    dimensions: 768    # Request truncated output to match Ollama dims
+    api_key: "${LLM_API_KEY}"
+    model: "${EMBED_MODEL:-openai/text-embedding-3-small}"
+    dimensions: "${EMBED_DIMENSIONS:-1536}"
 
-  # Direct OpenAI (alternative to OpenRouter)
+  # Direct OpenAI (recommended for best quality)
   openai:
-    api_key: ${OPENAI_API_KEY}
-    model: "text-embedding-3-small"
-    dimensions: 768
+    api_key: "${OPENAI_API_KEY}"
+    model: "${EMBED_MODEL:-text-embedding-3-large}"
+    dimensions: "${EMBED_DIMENSIONS:-1536}"   # API truncates from 3072 to 1536
 ```
 
 **LiteLLM Benefits**:
@@ -270,7 +273,7 @@ class EmbeddingClient:
         return response.data[0]["embedding"]
 ```
 
-**Critical**: All providers MUST output the same dimensionality (768). Mixing
+**Critical**: All providers MUST output the same dimensionality (1536). Mixing
 dimensions in the same `rag_chunks` table will corrupt vector search results.
 
 ### 2.4 Text Preparation
@@ -671,7 +674,7 @@ embedding = client.get_embedding("NVIDIA data center growth thesis")
 For external systems (CI/CD, monitoring tools, other services):
 
 ```python
-# trader/rag/webhook.py — FastAPI endpoints
+# tradegent/rag/webhook.py — FastAPI endpoints
 
 POST /api/rag/embed
 {
@@ -720,7 +723,7 @@ uvicorn trader.rag.webhook:app --host 0.0.0.0 --port 8081
 ## 6. File Structure
 
 ```
-trader/
+tradegent/
 ├── rag/
 │   ├── __init__.py           # Package init: RAG_VERSION, EMBED_DIMS, model constants
 │   ├── config.yaml           # Embedding provider config (Ollama, OpenRouter, OpenAI)
@@ -886,7 +889,7 @@ No container rebuild needed. Just CREATE EXTENSION vector;
 ### Dependencies
 
 ```
-# trader/requirements.txt additions
+# tradegent/requirements.txt additions
 psycopg[binary]>=3.1     # Already installed (PostgreSQL driver)
 pyyaml>=6.0              # Already installed (YAML parsing)
 requests>=2.28.0         # Already installed (Ollama API)
@@ -1006,10 +1009,10 @@ Version tracked in `rag/__init__.py`:
 
 ```python
 RAG_VERSION = "1.0.0"       # Bump on schema/chunking/model changes
-EMBED_DIMS = 768            # All providers must match this
-DEFAULT_EMBED_MODEL = "nomic-embed-text"  # Primary (Ollama)
-FALLBACK_EMBED_MODEL = "openai/text-embedding-3-small"  # Via LiteLLM/OpenRouter
+EMBED_DIMS = 1536           # All providers must match this (pgvector HNSW limit: 2000)
 ```
+
+> **Note**: Embedding dimensions are configured in `config.yaml` via `EMBED_DIMENSIONS` env var (default: 1536). The model is selected by `EMBED_MODEL` env var.
 
 Migration strategy:
 
@@ -1050,7 +1053,7 @@ Migration strategy:
 ### 12.3 Test Fixtures
 
 ```text
-trader/rag/tests/
+tradegent/rag/tests/
 ├── fixtures/
 │   ├── sample_earnings.yaml       # Synthetic earnings analysis
 │   ├── sample_trade.yaml          # Synthetic trade journal

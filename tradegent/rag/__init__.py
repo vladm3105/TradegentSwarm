@@ -1,7 +1,7 @@
 """Trading RAG (Retrieval Augmented Generation) package."""
 
 RAG_VERSION = "1.0.0"
-EMBED_DIMS = 768
+EMBED_DIMS = 1536
 
 from .exceptions import (
     ChunkingError,
