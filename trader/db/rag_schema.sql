@@ -94,10 +94,9 @@ CREATE INDEX IF NOT EXISTS idx_rag_docs_date ON nexus.rag_documents(doc_date);
 CREATE INDEX IF NOT EXISTS idx_rag_docs_tags ON nexus.rag_documents USING gin(tags);
 CREATE INDEX IF NOT EXISTS idx_rag_docs_version ON nexus.rag_documents(embed_version);
 
--- Vector similarity (IVFFlat for <100K chunks)
+-- Vector similarity (HNSW - works well for any dataset size)
 CREATE INDEX IF NOT EXISTS idx_rag_chunks_embedding
-    ON nexus.rag_chunks USING ivfflat (embedding vector_cosine_ops)
-    WITH (lists = 50);
+    ON nexus.rag_chunks USING hnsw (embedding vector_cosine_ops);
 
 -- Filtered search
 CREATE INDEX IF NOT EXISTS idx_rag_chunks_doc ON nexus.rag_chunks(doc_id);

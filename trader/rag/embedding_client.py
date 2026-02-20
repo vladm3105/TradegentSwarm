@@ -40,8 +40,8 @@ class EmbeddingClient:
         self.config = config or _config
         embedding_config = self.config.get("embedding", {})
         self.fallback_chain = embedding_config.get("fallback_chain", ["ollama"])
-        self.dimensions = embedding_config.get("dimensions", 768)
-        self.timeout = embedding_config.get("timeout_seconds", 30)
+        self.dimensions = int(embedding_config.get("dimensions", 768))
+        self.timeout = int(embedding_config.get("timeout_seconds", 30))
 
     def get_embedding(self, text: str) -> list[float]:
         """

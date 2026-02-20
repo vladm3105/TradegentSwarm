@@ -111,8 +111,8 @@ def embed_document(file_path: str, force: bool = False) -> EmbedResult:
             )
 
     # Chunk document
-    max_tokens = _config.get("chunking", {}).get("max_tokens", 1500)
-    min_tokens = _config.get("chunking", {}).get("min_tokens", 50)
+    max_tokens = int(_config.get("chunking", {}).get("max_tokens", 1500))
+    min_tokens = int(_config.get("chunking", {}).get("min_tokens", 50))
 
     chunks = chunk_yaml_document(file_path, max_tokens=max_tokens, min_tokens=min_tokens)
 

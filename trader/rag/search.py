@@ -230,7 +230,7 @@ def _build_hybrid_query(
     WITH vector_results AS (
         SELECT c.id, d.doc_id, d.file_path, c.doc_type, c.ticker, c.doc_date,
                c.section_label, c.content, c.content_tokens,
-               ROW_NUMBER() OVER (ORDER BY c.embedding <=> %s::vector) as v_rank
+               ROW_NUMBER() OVER (ORDER BY c.embedding <=> %s::vector(768)) as v_rank
         FROM nexus.rag_chunks c
         JOIN nexus.rag_documents d ON c.doc_id = d.id
         WHERE 1=1 {filter_clause}
@@ -266,7 +266,9 @@ def _build_hybrid_query(
     """
 
     # Build params: embedding, filter_params (for vector), query, query, filter_params (for bm25), weights, top_k
-    params = [str(embedding)] + filter_params + [query, query] + filter_params + [vector_weight, bm25_weight, top_k]
+    # Format embedding as PostgreSQL vector string (no spaces)
+    emb_str = '[' + ','.join(str(x) for x in embedding) + ']'
+    params = [emb_str] + filter_params + [query, query] + filter_params + [vector_weight, bm25_weight, top_k]
 
     return sql, params
 
@@ -465,12 +467,14 @@ def _build_search_query(
     sql = """
         SELECT d.doc_id, d.file_path, d.doc_type, c.ticker, c.doc_date,
                c.section_label, c.content, c.content_tokens,
-               c.embedding <=> %s::vector AS distance
+               c.embedding <=> %s::vector(768) AS distance
         FROM nexus.rag_chunks c
         JOIN nexus.rag_documents d ON c.doc_id = d.id
         WHERE 1=1
     """
-    params = [str(embedding)]
+    # Format embedding as PostgreSQL vector string (no spaces)
+    emb_str = '[' + ','.join(str(x) for x in embedding) + ']'
+    params = [emb_str]
 
     if ticker:
         sql += " AND c.ticker = %s"

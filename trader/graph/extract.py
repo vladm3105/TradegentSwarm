@@ -125,7 +125,7 @@ def extract_document(
 
     # Pass 1: Entity extraction
     all_entities = []
-    timeout = _config.get("extraction", {}).get("timeout_seconds", 30)
+    timeout = int(_config.get("extraction", {}).get("timeout_seconds", 30))
 
     for field_path in extract_fields:
         try:
@@ -196,7 +196,7 @@ def extract_text(
 ) -> ExtractionResult:
     """Extract from raw text (for external content)."""
     text_hash = hashlib.sha256(text.encode()).hexdigest()[:16]
-    timeout = _config.get("extraction", {}).get("timeout_seconds", 30)
+    timeout = int(_config.get("extraction", {}).get("timeout_seconds", 30))
 
     result = ExtractionResult(
         source_doc_id=doc_id,
@@ -485,8 +485,8 @@ def _apply_confidence_thresholds(result: ExtractionResult) -> ExtractionResult:
     - < flag_threshold: exclude from result
     """
     extraction_config = _config.get("extraction", {})
-    commit_threshold = extraction_config.get("commit_threshold", 0.7)
-    flag_threshold = extraction_config.get("flag_threshold", 0.5)
+    commit_threshold = float(extraction_config.get("commit_threshold", 0.7))
+    flag_threshold = float(extraction_config.get("flag_threshold", 0.5))
 
     # Filter entities
     filtered_entities = []
