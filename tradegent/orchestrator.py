@@ -760,32 +760,43 @@ def run_scanners(db: NexusDB, scanner_code: Optional[str] = None):
 
     for scanner in scanners:
         log.info(f"Scanner: {scanner.display_name}")
-        output = call_claude_code(
-            build_scanner_prompt(scanner), cfg.allowed_tools_scanner,
-            f"SCAN-{scanner.scanner_code}")
-        if not output:
-            continue
+        run_id = db.start_scanner_run(scanner.scanner_code)
 
-        ts = datetime.now().strftime("%Y%m%dT%H%M")
-        fp = cfg.analyses_dir / f"scanner_{scanner.scanner_code}_{ts}.md"
-        fp.write_text(output)
+        try:
+            output = call_claude_code(
+                build_scanner_prompt(scanner), cfg.allowed_tools_scanner,
+                f"SCAN-{scanner.scanner_code}")
+            if not output:
+                db.complete_scanner_run(run_id, 'failed', 0,
+                                        error="Claude Code returned empty")
+                continue
 
-        parsed = parse_json_block(output)
-        if not parsed or "candidates" not in parsed:
-            continue
+            ts = datetime.now().strftime("%Y%m%dT%H%M")
+            fp = cfg.analyses_dir / f"scanner_{scanner.scanner_code}_{ts}.md"
+            fp.write_text(output)
 
-        candidates = parsed["candidates"]
-        log.info(f"  {len(candidates)} candidates found")
+            parsed = parse_json_block(output)
+            if not parsed or "candidates" not in parsed:
+                db.complete_scanner_run(run_id, 'completed', 0)
+                continue
 
-        if scanner.auto_add_to_watchlist:
-            for c in candidates[:scanner.max_candidates]:
-                db.upsert_stock(c["ticker"], is_enabled=True,
-                                tags=[f"scanner:{scanner.scanner_code}"])
+            candidates = parsed["candidates"]
+            log.info(f"  {len(candidates)} candidates found")
+            db.complete_scanner_run(run_id, 'completed', len(candidates))
 
-        if scanner.auto_analyze:
-            atype = AnalysisType(scanner.analysis_type)
-            for c in candidates[:scanner.max_candidates]:
-                run_pipeline(db, c["ticker"], atype, auto_execute=False)
+            if scanner.auto_add_to_watchlist:
+                for c in candidates[:scanner.max_candidates]:
+                    db.upsert_stock(c["ticker"], is_enabled=True,
+                                    tags=[f"scanner:{scanner.scanner_code}"])
+
+            if scanner.auto_analyze:
+                atype = AnalysisType(scanner.analysis_type)
+                for c in candidates[:scanner.max_candidates]:
+                    run_pipeline(db, c["ticker"], atype, auto_execute=False)
+
+        except Exception as e:
+            log.error(f"Scanner {scanner.scanner_code} failed: {e}")
+            db.complete_scanner_run(run_id, 'failed', 0, error=str(e))
 
 
 def run_earnings_check(db: NexusDB):

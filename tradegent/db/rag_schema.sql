@@ -56,8 +56,8 @@ CREATE TABLE IF NOT EXISTS nexus.rag_chunks (
     -- Full-text search (BM25)
     content_tsv     tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED,
 
-    -- Embedding
-    embedding       vector(768) NOT NULL,            -- nomic-embed-text output
+    -- Embedding (1536 for pgvector index compatibility)
+    embedding       vector(1536) NOT NULL,           -- OpenAI text-embedding-3-large with truncation
 
     -- Denormalized for filtered search (avoids JOINs)
     doc_type        VARCHAR(50) NOT NULL,

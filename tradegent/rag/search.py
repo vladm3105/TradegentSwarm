@@ -7,7 +7,7 @@ from typing import Any
 import psycopg
 
 from .models import SearchResult, RAGStats
-from .embedding_client import get_embedding
+from .embedding_client import get_embedding, get_embed_dimensions
 from .schema import get_database_url
 from .exceptions import RAGUnavailableError
 
@@ -226,11 +226,12 @@ def _build_hybrid_query(
         filter_clause += " AND c.doc_date <= %s"
         filter_params.append(date_to)
 
+    embed_dims = get_embed_dimensions()
     sql = f"""
     WITH vector_results AS (
         SELECT c.id, d.doc_id, d.file_path, c.doc_type, c.ticker, c.doc_date,
                c.section_label, c.content, c.content_tokens,
-               ROW_NUMBER() OVER (ORDER BY c.embedding <=> %s::vector(768)) as v_rank
+               ROW_NUMBER() OVER (ORDER BY c.embedding <=> %s::vector({embed_dims})) as v_rank
         FROM nexus.rag_chunks c
         JOIN nexus.rag_documents d ON c.doc_id = d.id
         WHERE 1=1 {filter_clause}
@@ -464,10 +465,11 @@ def _build_search_query(
     top_k: int,
 ) -> tuple[str, list]:
     """Build SQL query with appropriate filters."""
-    sql = """
+    embed_dims = get_embed_dimensions()
+    sql = f"""
         SELECT d.doc_id, d.file_path, d.doc_type, c.ticker, c.doc_date,
                c.section_label, c.content, c.content_tokens,
-               c.embedding <=> %s::vector(768) AS distance
+               c.embedding <=> %s::vector({embed_dims}) AS distance
         FROM nexus.rag_chunks c
         JOIN nexus.rag_documents d ON c.doc_id = d.id
         WHERE 1=1

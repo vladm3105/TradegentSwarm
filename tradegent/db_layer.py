@@ -434,6 +434,36 @@ class NexusDB:
 
         self.conn.commit()
 
+    # ─── Scanner Run Logging ────────────────────────────────────────────────────
+
+    def start_scanner_run(self, scanner_code: str) -> int:
+        """Start a scanner run and create a run_history entry. Returns run_id."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO nexus.run_history
+                (task_type, ticker, status, stage)
+                VALUES ('run_scanner', %s, 'running', 'scan')
+                RETURNING id
+            """, [scanner_code])
+            run_id = cur.fetchone()['id']
+        self.conn.commit()
+        return run_id
+
+    def complete_scanner_run(self, run_id: int, status: str = 'completed',
+                             candidates_found: int = 0, error: Optional[str] = None):
+        """Complete a scanner run with results."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                UPDATE nexus.run_history
+                SET status = %s,
+                    completed_at = now(),
+                    duration_seconds = EXTRACT(EPOCH FROM (now() - started_at)),
+                    raw_output = %s,
+                    error_message = %s
+                WHERE id = %s
+            """, [status, json.dumps({"candidates_found": candidates_found}), error, run_id])
+        self.conn.commit()
+
     def calculate_next_run(self, schedule: Schedule) -> Optional[datetime]:
         """Calculate the next run time for a schedule."""
         now = datetime.now(ET)

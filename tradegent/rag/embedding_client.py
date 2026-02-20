@@ -11,6 +11,9 @@ from .exceptions import EmbeddingUnavailableError
 
 log = logging.getLogger(__name__)
 
+# Default embedding dimensions (1536 for pgvector index compatibility)
+DEFAULT_EMBED_DIMS = 1536  # OpenAI text-embedding-3-large with truncation
+
 # Load configuration
 _config_path = Path(__file__).parent / "config.yaml"
 _config: dict = {}
@@ -32,15 +35,30 @@ if _config_path.exists():
         _config = yaml.safe_load(config_content)
 
 
+def get_embed_dimensions() -> int:
+    """Get configured embedding dimensions."""
+    return int(_config.get("embedding", {}).get("dimensions", DEFAULT_EMBED_DIMS))
+
+
 class EmbeddingClient:
-    """Embedding with Ollama-first, LiteLLM/OpenRouter fallback."""
+    """Embedding with configurable default provider and fallback chain."""
 
     def __init__(self, config: dict | None = None):
         """Initialize embedding client."""
         self.config = config or _config
         embedding_config = self.config.get("embedding", {})
-        self.fallback_chain = embedding_config.get("fallback_chain", ["ollama"])
-        self.dimensions = int(embedding_config.get("dimensions", 768))
+        # Use default_provider first, then fallback chain
+        default_provider = embedding_config.get("default_provider", "").strip("}")
+        fallback_chain = embedding_config.get("fallback_chain", ["ollama"])
+        # Build provider chain: default_provider first (if set), then fallback_chain
+        if default_provider and default_provider not in fallback_chain:
+            self.fallback_chain = [default_provider] + fallback_chain
+        elif default_provider:
+            # Move default_provider to front of fallback_chain
+            self.fallback_chain = [default_provider] + [p for p in fallback_chain if p != default_provider]
+        else:
+            self.fallback_chain = fallback_chain
+        self.dimensions = int(embedding_config.get("dimensions", DEFAULT_EMBED_DIMS))
         self.timeout = int(embedding_config.get("timeout_seconds", 30))
 
     def get_embedding(self, text: str) -> list[float]:

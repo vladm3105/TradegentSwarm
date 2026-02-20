@@ -99,10 +99,12 @@ cp .env.template .env
 | Provider | Model | Dimensions | Cost | Status |
 |----------|-------|------------|------|--------|
 | `ollama` | nomic-embed-text | 768 | Free (local) | Slower |
-| `openai` | text-embedding-3-large | 3072 | $0.13/1M tokens | ✅ **Recommended** |
+| `openai` | text-embedding-3-large | 1536* | $0.13/1M tokens | ✅ **Recommended** |
 | `openai` | text-embedding-3-small | 768 | $0.02/1M tokens | Budget option |
 
-**Current config:** `EMBED_PROVIDER=openai` with `text-embedding-3-large` (3072 dimensions)
+*Uses API-level dimension truncation for pgvector HNSW index compatibility (max 2000 dims)
+
+**Current config:** `EMBED_PROVIDER=openai` with `text-embedding-3-large` (1536 dimensions)
 
 **Cost estimate:** ~$2/year for 7,500 documents (3-year projection)
 

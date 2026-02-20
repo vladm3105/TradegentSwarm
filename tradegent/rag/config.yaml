@@ -8,12 +8,12 @@ database:
 embedding:
   # EMBED_PROVIDER allows separate provider for embeddings (should stay consistent!)
   # Falls back to LLM_PROVIDER for backwards compatibility
-  default_provider: "${EMBED_PROVIDER:-${LLM_PROVIDER:-ollama}}"
+  default_provider: "${EMBED_PROVIDER:-ollama}"
   fallback_chain:
     - ollama
     - openrouter
   timeout_seconds: "${EMBED_TIMEOUT_SECONDS:-30}"
-  dimensions: "${EMBED_DIMENSIONS:-768}"
+  dimensions: "${EMBED_DIMENSIONS:-1536}"
 
   # Unified LLM config - provider selected by LLM_PROVIDER
   ollama:
@@ -23,12 +23,12 @@ embedding:
   openrouter:
     api_key: "${LLM_API_KEY}"
     model: "${EMBED_MODEL:-openai/text-embedding-3-small}"
-    dimensions: "${EMBED_DIMENSIONS:-768}"
+    dimensions: "${EMBED_DIMENSIONS:-1536}"
 
   openai:
-    api_key: "${OPENAI_API_KEY:-${LLM_API_KEY}}"
+    api_key: "${OPENAI_API_KEY}"
     model: "${EMBED_MODEL:-text-embedding-3-large}"
-    dimensions: "${EMBED_DIMENSIONS:-3072}"
+    dimensions: "${EMBED_DIMENSIONS:-1536}"
 
 chunking:
   max_tokens: "${CHUNK_MAX_TOKENS:-1500}"
