@@ -1,13 +1,13 @@
-# Trading Light Pilot - Claude Code Instructions
+# TradegentSwarm - Claude Code Instructions
 
-AI-driven trading platform using Claude Code CLI, Interactive Brokers, and a hybrid RAG+Graph knowledge system. This is an **AI-first project** with agent automation.
+**Tradegent** — AI-driven trading platform using Claude Code CLI, Interactive Brokers, and a hybrid RAG+Graph knowledge system. A multi-agent swarm for market analysis, trade execution, and knowledge persistence.
 
 ## Project Structure
 
 ```
-trading_light_pilot/
+tradegent/
 ├── .claude/skills/          # Claude Code skills (auto-invoke enabled)
-├── trader/                  # Nexus Light Trading Platform (Python)
+├── trader/                  # Tradegent Platform (Python)
 │   ├── service.py           # Long-running daemon
 │   ├── orchestrator.py      # Pipeline engine + CLI
 │   ├── db_layer.py          # PostgreSQL access layer

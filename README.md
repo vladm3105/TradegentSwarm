@@ -1,18 +1,18 @@
-# Trading Light Pilot
+# TradegentSwarm
 
-AI-driven trading platform that combines automated market analysis, trade execution, and a structured knowledge base. Uses Claude Code CLI as its AI engine, Interactive Brokers for market data/execution, and a hybrid RAG+Graph system for knowledge persistence.
+**Tradegent** — AI-driven trading platform that combines automated market analysis, trade execution, and a structured knowledge base. A multi-agent swarm powered by Claude Code CLI, Interactive Brokers for market data/execution, and a hybrid RAG+Graph system for knowledge persistence.
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                         TRADING LIGHT PILOT                             │
+│                           TRADEGENTSWARM                                │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
 │   trader/                    trading/                                   │
 │   ┌──────────────────┐       ┌──────────────────────────────────────┐  │
-│   │  Nexus Light      │       │  skills/     (how-to guides)        │  │
-│   │  Trading Platform │──────▶│  knowledge/  (data & docs)          │  │
+│   │  Tradegent        │       │  skills/     (how-to guides)        │  │
+│   │  Platform         │──────▶│  knowledge/  (data & docs)          │  │
 │   │                   │       │  workflows/  (CI/CD & schemas)      │  │
 │   │  • service.py     │       └──────────────────────────────────────┘  │
 │   │  • orchestrator.py│                      │                         │
@@ -49,8 +49,8 @@ AI-driven trading platform that combines automated market analysis, trade execut
 ## Repository Structure
 
 ```
-trading_light_pilot/
-├── trader/                         # Nexus Light Trading Platform
+tradegent/
+├── trader/                         # Tradegent Platform
 │   ├── service.py                  # Long-running daemon (tick loop)
 │   ├── orchestrator.py             # Pipeline engine + CLI
 │   ├── db_layer.py                 # PostgreSQL access layer
@@ -98,7 +98,7 @@ trading_light_pilot/
 
 ### Trader (`trader/`)
 
-The Nexus Light Trading Platform — a database-driven orchestrator that runs analysis and execution pipelines via Claude Code CLI.
+The Tradegent Platform — a database-driven orchestrator that runs analysis and execution pipelines via Claude Code CLI.
 
 - **Two-stage pipeline**: Analysis (multi-source) → Gate check (EV, confidence, R:R) → Execution (paper trading)
 - **Infrastructure**: PostgreSQL (pgvector) + IB Gateway + Neo4j via Docker Compose

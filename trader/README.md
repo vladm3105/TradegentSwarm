@@ -1,6 +1,6 @@
-# Nexus Light Trading Platform v2.2
+# Tradegent Platform v2.2
 
-A database-driven, uninterrupted trading orchestrator that uses Claude Code CLI as its AI engine, Interactive Brokers for market data and order execution, and a hybrid RAG+Graph knowledge system. All configuration lives in PostgreSQL — no restarts needed to change behavior.
+A database-driven, uninterrupted trading orchestrator that uses Claude Code CLI as its AI engine, Interactive Brokers for market data and order execution, and a hybrid RAG+Graph knowledge system. Part of the **TradegentSwarm** multi-agent trading system. All configuration lives in PostgreSQL — no restarts needed to change behavior.
 
 ---
 
@@ -64,7 +64,7 @@ A database-driven, uninterrupted trading orchestrator that uses Claude Code CLI 
 ## Files
 
 ```
-nexus-light/
+tradegent/
 ├── service.py              Main entry point — long-running daemon
 ├── orchestrator.py         Pipeline engine + CLI commands
 ├── db_layer.py             PostgreSQL access layer (NexusDB class)
@@ -554,25 +554,25 @@ python3 service.py health
 ### Option 1: screen/tmux (simplest)
 
 ```bash
-screen -S nexus
-cd ~/nexus-light
+screen -S tradegent
+cd ~/tradegent
 python3 service.py
 # Ctrl+A, D to detach
-# screen -r nexus to reattach
+# screen -r tradegent to reattach
 ```
 
 ### Option 2: systemd (production)
 
-Edit `nexus-light.service` — replace `YOUR_USER` with your Linux username (4 places). If using nvm, uncomment the PATH line.
+Edit `tradegent.service` — replace `YOUR_USER` with your Linux username (4 places). If using nvm, uncomment the PATH line.
 
 ```bash
-sudo cp nexus-light.service /etc/systemd/system/
+sudo cp tradegent.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now nexus-light
+sudo systemctl enable --now tradegent
 
 # Verify
-sudo systemctl status nexus-light
-journalctl -u nexus-light -f
+sudo systemctl status tradegent
+journalctl -u tradegent -f
 ```
 
 The nvm/PATH issue: systemd doesn't source `~/.bashrc`. If `claude` is installed via nvm's Node.js, you must set the full PATH in the service file. Run `which node` and `which claude` to find the correct paths.
@@ -770,14 +770,14 @@ The orchestrator is designed to be stateless — all state lives in PostgreSQL. 
 
 3. **Deploy orchestrator as Cloud Run Job:**
    ```bash
-   gcloud run jobs create nexus-scheduler \
-       --image gcr.io/PROJECT/nexus-orchestrator \
+   gcloud run jobs create tradegent-scheduler \
+       --image gcr.io/PROJECT/tradegent \
        --args="service.py,once" \
        --set-env-vars="PG_HOST=/cloudsql/..." \
        --add-cloudsql-instances=PROJECT:REGION:INSTANCE
 
    # Schedule via Cloud Scheduler
-   gcloud scheduler jobs create http nexus-premarket \
+   gcloud scheduler jobs create http tradegent-premarket \
        --schedule="30 6 * * 1-5" \
        --time-zone="America/New_York" \
        --uri="https://..."
@@ -942,4 +942,4 @@ GIT_SSH_COMMAND="LD_LIBRARY_PATH= /usr/bin/ssh" git push
 
 ---
 
-*Nexus Light Trading Platform v2.2 — Database-driven. Uninterrupted. Hot-reloadable.*
+*Tradegent Platform v2.2 — Database-driven. Uninterrupted. Hot-reloadable.*
