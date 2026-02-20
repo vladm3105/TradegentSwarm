@@ -58,6 +58,7 @@ with TradingGraph() as graph:
 
 | File | Purpose |
 |------|---------|
+| `mcp_server.py` | **MCP server (primary interface)** |
 | `layer.py` | Neo4j connection and CRUD operations |
 | `extract.py` | LLM-based entity extraction |
 | `normalize.py` | Entity standardization and dedup |
@@ -65,10 +66,20 @@ with TradingGraph() as graph:
 | `models.py` | Data classes (EntityExtraction, GraphStats) |
 | `webhook.py` | FastAPI HTTP endpoints |
 | `config.yaml` | Configuration settings |
+| `.env` | Environment variables (not committed) |
+| `.env.template` | Environment template |
 
 ## Configuration
 
-Settings loaded from `config.yaml` with environment variable overrides:
+Settings are loaded from `.env` and `config.yaml` with environment variable overrides.
+
+**Setup:**
+```bash
+cp .env.template .env
+# Edit .env with your Neo4j credentials
+```
+
+### Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -78,10 +89,21 @@ Settings loaded from `config.yaml` with environment variable overrides:
 | `NEO4J_DATABASE` | `neo4j` | Database name |
 | `LLM_PROVIDER` | `ollama` | Extraction LLM provider |
 | `LLM_BASE_URL` | `http://localhost:11434` | Ollama API URL |
-| `LLM_MODEL` | `qwen3:8b` | Extraction model |
-| `EXTRACT_TIMEOUT_SECONDS` | `30` | LLM timeout |
+| `LLM_API_KEY` | (none) | API key for OpenRouter/Claude |
+| `LLM_MODEL` | `llama3.2` | Extraction model |
+| `EXTRACT_TIMEOUT_SECONDS` | `120` | LLM timeout |
 | `EXTRACT_COMMIT_THRESHOLD` | `0.7` | Auto-commit confidence |
 | `EXTRACT_FLAG_THRESHOLD` | `0.5` | Review flag confidence |
+
+### Generation Settings
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LLM_TEMPERATURE` | `0.1` | Generation temperature |
+| `LLM_NUM_PREDICT` | `2000` | Max tokens (Ollama) |
+| `LLM_MAX_TOKENS` | `2000` | Max tokens (cloud LLMs) |
+| `LLM_TOP_P` | `0.9` | Top-p sampling |
+| `LLM_TOP_K` | `40` | Top-k sampling |
 
 ## Entity Types
 
@@ -229,9 +251,11 @@ The graph module exposes a FastAPI server:
 | `/api/graph/health` | GET | Health check |
 | `/api/graph/ready` | GET | Readiness check |
 
-## MCP Server
+## MCP Server (Primary Interface)
 
-The graph module is exposed via MCP server at `mcp_trading_graph/`:
+The graph module is exposed via MCP server at `mcp_server.py`. **Use MCP tools as the primary interface** for all graph operations.
+
+**Server name:** `trading-graph`
 
 | Tool | Description |
 |------|-------------|
@@ -244,6 +268,44 @@ The graph module is exposed via MCP server at `mcp_trading_graph/`:
 | `graph_context` | Comprehensive ticker context |
 | `graph_query` | Execute Cypher query |
 | `graph_status` | Graph statistics |
+
+### MCP Usage Examples
+
+```yaml
+# Extract from document
+Tool: graph_extract
+Input: {"file_path": "trading/knowledge/analysis/earnings/NVDA_20250120T0900.yaml"}
+
+# Get ticker context
+Tool: graph_context
+Input: {"ticker": "NVDA"}
+
+# Find sector peers
+Tool: graph_peers
+Input: {"ticker": "NVDA"}
+
+# Get known risks
+Tool: graph_risks
+Input: {"ticker": "NVDA"}
+
+# Custom Cypher query
+Tool: graph_query
+Input: {"cypher": "MATCH (t:Ticker {symbol: $ticker})-[r]->(n) RETURN type(r), n LIMIT 10", "params": {"ticker": "NVDA"}}
+
+# Check graph status
+Tool: graph_status
+Input: {}
+```
+
+### Running the MCP Server
+
+```bash
+# Direct execution
+python trader/graph/mcp_server.py
+
+# Or import and run
+python -c "from graph.mcp_server import server; print(server.name)"
+```
 
 ## Testing
 
@@ -263,6 +325,55 @@ pytest graph/tests/test_extract.py -v      # Extraction
 
 # Integration tests (requires Neo4j)
 pytest graph/tests/test_integration.py --run-integration
+```
+
+### Full Graph Test
+
+```bash
+# Ensure .env is configured
+cp trader/graph/.env.template trader/graph/.env
+# Edit trader/graph/.env with your Neo4j credentials
+
+# Run full pipeline test (extract → store → query)
+python tmp/test_graph.py
+```
+
+**Expected output:**
+```
+======================================================================
+Graph Test: Extract → Store → Query
+======================================================================
+
+[1] Checking Neo4j connection...
+    Connected to Neo4j
+    Nodes: 0, Edges: 0
+
+[2] Extracting entities from story...
+    Entities: 9
+    Relations: 0
+    Extractor: ollama
+    Sample entities:
+      - Ticker: NVDA
+      - Company: NVIDIA
+      - Executive: Jensen Huang Ceo
+      - Product: Blackwell Gpu
+      - Catalyst: Earnings Beat
+    Committing to Neo4j...
+    Committed!
+
+[3] Querying graph for NVDA context...
+    Peers: 0
+    Competitors: 0
+    Risks: 0
+    Strategies: 0
+
+[4] Running custom Cypher query...
+    Found 1 relationships:
+      EXTRACTED_FROM -> Document: None
+
+======================================================================
+Graph Test Complete
+======================================================================
 ```
 
 ## Rate Limiting
@@ -286,16 +397,25 @@ def _extract_entities_from_field(...)
 ## Troubleshooting
 
 **"Failed to connect to Neo4j"**
+- Check `trader/graph/.env` has correct `NEO4J_PASS`
+- Verify password matches `NEO4J_PASS` in `trader/.env`
 - Check Neo4j is running: `docker compose ps`
-- Verify credentials in `NEO4J_PASS`
 - Check port (default: 7688 for bolt)
 
 **Empty extraction results**
 - Verify LLM is running: `curl http://localhost:11434/api/tags`
+- Check model is available: `ollama list`
+- Use `llama3.2` instead of `qwen3:8b` (qwen3 uses thinking mode)
 - Check document has extractable content
 - Lower confidence thresholds for testing
 
 **Slow extraction**
 - Use local Ollama instead of cloud APIs
+- Increase `EXTRACT_TIMEOUT_SECONDS` in `.env`
 - Reduce document size / fields to extract
 - Check rate limiting isn't throttling
+
+**"Failed to parse JSON response"**
+- Some models wrap JSON in markdown (```json ... ```)
+- Use `llama3.2` which returns cleaner JSON
+- Check LLM response format in logs
