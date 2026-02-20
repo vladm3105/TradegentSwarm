@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Test RAG system with a sample story and questions."""
+"""Test full RAG pipeline: retrieve context + generate answer with LLM."""
 
 import sys
+import requests
 from pathlib import Path
 
 # Add trader to path
@@ -9,6 +10,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "trader"))
 
 from rag.embed import embed_text
 from rag.search import semantic_search
+
+# LLM settings
+LLM_URL = "http://localhost:11434/api/generate"
+LLM_MODEL = "llama3.2"  # Direct output, no thinking mode
 
 # A trading story with ~200 tokens
 STORY = """
@@ -34,17 +39,47 @@ and psychological discipline. He meditates daily and never trades during
 the first 30 minutes of market open.
 """
 
-# Three questions to test RAG retrieval
+# Three questions to test RAG
 QUESTIONS = [
-    "What risk management rule does Marcus follow?",
-    "Where did Marcus start his trading career?",
+    "What is Marcus Chen's risk management rule?",
+    "Where did Marcus Chen start his trading career?",
     "What was Marcus Chen's most profitable trade?",
 ]
 
+
+def generate_answer(question: str, context: str) -> str:
+    """Generate answer using LLM with retrieved context."""
+    prompt = f"""Based only on the context below, answer the question in 1-2 sentences.
+
+Context:
+{context}
+
+Question: {question}
+
+Answer:"""
+
+    try:
+        response = requests.post(
+            LLM_URL,
+            json={
+                "model": LLM_MODEL,
+                "prompt": prompt,
+                "stream": False,
+                "options": {"temperature": 0.1, "num_predict": 150},
+            },
+            timeout=60,
+        )
+        response.raise_for_status()
+        answer = response.json().get("response", "").strip()
+        return answer if answer else "[No answer generated]"
+    except Exception as e:
+        return f"[LLM Error: {e}]"
+
+
 def main():
-    print("=" * 60)
-    print("RAG Test: Storing and Querying a Trading Story")
-    print("=" * 60)
+    print("=" * 70)
+    print("Full RAG Test: Store → Retrieve → Generate")
+    print("=" * 70)
 
     # Step 1: Embed the story
     print("\n[1] Embedding story (~200 tokens)...")
@@ -55,37 +90,42 @@ def main():
             doc_type="research",
             ticker=None,
         )
-        print(f"    Embedded {result.chunk_count} chunks")
+        print(f"    Stored {result.chunk_count} chunk(s)")
         print(f"    Document ID: {result.doc_id}")
     except Exception as e:
         print(f"    ERROR embedding: {e}")
         return 1
 
-    # Step 2: Search with questions
-    print("\n[2] Testing semantic search with 3 questions...")
-    print("-" * 60)
+    # Step 2: RAG Q&A
+    print("\n[2] RAG Question-Answering")
+    print("-" * 70)
 
     for i, question in enumerate(QUESTIONS, 1):
         print(f"\nQ{i}: {question}")
-        try:
-            results = semantic_search(
-                query=question,
-                top_k=1,
-                min_similarity=0.3,
-            )
-            if results:
-                r = results[0]
-                print(f"    Similarity: {r.similarity:.3f}")
-                print(f"    Answer excerpt: {r.content[:150]}...")
-            else:
-                print("    No results found")
-        except Exception as e:
-            print(f"    ERROR searching: {e}")
 
-    print("\n" + "=" * 60)
+        # Retrieve relevant context
+        try:
+            results = semantic_search(query=question, top_k=1, min_similarity=0.3)
+            if not results:
+                print("    [No context retrieved]")
+                continue
+
+            context = results[0].content
+            similarity = results[0].similarity
+            print(f"    Retrieved context (similarity: {similarity:.3f})")
+
+            # Generate answer
+            answer = generate_answer(question, context)
+            print(f"    Answer: {answer}")
+
+        except Exception as e:
+            print(f"    ERROR: {e}")
+
+    print("\n" + "=" * 70)
     print("RAG Test Complete")
-    print("=" * 60)
+    print("=" * 70)
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())
