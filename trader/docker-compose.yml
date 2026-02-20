@@ -1,6 +1,6 @@
 # ═══════════════════════════════════════════════════════════════
-# Nexus Light Trading Platform v2.1 - Docker Stack
-# IB Gateway + LightRAG + PostgreSQL + Neo4j
+# Nexus Light Trading Platform v2.2 - Docker Stack
+# IB Gateway + PostgreSQL (pgvector) + Neo4j
 # ═══════════════════════════════════════════════════════════════
 
 services:
@@ -30,7 +30,7 @@ services:
     networks:
       - nexus-net
 
-  # ─── PostgreSQL (shared: LightRAG + Nexus schema) ──────────
+  # ─── PostgreSQL (pgvector for RAG embeddings) ──────────────
   postgres:
     image: pgvector/pgvector:pg16
     container_name: nexus-postgres
@@ -79,56 +79,17 @@ services:
     networks:
       - nexus-net
 
-  # ─── LightRAG API ──────────────────────────────────────────
-  lightrag:
-    image: ghcr.io/hkuds/lightrag:latest
-    container_name: nexus-lightrag
-    restart: unless-stopped
-    ports:
-      - "9621:9621"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    environment:
-      LLM_MODEL: ${LIGHTRAG_LLM_MODEL:-qwen3:8b}
-      LLM_BINDING: ollama
-      LLM_BINDING_HOST: http://host.docker.internal:11434
-      EMBEDDING_MODEL: ${LIGHTRAG_EMBED_MODEL:-nomic-embed-text}
-      EMBEDDING_BINDING: ollama
-      EMBEDDING_BINDING_HOST: http://host.docker.internal:11434
-      EMBEDDING_DIM: 768
-      MAX_EMBED_TOKENS: 8192
-      KV_STORAGE: PostgreSQLStorage
-      VECTOR_STORAGE: PostgreSQLStorage
-      GRAPH_STORAGE: Neo4JStorage
-      DOC_STATUS_STORAGE: PostgreSQLStorage
-      CHUNK_STORAGE: PostgreSQLStorage
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_USER: ${PG_USER:-lightrag}
-      POSTGRES_PASSWORD: ${PG_PASS}
-      POSTGRES_DATABASE: ${PG_DB:-lightrag}
-      NEO4J_URI: bolt://neo4j:7687
-      NEO4J_USERNAME: neo4j
-      NEO4J_PASSWORD: ${NEO4J_PASS}
-      CHUNK_SIZE: 1200
-      CHUNK_OVERLAP_SIZE: 100
-      LOG_LEVEL: INFO
-    depends_on:
-      postgres:
-        condition: service_healthy
-      neo4j:
-        condition: service_healthy
-    networks:
-      - nexus-net
-
   # ─── NOTE: Orchestrator runs on HOST, not in Docker ─────────
   # The orchestrator (service.py) needs Claude Code CLI which is
   # installed on the host. It connects to these Docker services
   # via localhost ports:
   #   PostgreSQL:  localhost:5433
   #   IB Gateway:  localhost:4002
-  #   LightRAG:    localhost:9621
-  #   Neo4j:       localhost:7475 / 7688
+  #   Neo4j:       localhost:7688 (bolt) / 7475 (http)
+  #
+  # RAG and Graph modules run on host via MCP servers:
+  #   python trader/rag/mcp_server.py
+  #   python trader/graph/mcp_server.py
   #
   # Run on host:
   #   python service.py          # long-running service
