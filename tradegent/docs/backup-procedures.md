@@ -10,7 +10,7 @@ Backup strategy for Trading Knowledge Base: Neo4j (graph), PostgreSQL (vectors/m
 
 ```bash
 # Create backup directory
-mkdir -p /opt/data/trading_light_pilot/backups/neo4j
+mkdir -p /opt/data/tradegent_swarm/backups/neo4j
 
 # Backup using docker exec
 docker exec nexus-neo4j neo4j-admin database dump neo4j \
@@ -19,7 +19,7 @@ docker exec nexus-neo4j neo4j-admin database dump neo4j \
 
 # Copy backup to host
 docker cp nexus-neo4j:/data/backup/neo4j.dump \
-    /opt/data/trading_light_pilot/backups/neo4j/neo4j_$(date +%Y%m%d_%H%M%S).dump
+    /opt/data/tradegent_swarm/backups/neo4j/neo4j_$(date +%Y%m%d_%H%M%S).dump
 ```
 
 ### Export Cypher (Human-Readable)
@@ -30,7 +30,7 @@ docker exec nexus-neo4j cypher-shell -u neo4j -p "${NEO4J_PASS}" \
     "CALL apoc.export.cypher.all('/data/backup/export.cypher', {format: 'plain'})"
 
 docker cp nexus-neo4j:/data/backup/export.cypher \
-    /opt/data/trading_light_pilot/backups/neo4j/export_$(date +%Y%m%d).cypher
+    /opt/data/tradegent_swarm/backups/neo4j/export_$(date +%Y%m%d).cypher
 ```
 
 ### Volume Backup
@@ -42,7 +42,7 @@ docker compose stop neo4j
 # Backup volume
 docker run --rm \
     -v trading_light_pilot_neo4j_data:/data \
-    -v /opt/data/trading_light_pilot/backups:/backup \
+    -v /opt/data/tradegent_swarm/backups:/backup \
     alpine tar cvzf /backup/neo4j/neo4j_volume_$(date +%Y%m%d).tar.gz /data
 
 # Restart
@@ -55,18 +55,18 @@ docker compose start neo4j
 
 ```bash
 # Create backup directory
-mkdir -p /opt/data/trading_light_pilot/backups/postgres
+mkdir -p /opt/data/tradegent_swarm/backups/postgres
 
 # Backup entire database
 docker exec nexus-postgres pg_dump -U lightrag -Fc lightrag \
-    > /opt/data/trading_light_pilot/backups/postgres/lightrag_$(date +%Y%m%d_%H%M%S).dump
+    > /opt/data/tradegent_swarm/backups/postgres/lightrag_$(date +%Y%m%d_%H%M%S).dump
 
 # Backup specific schemas
 docker exec nexus-postgres pg_dump -U lightrag -Fc -n rag lightrag \
-    > /opt/data/trading_light_pilot/backups/postgres/rag_$(date +%Y%m%d).dump
+    > /opt/data/tradegent_swarm/backups/postgres/rag_$(date +%Y%m%d).dump
 
 docker exec nexus-postgres pg_dump -U lightrag -Fc -n graph lightrag \
-    > /opt/data/trading_light_pilot/backups/postgres/graph_$(date +%Y%m%d).dump
+    > /opt/data/tradegent_swarm/backups/postgres/graph_$(date +%Y%m%d).dump
 ```
 
 ### Plain SQL Backup
@@ -74,7 +74,7 @@ docker exec nexus-postgres pg_dump -U lightrag -Fc -n graph lightrag \
 ```bash
 # Human-readable SQL backup
 docker exec nexus-postgres pg_dump -U lightrag lightrag \
-    > /opt/data/trading_light_pilot/backups/postgres/lightrag_$(date +%Y%m%d).sql
+    > /opt/data/tradegent_swarm/backups/postgres/lightrag_$(date +%Y%m%d).sql
 ```
 
 ### Volume Backup
@@ -86,7 +86,7 @@ docker compose stop postgres
 # Backup volume
 docker run --rm \
     -v trading_light_pilot_pg_data:/data \
-    -v /opt/data/trading_light_pilot/backups:/backup \
+    -v /opt/data/tradegent_swarm/backups:/backup \
     alpine tar cvzf /backup/postgres/pg_volume_$(date +%Y%m%d).tar.gz /data
 
 # Restart
@@ -98,7 +98,7 @@ docker compose start postgres
 ### Git-Based (Primary)
 
 ```bash
-cd /opt/data/trading_light_pilot
+cd /opt/data/tradegent_swarm
 
 # Ensure all changes committed
 git status
@@ -113,21 +113,21 @@ GIT_SSH_COMMAND="LD_LIBRARY_PATH= /usr/bin/ssh" git push --tags
 ### Archive Backup
 
 ```bash
-mkdir -p /opt/data/trading_light_pilot/backups/knowledge
+mkdir -p /opt/data/tradegent_swarm/backups/knowledge
 
-tar cvzf /opt/data/trading_light_pilot/backups/knowledge/knowledge_$(date +%Y%m%d).tar.gz \
-    /opt/data/trading_light_pilot/trading/knowledge/
+tar cvzf /opt/data/tradegent_swarm/backups/knowledge/knowledge_$(date +%Y%m%d).tar.gz \
+    /opt/data/tradegent_swarm/trading/knowledge/
 ```
 
 ## Automated Backup Script
 
 ```bash
 #!/bin/bash
-# File: trader/scripts/backup.sh
+# File: tradegent/scripts/backup.sh
 
 set -e
 
-BACKUP_ROOT="/opt/data/trading_light_pilot/backups"
+BACKUP_ROOT="/opt/data/tradegent_swarm/backups"
 DATE=$(date +%Y%m%d_%H%M%S)
 
 echo "Starting backup: $DATE"
@@ -146,7 +146,7 @@ docker exec nexus-postgres pg_dump -U lightrag -Fc lightrag > "$BACKUP_ROOT/post
 
 # Knowledge files
 echo "Backing up knowledge files..."
-tar czf "$BACKUP_ROOT/knowledge/knowledge_$DATE.tar.gz" -C /opt/data/trading_light_pilot trading/knowledge/
+tar czf "$BACKUP_ROOT/knowledge/knowledge_$DATE.tar.gz" -C /opt/data/tradegent_swarm trading/knowledge/
 
 # Cleanup old backups (keep 7 days)
 find "$BACKUP_ROOT" -type f -mtime +7 -delete
@@ -159,7 +159,7 @@ echo "Backup complete: $DATE"
 ```bash
 # Add to crontab (crontab -e)
 # Daily backup at 2 AM
-0 2 * * * /opt/data/trading_light_pilot/trader/scripts/backup.sh >> /var/log/trading_backup.log 2>&1
+0 2 * * * /opt/data/tradegent_swarm/trader/scripts/backup.sh >> /var/log/trading_backup.log 2>&1
 ```
 
 ## Restore Procedures
@@ -176,7 +176,7 @@ docker run --rm -v trading_light_pilot_neo4j_data:/data alpine rm -rf /data/*
 # Restore from dump
 docker run --rm \
     -v trading_light_pilot_neo4j_data:/data \
-    -v /opt/data/trading_light_pilot/backups/neo4j:/backup \
+    -v /opt/data/tradegent_swarm/backups/neo4j:/backup \
     neo4j:5-community neo4j-admin database load neo4j --from-path=/backup/neo4j_YYYYMMDD.dump
 
 # Start Neo4j
@@ -192,7 +192,7 @@ docker exec nexus-postgres psql -U lightrag -c "CREATE DATABASE lightrag_restore
 
 # Restore from dump
 docker exec -i nexus-postgres pg_restore -U lightrag -d lightrag_restore \
-    < /opt/data/trading_light_pilot/backups/postgres/lightrag_YYYYMMDD.dump
+    < /opt/data/tradegent_swarm/backups/postgres/lightrag_YYYYMMDD.dump
 
 # Verify and swap
 docker exec nexus-postgres psql -U lightrag -d lightrag_restore \
@@ -203,21 +203,21 @@ docker exec nexus-postgres psql -U lightrag -d lightrag_restore \
 
 ```bash
 # From git
-cd /opt/data/trading_light_pilot
+cd /opt/data/tradegent_swarm
 git checkout backup-YYYYMMDD -- trading/knowledge/
 
 # From archive
-tar xvzf /opt/data/trading_light_pilot/backups/knowledge/knowledge_YYYYMMDD.tar.gz \
-    -C /opt/data/trading_light_pilot
+tar xvzf /opt/data/tradegent_swarm/backups/knowledge/knowledge_YYYYMMDD.tar.gz \
+    -C /opt/data/tradegent_swarm
 ```
 
 ## Backup Verification
 
 ```bash
 #!/bin/bash
-# File: trader/scripts/verify_backup.sh
+# File: tradegent/scripts/verify_backup.sh
 
-BACKUP_ROOT="/opt/data/trading_light_pilot/backups"
+BACKUP_ROOT="/opt/data/tradegent_swarm/backups"
 
 echo "Verifying latest backups..."
 

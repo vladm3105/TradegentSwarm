@@ -301,7 +301,7 @@ Input: {}
 
 ```bash
 # Direct execution
-python trader/graph/mcp_server.py
+python tradegent/graph/mcp_server.py
 
 # Or import and run
 python -c "from graph.mcp_server import server; print(server.name)"
@@ -331,8 +331,8 @@ pytest graph/tests/test_integration.py --run-integration
 
 ```bash
 # Ensure .env is configured
-cp trader/graph/.env.template trader/graph/.env
-# Edit trader/graph/.env with your Neo4j credentials
+cp tradegent/graph/.env.template tradegent/graph/.env
+# Edit tradegent/graph/.env with your Neo4j credentials
 
 # Run full pipeline test (extract → store → query)
 python tmp/test_graph.py
@@ -397,8 +397,8 @@ def _extract_entities_from_field(...)
 ## Troubleshooting
 
 **"Failed to connect to Neo4j"**
-- Check `trader/graph/.env` has correct `NEO4J_PASS`
-- Verify password matches `NEO4J_PASS` in `trader/.env`
+- Check `tradegent/graph/.env` has correct `NEO4J_PASS`
+- Verify password matches `NEO4J_PASS` in `tradegent/.env`
 - Check Neo4j is running: `docker compose ps`
 - Check port (default: 7688 for bolt)
 

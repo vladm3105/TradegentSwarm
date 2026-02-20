@@ -1,12 +1,12 @@
-# Trading Light Pilot - Copilot Instructions
+# TradegentSwarm - Copilot Instructions
 
 AI-driven trading platform using Claude Code CLI, Interactive Brokers, and a hybrid RAG+Graph knowledge system. This is an **AI-first project** with agent automation.
 
 ## Project Structure
 
 ```
-trading_light_pilot/
-├── trader/                  # Nexus Light Trading Platform (Python)
+tradegent_swarm/
+├── tradegent/               # Tradegent Platform (Python)
 │   ├── service.py           # Long-running daemon
 │   ├── orchestrator.py      # Pipeline engine + CLI
 │   ├── db_layer.py          # PostgreSQL access layer
@@ -56,24 +56,24 @@ scan → earnings-analysis → watchlist → trade-journal → post-trade-review
       research
 ```
 
-## Trader Platform
+## Tradegent Platform
 
 ### Running Commands
 ```bash
-cd trader
+cd tradegent
 python orchestrator.py --help     # CLI commands
 python service.py                 # Start daemon
 ```
 
 ### Infrastructure
 ```bash
-cd trader
+cd tradegent
 docker compose up -d              # Start PostgreSQL, IB Gateway, Neo4j
 ```
 
 ### Database
 - PostgreSQL stores all pipeline config, tickers, and results
-- Schema in `trader/db/init.sql`
+- Schema in `tradegent/db/init.sql`
 - All SQL queries go through `db_layer.py` (NexusDB class)
 - Tables: `nexus.stocks`, `nexus.settings`, `nexus.schedules`, `nexus.run_history`, `nexus.analysis_results`, `nexus.ib_scanners`, `nexus.service_status`
 

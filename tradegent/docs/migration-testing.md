@@ -10,7 +10,7 @@ Comprehensive testing checklist for Trading Knowledge Base migration validation.
 
 - [ ] Docker services start without errors
   ```bash
-  cd /opt/data/trading_light_pilot/trader
+  cd /opt/data/tradegent_swarm/tradegent
   docker compose up -d
   docker compose ps  # All services healthy
   ```
@@ -58,56 +58,56 @@ Comprehensive testing checklist for Trading Knowledge Base migration validation.
 
 - [ ] `test_layer.py` passes
   ```bash
-  pytest trader/graph/tests/test_layer.py -v
+  pytest tradegent/graph/tests/test_layer.py -v
   ```
 
 - [ ] `test_extract.py` passes
   ```bash
-  pytest trader/graph/tests/test_extract.py -v
+  pytest tradegent/graph/tests/test_extract.py -v
   ```
 
 - [ ] `test_normalize.py` passes
   ```bash
-  pytest trader/graph/tests/test_normalize.py -v
+  pytest tradegent/graph/tests/test_normalize.py -v
   ```
 
 - [ ] `test_query.py` passes
   ```bash
-  pytest trader/graph/tests/test_query.py -v
+  pytest tradegent/graph/tests/test_query.py -v
   ```
 
 ### RAG Layer
 
 - [ ] `test_chunk.py` passes
   ```bash
-  pytest trader/rag/tests/test_chunk.py -v
+  pytest tradegent/rag/tests/test_chunk.py -v
   ```
 
 - [ ] `test_embedding.py` passes
   ```bash
-  pytest trader/rag/tests/test_embedding.py -v
+  pytest tradegent/rag/tests/test_embedding.py -v
   ```
 
 - [ ] `test_embed.py` passes
   ```bash
-  pytest trader/rag/tests/test_embed.py -v
+  pytest tradegent/rag/tests/test_embed.py -v
   ```
 
 - [ ] `test_search.py` passes
   ```bash
-  pytest trader/rag/tests/test_search.py -v
+  pytest tradegent/rag/tests/test_search.py -v
   ```
 
 - [ ] `test_hybrid.py` passes
   ```bash
-  pytest trader/rag/tests/test_hybrid.py -v
+  pytest tradegent/rag/tests/test_hybrid.py -v
   ```
 
 ### Full Suite
 
 - [ ] All unit tests pass
   ```bash
-  pytest trader/ -v --ignore=trader/graph/tests/test_integration.py --ignore=trader/rag/tests/test_integration.py
+  pytest tradegent/ -v --ignore=tradegent/graph/tests/test_integration.py --ignore=tradegent/rag/tests/test_integration.py
   ```
 
 ## Integration Tests

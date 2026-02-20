@@ -7,7 +7,7 @@
 ```
 tradegent/
 ├── .claude/skills/          # Claude Code skills (auto-invoke enabled)
-├── trader/                  # Tradegent Platform (Python)
+├── tradegent/               # Tradegent Platform (Python)
 │   ├── service.py           # Long-running daemon
 │   ├── orchestrator.py      # Pipeline engine + CLI
 │   ├── db_layer.py          # PostgreSQL access layer
@@ -92,7 +92,7 @@ When a skill is invoked (auto or manual):
 4. Save output to corresponding `trading/knowledge/` folder
 5. Check for chaining actions (WATCH → watchlist, exit → review)
 
-## Trader Platform
+## Tradegent Platform
 
 ### Environment Variables
 
@@ -114,7 +114,7 @@ export NEO4J_PASS=<password>
 
 ### Running Commands
 ```bash
-cd trader
+cd tradegent
 
 # Set environment variables first (or source .env)
 export PG_USER=lightrag PG_PASS=... PG_DB=lightrag PG_HOST=localhost PG_PORT=5433
@@ -127,14 +127,14 @@ python service.py                 # Start daemon
 
 ### Infrastructure
 ```bash
-cd trader
+cd tradegent
 docker compose up -d              # Start PostgreSQL, IB Gateway, Neo4j
 docker compose logs -f            # View logs
 ```
 
 ### Database
 - PostgreSQL stores all pipeline config, tickers, and results
-- Schema in `trader/db/init.sql`
+- Schema in `tradegent/db/init.sql`
 - Use `db_layer.py` for all database operations
 
 ## Code Standards
@@ -177,7 +177,7 @@ Parameters:
 
 Semantic search and embedding for trading knowledge. **Use MCP tools as the primary interface** for all RAG operations.
 
-**Server**: `trading-rag` | **Location**: `trader/rag/mcp_server.py`
+**Server**: `trading-rag` | **Location**: `tradegent/rag/mcp_server.py`
 
 ### Available Tools
 
@@ -214,7 +214,7 @@ Input: {}
 
 Knowledge graph for entities, relationships, and trading patterns. **Use MCP tools as the primary interface** for all graph operations.
 
-**Server**: `trading-graph` | **Location**: `trader/graph/mcp_server.py`
+**Server**: `trading-graph` | **Location**: `tradegent/graph/mcp_server.py`
 
 ### Available Tools
 

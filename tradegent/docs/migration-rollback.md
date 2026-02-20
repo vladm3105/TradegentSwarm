@@ -19,7 +19,7 @@ Procedures for rolling back from the new Trading Knowledge Base (Neo4j + pgvecto
 If Neo4j extraction or queries are failing, disable graph layer while keeping vector search.
 
 ```python
-# Edit trader/config.py or set environment variable
+# Edit tradegent/config.py or set environment variable
 GRAPH_ENABLED = False
 # or
 export GRAPH_ENABLED=false
@@ -92,7 +92,7 @@ Complete rollback to pre-migration state.
 #### Step 1: Stop New Services
 
 ```bash
-cd /opt/data/trading_light_pilot/trader
+cd /opt/data/tradegent_swarm/tradegent
 
 # Keep LightRAG, stop graph-related
 docker compose stop neo4j
@@ -131,7 +131,7 @@ EOF
 #### Step 4: Update Configuration
 
 ```bash
-# trader/.env
+# tradegent/.env
 # Comment out new services
 # NEO4J_PASS=...
 # GRAPH_ENABLED=true

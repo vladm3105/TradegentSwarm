@@ -32,8 +32,8 @@ A database-driven, uninterrupted trading orchestrator that uses Claude Code CLI 
 │    └─ manage stocks, settings, scanners, one-off analyses             │
 │                                                                       │
 │  MCP Servers (run on host via Claude Code):                           │
-│    └─ python trader/rag/mcp_server.py   (trading-rag)                 │
-│    └─ python trader/graph/mcp_server.py (trading-graph)               │
+│    └─ python tradegent/rag/mcp_server.py   (trading-rag)              │
+│    └─ python tradegent/graph/mcp_server.py (trading-graph)            │
 │                                                                       │
 └───────────────── connects via localhost ports ────────────────────────┘
                         │          │          │
@@ -687,8 +687,8 @@ Claude Code's MCP servers are configured in `~/.claude/` on the host. The orches
 
 Required MCP servers:
 - **ib-gateway** — connects to localhost:4002 for market data and order execution
-- **trading-rag** — runs `trader/rag/mcp_server.py` for semantic search
-- **trading-graph** — runs `trader/graph/mcp_server.py` for knowledge graph queries
+- **trading-rag** — runs `tradegent/rag/mcp_server.py` for semantic search
+- **trading-graph** — runs `tradegent/graph/mcp_server.py` for knowledge graph queries
 
 Configure by editing `~/.claude/mcp.json` or using `claude mcp add`. Example configuration:
 
@@ -697,11 +697,11 @@ Configure by editing `~/.claude/mcp.json` or using `claude mcp add`. Example con
   "mcpServers": {
     "trading-rag": {
       "command": "python",
-      "args": ["/opt/data/trading_light_pilot/trader/rag/mcp_server.py"]
+      "args": ["/opt/data/tradegent_swarm/tradegent/rag/mcp_server.py"]
     },
     "trading-graph": {
       "command": "python",
-      "args": ["/opt/data/trading_light_pilot/trader/graph/mcp_server.py"]
+      "args": ["/opt/data/tradegent_swarm/tradegent/graph/mcp_server.py"]
     }
   }
 }
@@ -848,7 +848,7 @@ The platform includes comprehensive test coverage for the graph and RAG layers.
 ### Running Tests
 
 ```bash
-cd trader
+cd tradegent
 
 # Run all tests with coverage
 pytest
@@ -884,7 +884,7 @@ open coverage_report/index.html
 ### Test Structure
 
 ```
-trader/
+tradegent/
 ├── graph/tests/
 │   ├── conftest.py           # Shared fixtures (Neo4j mocks, test client)
 │   ├── test_webhook.py       # FastAPI endpoint tests (12 endpoints)
@@ -932,7 +932,7 @@ cp .env.template .env
 bash setup.sh
 
 # Run tests before committing
-cd trader && pytest --no-cov -q
+cd tradegent && pytest --no-cov -q
 
 # After making changes
 git add -A

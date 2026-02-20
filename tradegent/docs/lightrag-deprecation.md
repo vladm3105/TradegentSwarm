@@ -78,7 +78,7 @@ Complete removal of LightRAG code and configuration.
 
 ```bash
 # Verify no LightRAG references remain
-grep -r "lightrag" /opt/data/trading_light_pilot/trader/ --include="*.py"
+grep -r "lightrag" /opt/data/tradegent_swarm/tradegent/ --include="*.py"
 # Should return no results (except this deprecation doc)
 ```
 
@@ -200,7 +200,7 @@ Delete the entire `lightrag` service block.
 | File | Update Required |
 |------|-----------------|
 | `CLAUDE.md` | Remove LightRAG references |
-| `trader/README.md` | Update architecture diagram |
+| `tradegent/README.md` | Update architecture diagram |
 | `docs/monitoring.md` | Remove LightRAG metrics |
 | `.claude/skills/*.md` | Remove LightRAG fallback notes |
 
@@ -210,7 +210,7 @@ Until Phase 4 completion, maintain rollback capability:
 
 ```bash
 # Re-enable LightRAG if needed
-cd /opt/data/trading_light_pilot/trader
+cd /opt/data/tradegent_swarm/tradegent
 
 # Uncomment lightrag in docker-compose.yml
 # Then:

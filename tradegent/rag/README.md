@@ -256,8 +256,8 @@ pytest rag/tests/test_integration.py --run-integration
 
 ```bash
 # Ensure .env is configured
-cp trader/rag/.env.template trader/rag/.env
-# Edit trader/rag/.env with your database credentials
+cp tradegent/rag/.env.template tradegent/rag/.env
+# Edit tradegent/rag/.env with your database credentials
 
 # Run full pipeline test (embeds story, searches, generates answers)
 python tmp/test_rag.py
@@ -328,7 +328,7 @@ Input: {}
 
 ```bash
 # Direct execution
-python trader/rag/mcp_server.py
+python tradegent/rag/mcp_server.py
 
 # Or import and run
 python -c "from rag.mcp_server import server; print(server.name)"
@@ -353,8 +353,8 @@ CREATE INDEX idx_rag_chunks_embedding
 ## Troubleshooting
 
 **"connection failed: password authentication failed"**
-- Check `trader/rag/.env` has correct `DATABASE_URL`
-- Verify password matches `PG_PASS` in `trader/.env`
+- Check `tradegent/rag/.env` has correct `DATABASE_URL`
+- Verify password matches `PG_PASS` in `tradegent/.env`
 - Verify PostgreSQL is running: `docker compose ps`
 
 **"relation nexus.rag_documents does not exist"**

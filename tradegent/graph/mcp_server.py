@@ -14,7 +14,7 @@ env_path = Path(__file__).parent / ".env"
 if env_path.exists():
     load_dotenv(env_path)
 else:
-    # Fallback to trader/.env
+    # Fallback to tradegent/.env
     trader_env = Path(__file__).parent.parent / ".env"
     if trader_env.exists():
         load_dotenv(trader_env)

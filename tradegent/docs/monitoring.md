@@ -8,7 +8,7 @@ Metrics for graph extraction, embedding pipeline, and hybrid search operations.
 
 ### Success Rate
 
-Track via JSONL logs in `trader/logs/`:
+Track via JSONL logs in `tradegent/logs/`:
 
 ```bash
 # Count successful extractions (last 24h)
@@ -158,7 +158,7 @@ LIMIT 10;
 
 ```bash
 # Check all services
-cd /opt/data/trading_light_pilot/trader
+cd /opt/data/tradegent_swarm/tradegent
 python -c "
 from graph.layer import TradingGraph
 from rag.embedding import EmbeddingClient
@@ -188,7 +188,7 @@ except Exception as e:
 ### Docker Health
 
 ```bash
-cd /opt/data/trading_light_pilot/trader
+cd /opt/data/tradegent_swarm/tradegent
 docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Health}}"
 ```
 

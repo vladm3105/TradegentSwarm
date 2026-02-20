@@ -9,7 +9,7 @@
 │                           TRADEGENTSWARM                                │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
-│   trader/                    trading/                                   │
+│   tradegent/                 trading/                                   │
 │   ┌──────────────────┐       ┌──────────────────────────────────────┐  │
 │   │  Tradegent        │       │  skills/     (how-to guides)        │  │
 │   │  Platform         │──────▶│  knowledge/  (data & docs)          │  │
@@ -50,7 +50,7 @@
 
 ```
 tradegent/
-├── trader/                         # Tradegent Platform
+├── tradegent/                      # Tradegent Platform
 │   ├── service.py                  # Long-running daemon (tick loop)
 │   ├── orchestrator.py             # Pipeline engine + CLI
 │   ├── db_layer.py                 # PostgreSQL access layer
@@ -96,7 +96,7 @@ tradegent/
 
 ## Components
 
-### Trader (`trader/`)
+### Tradegent (`tradegent/`)
 
 The Tradegent Platform — a database-driven orchestrator that runs analysis and execution pipelines via Claude Code CLI.
 
@@ -105,7 +105,7 @@ The Tradegent Platform — a database-driven orchestrator that runs analysis and
 - **Knowledge Base**: RAG (semantic search) + Graph (entity relationships) via MCP servers
 - **Config in DB**: All settings live in PostgreSQL — no restarts to change behavior
 
-See [trader/README.md](trader/README.md) for full setup and usage.
+See [tradegent/README.md](tradegent/README.md) for full setup and usage.
 
 ### IB Gateway Docker (`/opt/data/trading/ib-gateway-docker`)
 
@@ -367,13 +367,13 @@ GitHub Actions CI/CD for validating documents against JSON schemas. Includes sch
 ## Quick Start
 
 ```bash
-cd trader
+cd tradegent
 cp .env.template .env        # Fill in credentials
 ./setup.sh                   # Start infrastructure
 python service.py            # Run the daemon
 ```
 
-See [trader/README.md](trader/README.md) for detailed instructions.
+See [tradegent/README.md](tradegent/README.md) for detailed instructions.
 
 ## License
 
