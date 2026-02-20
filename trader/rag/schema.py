@@ -13,10 +13,18 @@ log = logging.getLogger(__name__)
 
 def get_database_url() -> str:
     """Get database URL from environment or config."""
-    return os.getenv(
-        "DATABASE_URL",
-        "postgresql://lightrag:lightrag@localhost:5433/lightrag"
-    )
+    # Check DATABASE_URL first
+    if os.getenv("DATABASE_URL"):
+        return os.getenv("DATABASE_URL")
+
+    # Build from individual PG_* variables
+    user = os.getenv("PG_USER", "lightrag")
+    password = os.getenv("PG_PASS", "lightrag")
+    host = os.getenv("PG_HOST", "localhost")
+    port = os.getenv("PG_PORT", "5433")
+    db = os.getenv("PG_DB", "lightrag")
+
+    return f"postgresql://{user}:{password}@{host}:{port}/{db}"
 
 
 def init_schema() -> None:

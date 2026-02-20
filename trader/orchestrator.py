@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Nexus Light Trading Platform - Orchestrator v2.0
+Nexus Light Trading Platform - Orchestrator v2.2
 Database-driven two-stage pipeline: Analysis → Execution via Claude Code CLI
 
 All configuration (stocks, scanners, schedules) lives in PostgreSQL.
-Shares the same PG instance as LightRAG (separate 'nexus' schema).
+RAG embeddings stored in pgvector, knowledge graph in Neo4j.
 
 Usage:
     python orchestrator.py analyze NFLX --type earnings
@@ -108,28 +108,25 @@ class Settings:
     @property
     def allowed_tools_analysis(self) -> str:
         return self._get('allowed_tools_analysis', None,
-                         'mcp__ib-gateway__*,web_search,mcp__lightrag__*')
+                         'mcp__ib-mcp__*,WebSearch,mcp__brave-search__*,mcp__trading-rag__*,mcp__trading-graph__*')
 
     @property
     def allowed_tools_execution(self) -> str:
         return self._get('allowed_tools_execution', None,
-                         'mcp__ib-gateway__*,mcp__lightrag__*')
+                         'mcp__ib-mcp__*,mcp__trading-rag__*,mcp__trading-graph__*')
 
     @property
     def allowed_tools_scanner(self) -> str:
-        return self._get('allowed_tools_scanner', None, 'mcp__ib-gateway__*')
+        return self._get('allowed_tools_scanner', None, 'mcp__ib-mcp__*')
 
     @property
     def ib_account(self) -> str:
         return self._get('ib_account', 'IB_ACCOUNT', 'DU_PAPER')
 
     @property
-    def lightrag_url(self) -> str:
-        return self._get('lightrag_url', 'LIGHTRAG_URL', 'http://localhost:9621')
-
-    @property
-    def lightrag_ingest_enabled(self) -> bool:
-        return self._get_bool('lightrag_ingest_enabled', None, True)
+    def kb_ingest_enabled(self) -> bool:
+        """Enable ingestion to RAG (pgvector) and Graph (Neo4j) after analysis."""
+        return self._get_bool('kb_ingest_enabled', None, True)
 
     @property
     def max_daily_analyses(self) -> int:
@@ -152,8 +149,9 @@ class Settings:
         return self._get_bool('scanners_enabled', None, True)
 
     @property
-    def lightrag_query_enabled(self) -> bool:
-        return self._get_bool('lightrag_query_enabled', None, True)
+    def kb_query_enabled(self) -> bool:
+        """Enable RAG+Graph context injection during analysis."""
+        return self._get_bool('kb_query_enabled', None, True)
 
     @property
     def dry_run_mode(self) -> bool:
@@ -226,7 +224,6 @@ class ExecutionResult:
 
 def build_analysis_prompt(ticker: str, analysis_type: AnalysisType,
                           stock: Optional[Stock] = None,
-                          lightrag_enabled: bool = True,
                           kb_enabled: bool = True) -> str:
     """Build Stage 1 prompt, enriched with stock metadata from DB and KB context."""
 
@@ -274,19 +271,11 @@ End with a JSON block for machine parsing:
             kb_ctx = f"\nKNOWLEDGE BASE CONTEXT:\n{kb_ctx}\n"
 
     if analysis_type == AnalysisType.EARNINGS:
-        lightrag_ctx = ""
-        if lightrag_enabled:
-            lightrag_ctx = f"""
-CONTEXT RETRIEVAL:
-1. Query LightRAG for: "previous {ticker} analyses learnings biases"
-2. Query LightRAG for: "similar earnings setups current quarter"
-"""
         return f"""You are a systematic trading analyst. Follow the earnings-analysis skill framework EXACTLY.
 
 SKILL INSTRUCTIONS: Read and follow /mnt/skills/user/earnings-analysis/SKILL.md
 {stock_ctx}
 {kb_ctx}
-{lightrag_ctx}
 DATA GATHERING (use tools):
 1. Via IB MCP: Get {ticker} current price, IV percentile, options chain (nearest monthly expiry)
 2. Via IB MCP: Get {ticker} historical volatility (20-day, 60-day)
@@ -308,21 +297,12 @@ CRITICAL: If the Do Nothing gate FAILS, state NO POSITION RECOMMENDED.
 {json_block}"""
 
     elif analysis_type == AnalysisType.STOCK:
-        lightrag_ctx = ""
-        if lightrag_enabled:
-            lightrag_ctx = f"""
-CONTEXT RETRIEVAL:
-1. Query LightRAG for: "previous {ticker} analyses and trade history"
-2. Query LightRAG for: "{ticker} sector rotation catalyst patterns"
-"""
         return f"""You are a systematic trading analyst. Follow the stock-analysis skill framework EXACTLY.
 
 SKILL INSTRUCTIONS: Read and follow /mnt/skills/user/stock-analysis/SKILL.md
 Also read: /mnt/skills/user/stock-analysis/comprehensive_framework.md
 {stock_ctx}
 {kb_ctx}
-{lightrag_ctx}
-
 DATA GATHERING (use tools):
 1. Via IB MCP: Get {ticker} current price, volume, key technicals
 2. Via IB MCP: Get {ticker} options chain for implied volatility assessment
@@ -333,20 +313,11 @@ ANALYSIS: Run the complete stock analysis framework.
 {json_block}"""
 
     elif analysis_type == AnalysisType.POSTMORTEM:
-        lightrag_ctx = ""
-        if lightrag_enabled:
-            lightrag_ctx = f"""
-CONTEXT RETRIEVAL:
-1. Query LightRAG for: "most recent {ticker} earnings analysis prediction"
-2. Query LightRAG for: "{ticker} trade execution history"
-"""
         return f"""You are a systematic trading analyst performing a MANDATORY post-earnings review.
 
 SKILL INSTRUCTIONS: Read Phase 8 of /mnt/skills/user/earnings-analysis/SKILL.md
 {stock_ctx}
 {kb_ctx}
-{lightrag_ctx}
-
 DATA GATHERING:
 1. Via Web Search: Get {ticker} actual earnings results
 2. Via Web Search: Get {ticker} post-earnings stock reaction
@@ -369,16 +340,12 @@ End with JSON:
 """
 
     elif analysis_type == AnalysisType.REVIEW:
-        lightrag_ctx = ""
-        if lightrag_enabled:
-            lightrag_ctx = '4. Query LightRAG for: "recent trade history and learnings"'
         return f"""You are a systematic portfolio manager performing a comprehensive review.
 
 DATA GATHERING:
 1. Via IB MCP: Get all current positions, P&L, and account summary
 2. Via IB MCP: Get portfolio Greeks and risk metrics
 3. Via Web Search: Get current market overview and key sector performance
-{lightrag_ctx}
 
 REVIEW: Portfolio composition, P&L attribution, risk assessment, framework effectiveness.
 Output as comprehensive markdown report.
@@ -493,7 +460,8 @@ def call_claude_code(prompt: str, allowed_tools: str, label: str,
     log.info(f"[{label}] Calling Claude Code...")
     try:
         result = subprocess.run(
-            [cfg.claude_cmd, "--print", "--allowedTools", allowed_tools, "-p", prompt],
+            [cfg.claude_cmd, "--print", "--dangerously-skip-permissions",
+             "--allowedTools", allowed_tools, "-p", prompt],
             capture_output=True, text=True, timeout=timeout, cwd=str(BASE_DIR),
         )
         if result.returncode != 0:
@@ -540,17 +508,21 @@ def parse_json_block(text: str) -> Optional[dict]:
     return None
 
 
-def ingest_to_lightrag(filepath: Path, metadata: dict):
-    """Ingest document into LightRAG."""
-    if not cfg.lightrag_ingest_enabled:
+def kb_ingest_analysis(filepath: Path, metadata: dict):
+    """Ingest analysis document into RAG (pgvector) for semantic search."""
+    if not cfg.kb_ingest_enabled:
         return
     try:
-        import requests
-        text = filepath.read_text()
-        requests.post(f"{cfg.lightrag_url}/documents/text",
-                      json={"text": text, "metadata": metadata}, timeout=30)
+        from rag.embed import embed_document
+        result = embed_document(str(filepath))
+        if result.error_message:
+            log.warning(f"RAG ingest warning: {result.error_message}")
+        else:
+            log.debug(f"RAG ingest: {result.doc_id} ({result.chunk_count} chunks)")
+    except ImportError:
+        log.debug("RAG module not available, skipping ingest")
     except Exception as e:
-        log.warning(f"LightRAG ingest failed: {e}")
+        log.warning(f"RAG ingest failed: {e}")
 
 
 # ─── Knowledge Base Context ──────────────────────────────────────────────────
@@ -624,7 +596,7 @@ def run_analysis(db: NexusDB, ticker: str, analysis_type: AnalysisType,
     log.info(f"═══ STAGE 1: ANALYSIS ═══ {ticker} ({analysis_type.value})")
 
     prompt = build_analysis_prompt(ticker, analysis_type, stock,
-                                    lightrag_enabled=cfg.lightrag_query_enabled)
+                                    kb_enabled=cfg.kb_query_enabled)
     output = call_claude_code(prompt, cfg.allowed_tools_analysis, f"ANALYZE-{ticker}")
 
     if not output:
@@ -658,7 +630,7 @@ def run_analysis(db: NexusDB, ticker: str, analysis_type: AnalysisType,
         except Exception as e:
             log.warning(f"Save analysis result failed: {e}")
 
-    ingest_to_lightrag(filepath, {"ticker": ticker, "type": analysis_type.value,
+    kb_ingest_analysis(filepath, {"ticker": ticker, "type": analysis_type.value,
                                    "date": timestamp, "gate_passed": result.gate_passed})
 
     # Increment service counters
@@ -722,7 +694,7 @@ def run_execution(db: NexusDB, analysis_path: Path) -> ExecutionResult:
     except Exception:
         pass
 
-    ingest_to_lightrag(trade_path, {"ticker": ticker, "type": "trade_execution",
+    kb_ingest_analysis(trade_path, {"ticker": ticker, "type": "trade_execution",
                                      "date": ts, "order_placed": result.order_placed})
 
     log.info(f"Execution: {ticker} | {'ORDER PLACED' if result.order_placed else 'NO ORDER'}")
@@ -1367,7 +1339,7 @@ def _handle_rag_command(args):
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description="Nexus Light v2.0")
+    parser = argparse.ArgumentParser(description="Nexus Light v2.2")
     sub = parser.add_subparsers(dest="cmd")
 
     p = sub.add_parser("analyze"); p.add_argument("ticker"); p.add_argument("--type", default="stock", choices=["earnings","stock","postmortem"])
