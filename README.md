@@ -1,6 +1,6 @@
 # Trading Light Pilot
 
-AI-driven trading platform that combines automated market analysis, trade execution, and a structured knowledge base. Uses Claude Code CLI as its AI engine, Interactive Brokers for market data/execution, and LightRAG for knowledge persistence.
+AI-driven trading platform that combines automated market analysis, trade execution, and a structured knowledge base. Uses Claude Code CLI as its AI engine, Interactive Brokers for market data/execution, and a hybrid RAG+Graph system for knowledge persistence.
 
 ## Architecture
 
@@ -17,19 +17,24 @@ AI-driven trading platform that combines automated market analysis, trade execut
 │   │  • service.py     │       └──────────────────────────────────────┘  │
 │   │  • orchestrator.py│                      │                         │
 │   │  • db_layer.py    │                      ▼                         │
-│   └────────┬─────────┘              ┌──────────────┐                   │
-│            │                        │   LightRAG   │                   │
+│   │  • rag/           │              ┌──────────────┐                  │
+│   │  • graph/         │              │  Knowledge   │                  │
+│   └────────┬─────────┘              │  Base (RAG+  │                  │
+│            │                        │  Graph)      │                  │
 │            ▼                        └──────────────┘                   │
 │   ┌─────────────────────────────────────────────┐                      │
-│   │  Docker: PostgreSQL │ Neo4j                  │                      │
+│   │  Docker: PostgreSQL (pgvector) │ Neo4j       │                      │
 │   └─────────────────────────────────────────────┘                      │
 │            │                                                            │
 │            ▼                                                            │
 │   ┌──────────────────────────────────────────┐                         │
-│   │  MCP Servers (Docker)                     │                         │
-│   │  • IB MCP      :8002/sse ──┐              │                         │
-│   │  • Browser MCP :8003      │              │                         │
-│   └───────────────────────────│──────────────┘                         │
+│   │  MCP Servers (Host)                       │                         │
+│   │  • trading-rag   (rag/mcp_server.py)     │                         │
+│   │  • trading-graph (graph/mcp_server.py)   │                         │
+│   │  • IB MCP        :8002/sse               │                         │
+│   │  • Browser MCP   :8003                   │                         │
+│   └───────────────────────────────────────────┘                        │
+│                               │                                         │
 │                               ▼                                         │
 │   ┌──────────────────────────────────────────┐                         │
 │   │  IB Gateway Docker :4002 (socat proxy)   │                         │
@@ -50,7 +55,17 @@ trading_light_pilot/
 │   ├── orchestrator.py             # Pipeline engine + CLI
 │   ├── db_layer.py                 # PostgreSQL access layer
 │   ├── db/init.sql                 # Schema, seed data, views
-│   ├── docker-compose.yml          # PG, IB Gateway, LightRAG, Neo4j
+│   ├── docker-compose.yml          # PG, IB Gateway, Neo4j
+│   ├── rag/                        # RAG module (pgvector embeddings)
+│   │   ├── mcp_server.py           # MCP server (primary interface)
+│   │   ├── embed.py                # Document embedding
+│   │   ├── search.py               # Semantic search
+│   │   └── README.md               # RAG documentation
+│   ├── graph/                      # Graph module (Neo4j)
+│   │   ├── mcp_server.py           # MCP server (primary interface)
+│   │   ├── layer.py                # Neo4j operations
+│   │   ├── extract.py              # Entity extraction
+│   │   └── README.md               # Graph documentation
 │   ├── setup.sh                    # One-command setup
 │   └── README.md                   # Platform documentation
 │
@@ -86,7 +101,8 @@ trading_light_pilot/
 The Nexus Light Trading Platform — a database-driven orchestrator that runs analysis and execution pipelines via Claude Code CLI.
 
 - **Two-stage pipeline**: Analysis (multi-source) → Gate check (EV, confidence, R:R) → Execution (paper trading)
-- **Infrastructure**: PostgreSQL + IB Gateway + LightRAG + Neo4j via Docker Compose
+- **Infrastructure**: PostgreSQL (pgvector) + IB Gateway + Neo4j via Docker Compose
+- **Knowledge Base**: RAG (semantic search) + Graph (entity relationships) via MCP servers
 - **Config in DB**: All settings live in PostgreSQL — no restarts to change behavior
 
 See [trader/README.md](trader/README.md) for full setup and usage.
@@ -324,7 +340,7 @@ See [trading/skills/README.md](trading/skills/README.md) for the full skill inde
 
 ### Trading Workflows (`trading/workflows/`)
 
-GitHub Actions CI/CD for validating documents against JSON schemas and syncing to LightRAG. Includes schemas for all document types.
+GitHub Actions CI/CD for validating documents against JSON schemas. Includes schemas for all document types.
 
 ## Prerequisites
 
@@ -345,7 +361,6 @@ GitHub Actions CI/CD for validating documents against JSON schemas and syncing t
 | Neo4j Bolt | 7688 | nexus-neo4j | Remapped from 7687 |
 | IB Gateway (API) | 4002 | ib-gateway | External API (socat → 4010 internal) |
 | IB Gateway (VNC) | 5901 | ib-gateway | VNC for GUI troubleshooting |
-| LightRAG | 9621 | nexus-lightrag | RAG API |
 | IB MCP | 8002 | ibmcp-test | SSE at `/sse` |
 | Browser MCP | 8003 | browser-mcp | HTTP API |
 | Ollama | 11434 | (host) | LLM/embedding engine |

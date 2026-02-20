@@ -1,6 +1,6 @@
 # Trading Light Pilot - Copilot Instructions
 
-AI-driven trading platform using Claude Code CLI, Interactive Brokers, and LightRAG. This is an **AI-first project** with agent automation.
+AI-driven trading platform using Claude Code CLI, Interactive Brokers, and a hybrid RAG+Graph knowledge system. This is an **AI-first project** with agent automation.
 
 ## Project Structure
 
@@ -15,7 +15,7 @@ trading_light_pilot/
 └── trading/                 # Trading Knowledge System
     ├── skills/              # Agent skill definitions (SKILL.md + template.yaml)
     ├── knowledge/           # Trading data & analyses (YAML documents)
-    └── workflows/           # CI/CD & LightRAG schemas
+    └── workflows/           # CI/CD & validation schemas
 ```
 
 ## Key Conventions
@@ -68,7 +68,7 @@ python service.py                 # Start daemon
 ### Infrastructure
 ```bash
 cd trader
-docker compose up -d              # Start PostgreSQL, IB Gateway, Neo4j, LightRAG
+docker compose up -d              # Start PostgreSQL, IB Gateway, Neo4j
 ```
 
 ### Database
@@ -78,7 +78,7 @@ docker compose up -d              # Start PostgreSQL, IB Gateway, Neo4j, LightRA
 - Tables: `nexus.stocks`, `nexus.settings`, `nexus.schedules`, `nexus.run_history`, `nexus.analysis_results`, `nexus.ib_scanners`, `nexus.service_status`
 
 ### Two-Stage Pipeline
-1. **Stage 1 (Analysis)**: Claude Code analyzes stock using IB data, web search, LightRAG history
+1. **Stage 1 (Analysis)**: Claude Code analyzes stock using IB data, web search, RAG+Graph context
 2. **Gate**: Must pass EV >5%, confidence >60%, R:R >2:1
 3. **Stage 2 (Execution)**: Places paper orders via IB Gateway (only if gate passes and stock state=paper)
 
@@ -109,6 +109,6 @@ GIT_SSH_COMMAND="LD_LIBRARY_PATH= /usr/bin/ssh" git push
 
 - Do not commit `.env` files (contains credentials)
 - IB Gateway requires valid paper trading account
-- LightRAG syncs trading knowledge for semantic search
+- RAG (pgvector) handles semantic search, Graph (Neo4j) handles entity relationships
 - Scanner configs in `knowledge/scanners/` encode trading edge — treat as sensitive
-- JSON schemas for all document types live in `workflows/.lightrag/schemas/`
+- JSON schemas for all document types live in `workflows/schemas/`

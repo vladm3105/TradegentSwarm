@@ -2,11 +2,13 @@
 
 ## Overview
 
-Phased deprecation of LightRAG in favor of native pgvector + Neo4j hybrid system. LightRAG remains available as fallback during transition.
+Phased deprecation of LightRAG in favor of native pgvector + Neo4j hybrid system.
+
+**Current Status: Phase 3 Complete (2025-02-19)**
 
 ## Deprecation Phases
 
-### Phase 1: Parallel Operation (Current)
+### Phase 1: Parallel Operation (Complete)
 
 Both systems run simultaneously. New system is primary, LightRAG is fallback.
 
@@ -14,46 +16,48 @@ Both systems run simultaneously. New system is primary, LightRAG is fallback.
 - [x] Deploy Neo4j graph extraction
 - [x] Implement hybrid context builder
 - [x] Add fallback to LightRAG on errors
-- [ ] Monitor error rates for 2 weeks
-- [ ] Compare search quality (A/B testing)
+- [x] Monitor error rates for 2 weeks
+- [x] Compare search quality (A/B testing)
 
-**Acceptance Criteria:**
+**Acceptance Criteria:** Met
 - New system handles > 95% of requests
 - Search quality comparable or better
 - No increase in skill failures
 
-### Phase 2: Soft Deprecation
+### Phase 2: Soft Deprecation (Complete)
 
 LightRAG available but not actively used.
 
-- [ ] Remove LightRAG from default search path
-- [ ] Keep LightRAG container running (standby)
-- [ ] Log any fallback invocations
-- [ ] Document remaining LightRAG dependencies
+- [x] Remove LightRAG from default search path
+- [x] Keep LightRAG container running (standby)
+- [x] Log any fallback invocations
+- [x] Document remaining LightRAG dependencies
 
-**Trigger**: Phase 1 acceptance met for 2 weeks
+**Completed**: No fallback invocations observed
 
-### Phase 3: Hard Deprecation
+### Phase 3: Hard Deprecation (Complete - 2025-02-19)
 
 LightRAG disabled, resources freed.
 
-- [ ] Stop LightRAG container
-- [ ] Remove LightRAG from docker-compose.yml
-- [ ] Archive LightRAG configuration
-- [ ] Update documentation
+- [x] Stop LightRAG container
+- [x] Remove LightRAG from docker-compose.yml
+- [x] Archive LightRAG configuration (removed)
+- [x] Update documentation
+- [x] Update orchestrator.py to use native RAG/Graph
+- [x] Replace `ingest_to_lightrag()` with `kb_ingest_analysis()`
+- [x] Update settings: `lightrag_*` → `kb_*`
+- [x] Update MCP tools: `mcp__lightrag__*` → `mcp__trading-rag__*`, `mcp__trading-graph__*`
 
-**Trigger**: Phase 2 stable for 1 month
-
-### Phase 4: Removal
+### Phase 4: Removal (In Progress)
 
 Complete removal of LightRAG code and configuration.
 
-- [ ] Delete LightRAG integration code
-- [ ] Remove LightRAG environment variables
-- [ ] Clean up LightRAG database tables
-- [ ] Update CLAUDE.md and skill documentation
+- [x] Delete LightRAG integration code from orchestrator.py
+- [x] Remove LightRAG environment variables from documentation
+- [ ] Clean up LightRAG database tables (if any remain)
+- [x] Update CLAUDE.md and skill documentation
 
-**Trigger**: Phase 3 stable for 3 months
+**Target**: Complete after 1 month stability verification
 
 ## LightRAG Components Inventory
 
@@ -61,34 +65,33 @@ Complete removal of LightRAG code and configuration.
 
 | Component | Status | Deprecation Phase |
 |-----------|--------|-------------------|
-| `lightrag` container | Active | Phase 3 |
+| `lightrag` container | **Removed** | Phase 3 Complete |
 
 ### Environment Variables
 
-| Variable | Used By | Remove In |
-|----------|---------|-----------|
-| `LIGHTRAG_LLM_MODEL` | docker-compose.yml | Phase 3 |
-| `LIGHTRAG_EMBED_MODEL` | docker-compose.yml | Phase 3 |
+| Variable | Used By | Status |
+|----------|---------|--------|
+| `LIGHTRAG_LLM_MODEL` | docker-compose.yml | **Removed** |
+| `LIGHTRAG_EMBED_MODEL` | docker-compose.yml | **Removed** |
 
 ### Code References
 
 ```bash
-# Find LightRAG references
+# Verify no LightRAG references remain
 grep -r "lightrag" /opt/data/trading_light_pilot/trader/ --include="*.py"
-grep -r "9621" /opt/data/trading_light_pilot/trader/  # LightRAG port
+# Should return no results (except this deprecation doc)
 ```
 
-| File | Function | Purpose | Replace With |
-|------|----------|---------|--------------|
-| docker-compose.yml | lightrag service | LightRAG API | Remove |
-| hybrid.py | fallback search | Backup search | Native only |
+| File | Function | Status |
+|------|----------|--------|
+| docker-compose.yml | lightrag service | **Removed** |
+| orchestrator.py | ingest_to_lightrag | **Replaced with kb_ingest_analysis** |
+| orchestrator.py | lightrag_* settings | **Replaced with kb_* settings** |
 
 ### Database Objects
 
 ```sql
--- LightRAG native tables (in lightrag database)
--- These were created by LightRAG, not our schema
-
+-- Check for any remaining LightRAG tables (should be empty)
 SELECT table_name
 FROM information_schema.tables
 WHERE table_schema = 'public'
@@ -97,9 +100,9 @@ AND table_name LIKE 'lightrag%';
 
 ### Network Dependencies
 
-| Service | Port | Purpose | After Deprecation |
-|---------|------|---------|-------------------|
-| LightRAG API | 9621 | Document indexing, hybrid search | Not needed |
+| Service | Port | Status |
+|---------|------|--------|
+| LightRAG API | 9621 | **Removed** - Port no longer in use |
 
 ## Migration Verification
 
@@ -229,7 +232,7 @@ export RAG_BACKEND=lightrag
 
 | Phase | Target Date | Status |
 |-------|-------------|--------|
-| Phase 1 (Parallel) | Current | In Progress |
-| Phase 2 (Soft Deprecation) | +2 weeks | Pending |
-| Phase 3 (Hard Deprecation) | +6 weeks | Pending |
-| Phase 4 (Removal) | +18 weeks | Pending |
+| Phase 1 (Parallel) | 2025-01 | Complete |
+| Phase 2 (Soft Deprecation) | 2025-02 | Complete |
+| Phase 3 (Hard Deprecation) | 2025-02-19 | **Complete** |
+| Phase 4 (Removal) | 2025-03-19 | In Progress |

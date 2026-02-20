@@ -1,6 +1,6 @@
-# Nexus Light Trading Platform v2.1
+# Nexus Light Trading Platform v2.2
 
-A database-driven, uninterrupted trading orchestrator that uses Claude Code CLI as its AI engine, Interactive Brokers for market data and order execution, and LightRAG for knowledge persistence. All configuration lives in PostgreSQL — no restarts needed to change behavior.
+A database-driven, uninterrupted trading orchestrator that uses Claude Code CLI as its AI engine, Interactive Brokers for market data and order execution, and a hybrid RAG+Graph knowledge system. All configuration lives in PostgreSQL — no restarts needed to change behavior.
 
 ---
 
@@ -18,8 +18,9 @@ A database-driven, uninterrupted trading orchestrator that uses Claude Code CLI 
 │         ├─ Stage 1: Analysis  ──→  subprocess: claude --print ...     │
 │         │   prompt includes:          └─ uses MCP servers:            │
 │         │   - skill framework             ├─ mcp__ib-gateway          │
-│         │   - stock context from DB       ├─ mcp__lightrag            │
-│         │   - LightRAG history            └─ web_search               │
+│         │   - stock context from DB       ├─ mcp__trading-rag         │
+│         │   - RAG+Graph history           ├─ mcp__trading-graph       │
+│         │                                 └─ web_search               │
 │         │                                                             │
 │         ├─ Gate: Do Nothing? (EV >5%, confidence >60%, R:R >2:1)      │
 │         │                                                             │
@@ -30,30 +31,33 @@ A database-driven, uninterrupted trading orchestrator that uses Claude Code CLI 
 │  orchestrator.py CLI (separate terminal)                              │
 │    └─ manage stocks, settings, scanners, one-off analyses             │
 │                                                                       │
+│  MCP Servers (run on host via Claude Code):                           │
+│    └─ python trader/rag/mcp_server.py   (trading-rag)                 │
+│    └─ python trader/graph/mcp_server.py (trading-graph)               │
+│                                                                       │
 └───────────────── connects via localhost ports ────────────────────────┘
-                        │          │          │          │
-                   :5432 PG   :4002 IB   :9621 RAG  :7687 Neo4j
-                        │          │          │          │
-┌─ DOCKER COMPOSE ──────┴──────────┴──────────┴──────────┴──────────────┐
+                        │          │          │
+                   :5433 PG   :4002 IB   :7688 Neo4j
+                        │          │          │
+┌─ DOCKER COMPOSE ──────┴──────────┴──────────┴─────────────────────────┐
 │                                                                       │
-│  postgres        ib-gateway        lightrag          neo4j            │
-│  pgvector:pg16   gnzsnz/ib-gw     lightrag:latest   neo4j:5          │
+│  postgres              ib-gateway              neo4j                  │
+│  pgvector:pg16         gnzsnz/ib-gw           neo4j:5-community      │
 │                                                                       │
-│  nexus schema:   TWS API           REST + MCP        Graph storage    │
-│  - stocks        paper trading     Anthropic LLM     for LightRAG    │
-│  - settings      VNC :5900         OpenAI embed                      │
-│  - schedules                       PG + Neo4j                        │
-│  - run_history                     backends                          │
-│  - ib_scanners                                                       │
-│  - service_status                                                    │
-│  - analysis_results                                                  │
-│                                                                       │
-│  LightRAG uses public schema on same PG instance                     │
+│  nexus schema:         TWS API                 Knowledge Graph        │
+│  - stocks              paper trading           Entity storage         │
+│  - settings            VNC :5900               Cypher queries         │
+│  - schedules                                                          │
+│  - run_history         rag schema:                                    │
+│  - ib_scanners         - documents             Relationships:         │
+│  - service_status      - chunks                - Ticker peers         │
+│  - analysis_results    - embeddings            - Risk factors         │
+│                        (pgvector)              - Bias patterns        │
 │                                                                       │
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
-**Why the orchestrator runs on the host, not in Docker:** Claude Code CLI requires Node.js, the `~/.claude/` auth session, and MCP server configurations — all of which live on the host. The orchestrator calls `claude` via subprocess, and Claude Code starts the MCP servers (IB, LightRAG) which connect to Docker services via localhost.
+**Why the orchestrator runs on the host, not in Docker:** Claude Code CLI requires Node.js, the `~/.claude/` auth session, and MCP server configurations — all of which live on the host. The orchestrator calls `claude` via subprocess, and Claude Code starts the MCP servers (IB Gateway, trading-rag, trading-graph) which connect to Docker services via localhost.
 
 ---
 
@@ -142,18 +146,20 @@ ANTHROPIC_API_KEY=sk-ant-...    # API key from console.anthropic.com
                                 # Separate from Pro/Max subscription
                                 # Billed per-token when used by Claude Code
 
-# OpenAI (embeddings for LightRAG)
-OPENAI_API_KEY=sk-...           # For text-embedding-3-small model
-
 # PostgreSQL (shared instance)
 PG_USER=lightrag
 PG_PASS=changeme_pg_password    # Change this!
 PG_DB=lightrag
 PG_HOST=localhost               # Host connects to Docker via localhost
-PG_PORT=5432
+PG_PORT=5433                    # Remapped from 5432
 
-# Neo4j (graph storage for LightRAG)
+# Neo4j (knowledge graph)
 NEO4J_PASS=changeme_neo4j_password  # Change this!
+
+# Ollama (local LLM for extraction and embeddings)
+OLLAMA_URL=http://localhost:11434
+LLM_MODEL=llama3.2              # For graph entity extraction
+EMBED_MODEL=nomic-embed-text    # For RAG embeddings
 ```
 
 **Note:** After setup, most configuration moves into the `nexus.settings` database table and is hot-reloadable. The `.env` file is only used for secrets and Docker container environment.
@@ -162,7 +168,7 @@ NEO4J_PASS=changeme_neo4j_password  # Change this!
 
 ## Database Schema
 
-All tables live in the `nexus` schema. LightRAG uses the `public` schema on the same PostgreSQL instance.
+All tables live in the `nexus` schema. RAG embeddings use the `rag` schema on the same PostgreSQL instance.
 
 ### nexus.stocks — Watchlist
 
@@ -286,15 +292,14 @@ Key-value pairs read by the service on every tick. Changes take effect immediate
 | claude | allowed_tools_scanner | "mcp__ib-gateway__*" | Scanner tools |
 | ib | ib_account | "DU_PAPER" | IB account for orders |
 | ib | ib_trading_mode | "paper" | paper or live |
-| lightrag | lightrag_url | "http://localhost:9621" | LightRAG endpoint |
-| lightrag | lightrag_ingest_enabled | true | Ingest analyses |
+| knowledge | kb_ingest_enabled | true | Ingest analyses to RAG |
+| knowledge | kb_query_enabled | true | Include RAG+Graph context |
 | scheduler | scheduler_poll_seconds | 60 | Tick interval |
 | scheduler | earnings_check_hours | [6, 7] | Hours for earnings triggers |
 | scheduler | earnings_lookback_days | 21 | Days ahead to scan |
 | feature_flags | **dry_run_mode** | **true** | **Blocks all Claude Code calls** |
 | feature_flags | auto_execute_enabled | false | Global Stage 2 kill switch |
 | feature_flags | scanners_enabled | true | Global scanner toggle |
-| feature_flags | lightrag_query_enabled | true | Include LightRAG context |
 
 **Important:** `dry_run_mode` starts as `true`. The service will log what it *would* do but won't call Claude Code until you explicitly disable it.
 
@@ -408,7 +413,8 @@ Claude Code is called with the analysis prompt, stock context from the database,
 
 - Fetch real-time prices, IV, options chains from IB Gateway
 - Search the web for news, analyst estimates, earnings data
-- Query LightRAG for prior analyses and trading patterns
+- Query RAG (pgvector) for similar prior analyses
+- Query Graph (Neo4j) for ticker relationships, risks, and bias patterns
 
 **Output:** A markdown file with an embedded JSON block containing the structured recommendation (gate_passed, confidence, expected_value, entry/stop/target, position structure).
 
@@ -423,7 +429,7 @@ The gate prevents low-conviction trades. It must pass ALL criteria:
 | Risk:Reward | > 2:1 |
 | Edge not priced in | Yes |
 
-If the gate fails, the pipeline stops. The analysis is still saved and ingested into LightRAG for future reference.
+If the gate fails, the pipeline stops. The analysis is still saved and ingested into RAG for future reference.
 
 ### Stage 2: Execution
 
@@ -647,10 +653,9 @@ The `docker-compose.yml` runs infrastructure only:
 
 | Service | Image | Ports | Purpose |
 |---------|-------|-------|---------|
-| postgres | pgvector/pgvector:pg16 | 5432 | Shared DB for Nexus + LightRAG |
+| postgres | pgvector/pgvector:pg16 | 5433 | Shared DB (Nexus + RAG schemas) |
 | ib-gateway | ghcr.io/gnzsnz/ib-gateway:stable | 4002, 5900 | Paper trading API + VNC |
-| lightrag | lightrag/lightrag:latest | 9621 | Knowledge base API |
-| neo4j | neo4j:5-community | 7474, 7687 | Graph storage for LightRAG |
+| neo4j | neo4j:5-community | 7475, 7688 | Knowledge graph storage |
 
 ```bash
 # Start all infrastructure
@@ -682,9 +687,25 @@ Claude Code's MCP servers are configured in `~/.claude/` on the host. The orches
 
 Required MCP servers:
 - **ib-gateway** — connects to localhost:4002 for market data and order execution
-- **lightrag** — connects to localhost:9621 for knowledge retrieval
+- **trading-rag** — runs `trader/rag/mcp_server.py` for semantic search
+- **trading-graph** — runs `trader/graph/mcp_server.py` for knowledge graph queries
 
-Configure by editing `~/.claude/settings.json` or using `claude mcp add`. The exact configuration depends on which IB MCP server implementation you're using.
+Configure by editing `~/.claude/mcp.json` or using `claude mcp add`. Example configuration:
+
+```json
+{
+  "mcpServers": {
+    "trading-rag": {
+      "command": "python",
+      "args": ["/opt/data/trading_light_pilot/trader/rag/mcp_server.py"]
+    },
+    "trading-graph": {
+      "command": "python",
+      "args": ["/opt/data/trading_light_pilot/trader/graph/mcp_server.py"]
+    }
+  }
+}
+```
 
 ---
 
@@ -921,4 +942,4 @@ GIT_SSH_COMMAND="LD_LIBRARY_PATH= /usr/bin/ssh" git push
 
 ---
 
-*Nexus Light Trading Platform v2.1 — Database-driven. Uninterrupted. Hot-reloadable.*
+*Nexus Light Trading Platform v2.2 — Database-driven. Uninterrupted. Hot-reloadable.*

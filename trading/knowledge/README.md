@@ -16,10 +16,11 @@ AI-centric trading knowledge repository. Stores actual trading data, analyses, a
 │   └──────────────┘      └──────────────┘      └──────────────┘     │
 │                                                      │              │
 │                                                      ▼              │
-│                                               ┌──────────────┐     │
-│                                               │   LightRAG   │     │
-│                                               │   (optional) │     │
-│                                               └──────────────┘     │
+│                                        ┌─────────────────────────┐ │
+│                                        │  Knowledge Base         │ │
+│                                        │  • RAG (pgvector)       │ │
+│                                        │  • Graph (Neo4j)        │ │
+│                                        └─────────────────────────┘ │
 │                                                                      │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -121,7 +122,7 @@ Examples:
 1. **With AI Agent:** Point agent to `skills/` for instructions
 2. **Agent creates documents** following skill workflows
 3. **Documents saved here** in appropriate folders
-4. **Optional:** Sync to LightRAG for semantic search
+4. **Knowledge Base:** Documents are indexed in RAG (semantic search) and Graph (entity relationships)
 
 ## Version
 - Current: 2.0.0
