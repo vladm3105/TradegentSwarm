@@ -39,7 +39,7 @@ Use this skill to systematically identify trading opportunities using scanner co
 
 ### Daily Scanners (`trading/knowledge/scanners/daily/`)
 | Scanner | Time | Purpose |
-|---------|------|----------|
+|---------|------|---------|
 | market-regime | 09:35 | Classify market environment |
 | premarket-gap | 08:30 | Gaps with catalysts |
 | news-catalyst | 07:00/12:00/18:00 | Material news |
@@ -50,31 +50,74 @@ Use this skill to systematically identify trading opportunities using scanner co
 
 ### Intraday Scanners (`trading/knowledge/scanners/intraday/`)
 | Scanner | Purpose |
-|---------|----------|
+|---------|---------|
 | options-flow | Unusual options activity |
 | unusual-volume | Volume spikes |
 
 ### Weekly Scanners (`trading/knowledge/scanners/weekly/`)
 | Scanner | Time | Purpose |
-|---------|------|----------|
+|---------|------|---------|
 | earnings-calendar | Sun 07:00 | Week ahead earnings |
 | institutional-activity | Mon/Fri 18:00 | 13F filings, insiders |
 
 ## Workflow
 
-1. **Read skill definition**: Load `trading/skills/market-scanning/SKILL.md`
-2. **Load scanner config** from `trading/knowledge/scanners/{daily|intraday|weekly}/`
-3. **Execute scanner**:
-   - Gather data using specified sources
-   - Apply quality filters (liquidity, exclusions)
-   - Score candidates using weighted criteria
-4. **Route results by score**:
-   - Score ≥ 7.5: **Trigger full analysis** (earnings or stock)
-   - Score 5.5-7.4: **Add to watchlist**
-   - Score < 5.5: Skip
-5. **Output summary** of scanner run
+### Step 1: Load Scanner Config
 
-## Scoring System
+Read scanner configuration from `trading/knowledge/scanners/{daily|intraday|weekly}/`
+
+### Step 2: Get Market Context (RAG + Graph)
+
+```yaml
+# Get current market regime
+Tool: rag_search
+Input: {"query": "market regime volatility sector rotation", "top_k": 5}
+
+# Get recent scan results for comparison
+Tool: rag_search
+Input: {"query": "scanner results opportunities", "top_k": 10}
+```
+
+### Step 3: Execute Scanner via IB MCP
+
+```yaml
+# Run IB scanner
+Tool: mcp__ib-mcp__run_scanner
+Input: {"scan_code": "$SCANNER_CODE", "instrument": "STK", "location": "STK.US.MAJOR", "max_results": 50}
+
+# Get scanner parameters (for custom scans)
+Tool: mcp__ib-mcp__get_scanner_params
+Input: {}
+
+# Get quotes for scanner results
+Tool: mcp__ib-mcp__get_quotes_batch
+Input: {"symbols": ["TICKER1", "TICKER2", "..."]}
+
+# Get news for top candidates
+Tool: mcp__ib-mcp__get_news_headlines
+Input: {"symbol": "$TICKER"}
+```
+
+### Step 4: Gather Additional Data
+
+```yaml
+# Web search for catalysts
+Tool: mcp__brave-search__brave_web_search
+Input: {"query": "$TICKER catalyst news today"}
+
+# For earnings scanner - get earnings dates
+Tool: mcp__brave-search__brave_web_search
+Input: {"query": "earnings calendar this week $SECTOR"}
+```
+
+### Step 5: Apply Quality Filters
+
+From scanner config:
+- Liquidity filters (volume, avg volume)
+- Price filters (min/max price)
+- Exclusion lists (penny stocks, ADRs, etc.)
+
+### Step 6: Score Candidates
 
 ```
 SCORE CALCULATION:
@@ -86,6 +129,55 @@ INTERPRETATION:
 6.5-7.4: Good → add to watchlist
 5.5-6.4: Marginal → monitor only
 < 5.5: Skip
+```
+
+### Step 7: Route Results by Score
+
+```yaml
+# Score ≥ 7.5: Trigger full analysis
+→ Invoke earnings-analysis or stock-analysis skill
+
+# Score 5.5-7.4: Add to watchlist
+→ Invoke watchlist skill
+
+# Score < 5.5: Skip
+→ Log and continue
+```
+
+### Step 8: Generate Scan Summary
+
+Output summary of:
+- Scanner run metadata (time, scanner name)
+- Candidates found
+- Actions taken (analyses triggered, watchlist adds)
+- Market regime context
+
+### Step 9: Index Results (Post-Save Hooks)
+
+If saving scan results:
+
+```yaml
+Tool: graph_extract
+Input: {"file_path": "trading/knowledge/scans/{SCANNER}_{YYYYMMDDTHHMM}.yaml"}
+
+Tool: rag_embed
+Input: {"file_path": "trading/knowledge/scans/{SCANNER}_{YYYYMMDDTHHMM}.yaml"}
+```
+
+### Step 10: Push Watchlist Candidates to Remote
+
+```yaml
+Tool: mcp__github-vl__push_files
+Parameters:
+  owner: vladm3105
+  repo: TradegentSwarm
+  branch: main
+  files:
+    - path: trading/knowledge/watchlist/{TICKER1}_{YYYYMMDDTHHMM}.yaml
+      content: [watchlist entry content]
+    - path: trading/knowledge/watchlist/{TICKER2}_{YYYYMMDDTHHMM}.yaml
+      content: [watchlist entry content]
+  message: "Scanner results: {scanner_name} - {count} candidates"
 ```
 
 ## Daily Routine
@@ -123,24 +215,20 @@ CLOSE (15:30-16:15):
 
 - `$ARGUMENTS`: Scanner name (optional), or "daily", "weekly", "all"
 
-## Auto-Commit to Remote
+## MCP Tools Used
 
-After adding candidates to watchlist, use the GitHub MCP server to push directly:
-
-```yaml
-Tool: mcp__github-vl__push_files
-Parameters:
-  owner: vladm3105
-  repo: trading_light_pilot
-  branch: main
-  files:
-    - path: trading/knowledge/watchlist/{TICKER1}_{YYYYMMDDTHHMM}.yaml
-      content: [watchlist entry content]
-    - path: trading/knowledge/watchlist/{TICKER2}_{YYYYMMDDTHHMM}.yaml
-      content: [watchlist entry content]
-  message: "Scanner results: {scanner_name} - {count} candidates"
-```
+| Tool | Purpose |
+|------|---------|
+| `rag_search` | Market context |
+| `mcp__ib-mcp__run_scanner` | Execute IB scanner |
+| `mcp__ib-mcp__get_scanner_params` | Scanner options |
+| `mcp__ib-mcp__get_quotes_batch` | Candidate prices |
+| `mcp__ib-mcp__get_news_headlines` | News for candidates |
+| `mcp__brave-search__brave_web_search` | Catalyst research |
+| `graph_extract` | Index results |
+| `rag_embed` | Embed for search |
+| `mcp__github-vl__push_files` | Push to remote |
 
 ## Execution
 
-Run market scanning for $ARGUMENTS. Read the full skill definition from `trading/skills/market-scanning/SKILL.md`. Load scanner configs from `trading/knowledge/scanners/`. After adding watchlist candidates, auto-commit and push to remote.
+Run market scanning for $ARGUMENTS. Load scanner configs, execute via IB MCP, score candidates, and route to appropriate skills. Follow all steps: get context, run scanner, score, route, and push results.

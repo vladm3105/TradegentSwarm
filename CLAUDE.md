@@ -27,7 +27,9 @@ tradegent/
 
 Skills in `.claude/skills/` auto-invoke based on context. Each skill has:
 - YAML frontmatter with metadata and triggers
-- Workflow steps referencing `trading/skills/`
+- Pre-analysis context retrieval (RAG + Graph)
+- Real-time data gathering (IB MCP)
+- Post-save hooks (index to knowledge base)
 - Chaining to related skills
 
 ### Skill Index
@@ -42,6 +44,68 @@ Skills in `.claude/skills/` auto-invoke based on context. Each skill has:
 | **watchlist**         | "watchlist", "add to watchlist", "watch this"            | Trade Mgmt |
 | **post-trade-review** | "review trade", "closed trade", "what did I learn"       | Learning   |
 | **scan**              | "scan", "find opportunities", "what should I trade"      | Scanning   |
+
+### Skill Workflow Pattern
+
+Every skill follows this integrated pattern:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         SKILL WORKFLOW                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐         │
+│  │   PRE-      │    │   EXECUTE   │    │   POST-     │         │
+│  │   ANALYSIS  │───▶│   SKILL     │───▶│   SAVE      │         │
+│  │   CONTEXT   │    │   WORKFLOW  │    │   HOOKS     │         │
+│  └─────────────┘    └─────────────┘    └─────────────┘         │
+│        │                  │                  │                  │
+│        ▼                  ▼                  ▼                  │
+│  ┌───────────┐      ┌───────────┐      ┌───────────┐           │
+│  │ RAG+Graph │      │ IB MCP +  │      │ Graph +   │           │
+│  │ Context   │      │ Web Data  │      │ RAG Index │           │
+│  └───────────┘      └───────────┘      └───────────┘           │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Step 1: Pre-Analysis Context**
+```yaml
+Tool: rag_hybrid_context
+Input: {"ticker": "NVDA", "query": "earnings analysis", "analysis_type": "earnings-analysis"}
+```
+
+**Step 2: Real-Time Data**
+```yaml
+Tool: mcp__ib-mcp__get_stock_price
+Input: {"symbol": "NVDA"}
+
+Tool: mcp__ib-mcp__get_historical_data
+Input: {"symbol": "NVDA", "duration": "3 M", "bar_size": "1 day"}
+```
+
+**Step 3: Execute Skill Workflow** (read SKILL.md, follow phases)
+
+**Step 4: Save Output** (to `trading/knowledge/`)
+
+**Step 5: Post-Save Hooks**
+```yaml
+# Index in Graph
+Tool: graph_extract
+Input: {"file_path": "trading/knowledge/analysis/..."}
+
+# Embed for search
+Tool: rag_embed
+Input: {"file_path": "trading/knowledge/analysis/..."}
+
+# Push to remote
+Tool: mcp__github-vl__push_files
+Parameters:
+  owner: vladm3105
+  repo: TradegentSwarm
+  branch: main
+  files: [...]
+```
 
 ### Workflow Chains
 
@@ -92,6 +156,163 @@ When a skill is invoked (auto or manual):
 4. Save output to corresponding `trading/knowledge/` folder
 5. Check for chaining actions (WATCH → watchlist, exit → review)
 
+## Scanner System
+
+Scanners are YAML configurations that define systematic rules for finding trading opportunities. They encode your trading edge in a repeatable way.
+
+### Scanner Types
+
+| Type | Folder | Run Time | Examples |
+|------|--------|----------|----------|
+| **Daily** | `scanners/daily/` | Once per day | Pre-market gaps, earnings momentum |
+| **Intraday** | `scanners/intraday/` | Multiple times | Options flow, unusual volume |
+| **Weekly** | `scanners/weekly/` | Weekly | Earnings calendar, 13F filings |
+
+### Daily Schedule (ET)
+
+| Time | Scanner | Purpose |
+|------|---------|---------|
+| 07:00 | news-catalyst | Find overnight news |
+| 08:30 | premarket-gap | Identify gaps >3% |
+| 09:35 | market-regime | Classify bull/bear/neutral |
+| 09:45 | earnings-momentum | Pre-earnings setups |
+| 10:00+ | unusual-volume | Volume spikes (repeats) |
+| 15:45 | 52w-extremes | Breakouts/breakdowns |
+| 16:15 | sector-rotation | Money flow analysis |
+
+### Scanner Structure
+
+```yaml
+_meta:              # ID, version, schedule
+scanner_config:     # Name, priority, limits
+scanner:            # Data sources (IB + web)
+quality_filters:    # Liquidity, fundamentals, exclusions
+scoring:            # Weighted criteria (sum to 1.0)
+output:             # Format, fields, storage
+agent_instructions: # Step-by-step execution
+```
+
+### Scoring and Routing
+
+Scanners score candidates using weighted criteria (weights sum to 1.0):
+
+```
+Score = Σ (Criterion × Weight)
+
+≥ 7.5: Trigger full analysis (earnings-analysis or stock-analysis)
+5.5-7.4: Add to watchlist
+< 5.5: Skip
+```
+
+### Running Scanners
+
+```yaml
+# Load scanner config
+Read: trading/knowledge/scanners/daily/earnings-momentum.yaml
+
+# Execute IB scanner
+Tool: mcp__ib-mcp__run_scanner
+Input: {"scan_code": "TOP_OPEN_PERC_GAIN", "max_results": 50}
+
+# Get detailed quotes
+Tool: mcp__ib-mcp__get_quotes_batch
+Input: {"symbols": ["NVDA", "AAPL", "..."]}
+
+# Search for catalysts
+Tool: mcp__brave-search__brave_web_search
+Input: {"query": "NVDA earnings preview analyst"}
+```
+
+### Available Scanners
+
+| Scanner | Category | Key Criteria |
+|---------|----------|--------------|
+| `premarket-gap` | Momentum | Gap >3%, catalyst, volume |
+| `earnings-momentum` | Earnings | Beat history, IV, sentiment |
+| `news-catalyst` | Event | Material news, price impact |
+| `52w-extremes` | Technical | Breakout/breakdown, volume |
+| `oversold-bounce` | Mean Reversion | RSI, support, oversold |
+| `sector-rotation` | Macro | Sector flows, relative strength |
+| `options-flow` | Sentiment | Unusual options activity |
+| `unusual-volume` | Momentum | Volume spikes, news |
+
+Scanner configs are in `trading/knowledge/scanners/` — treat as sensitive (they encode your edge).
+
+## Watchlist Management
+
+Watchlist entries track potential trades waiting for specific trigger conditions.
+
+### Watchlist Lifecycle
+
+```
+ENTRY SOURCES           ACTIVE              RESOLUTION
+────────────────────────────────────────────────────────
+Scanner (5.5-7.4)  ─┐
+Analysis (WATCH)   ─┼─▶ status: active ─┬─▶ triggered → trade-journal
+User request       ─┘   Daily review    ├─▶ invalidated → archive
+                                        └─▶ expired → archive
+```
+
+### Adding to Watchlist
+
+| Source | Condition |
+|--------|-----------|
+| Scanner | Score 5.5-7.4 (not high enough for immediate analysis) |
+| Analysis | WATCH recommendation (good setup, wrong timing/price) |
+| User | "add TICKER to watchlist" |
+
+**Required fields:**
+- `entry_trigger`: Specific condition (price, event, combined)
+- `invalidation`: When to remove without triggering
+- `expires`: Max 30 days
+- `priority`: high / medium / low
+
+### Removing from Watchlist
+
+| Reason | Status | Action |
+|--------|--------|--------|
+| Trigger fired | `triggered` | Create trade journal, archive |
+| Thesis broken | `invalidated` | Archive with lesson |
+| Time exceeded | `expired` | Archive |
+| User removes | N/A | Delete or archive |
+
+### Expiration Rules
+
+**If a stock is not traded within 30 days, it is marked as expired.**
+
+| Setup Type | Recommended Expiration |
+|------------|------------------------|
+| Earnings play | Earnings date |
+| Breakout watch | 7-14 days |
+| Pullback entry | 5-10 days |
+| General thesis | 30 days (max) |
+
+Two expiration mechanisms (whichever comes first):
+- **Absolute**: `_meta.expires: "2025-03-22"` — Hard deadline
+- **Relative**: `invalidation.time_limit_days: 10` — Days from creation
+
+### Daily Review
+
+```yaml
+FOR EACH active entry:
+  1. Check expiration → expired? (cheapest check first)
+  2. Check invalidation → invalidated?
+  3. Check trigger → triggered?
+  4. Check news → update or invalidate?
+```
+
+### Trigger → Trade Journal Chain
+
+```yaml
+# When trigger fires
+IF entry_trigger MET:
+  status: "triggered"
+  → Invoke trade-journal skill
+  → Archive watchlist entry
+```
+
+See `trading/knowledge/watchlist/README.md` for full documentation.
+
 ## Tradegent Platform
 
 ### Environment Variables
@@ -110,7 +331,23 @@ export PG_PORT=5433
 export NEO4J_URI=bolt://localhost:7688
 export NEO4J_USER=neo4j
 export NEO4J_PASS=<password>
+
+# LLM Providers (separate for embeddings vs extraction)
+export EMBED_PROVIDER=ollama          # RAG embeddings (keep consistent!)
+export EXTRACT_PROVIDER=openrouter    # Graph extraction (can use cloud for speed)
+export LLM_API_KEY=<api-key>          # Required for openrouter/openai/claude_api
 ```
+
+### LLM Provider Configuration
+
+| Task | Variable | Options | Notes |
+|------|----------|---------|-------|
+| RAG Embeddings | `EMBED_PROVIDER` | ollama, openrouter, openai | **Must stay consistent** - don't mix |
+| Graph Extraction | `EXTRACT_PROVIDER` | ollama, openrouter, openai, claude_api | Can switch freely |
+
+**Recommended setup (current):**
+- `EMBED_PROVIDER=openai` - Best quality embeddings (text-embedding-3-large, 3072 dims, ~$2/year)
+- `EXTRACT_PROVIDER=openai` - Fast entity extraction (gpt-4o-mini, 12x faster than Ollama, ~$0.001/analysis)
 
 ### Running Commands
 ```bash
@@ -137,6 +374,61 @@ docker compose logs -f            # View logs
 - Schema in `tradegent/db/init.sql`
 - Use `db_layer.py` for all database operations
 
+### Watchlist Management
+
+Stocks are stored in `nexus.stocks` table with state machine: `analysis` → `paper` → `live`
+
+```bash
+# List all stocks
+python orchestrator.py stock list
+
+# Add a stock
+python orchestrator.py stock add PLTR --name "Palantir" --priority 6 --tags ai,defense
+
+# Enable/disable for automated runs
+python orchestrator.py stock enable NVDA
+python orchestrator.py stock disable TSLA
+
+# Change state (analysis → paper enables paper trading)
+python orchestrator.py stock set-state NVDA paper
+
+# Analyze all enabled stocks
+python orchestrator.py watchlist
+```
+
+| Column | Purpose |
+|--------|---------|
+| `ticker` | Stock symbol (primary key) |
+| `state` | `analysis` (observe) / `paper` (paper trade) / `live` (future) |
+| `is_enabled` | Include in automated `watchlist` runs (see below) |
+| `priority` | Processing order (10=highest) |
+| `default_analysis_type` | `earnings` or `stock` |
+| `next_earnings_date` | Triggers pre-earnings analysis |
+| `tags` | Filterable categories (mega_cap, ai, etc.) |
+
+**Enable/Disable behavior:**
+- `is_enabled=true`: Stock included in `watchlist` and `run-due` batch commands
+- `is_enabled=false`: Stock skipped in batch runs, but manual `analyze TICKER` still works
+- Use case: Temporarily pause a stock (too volatile, no catalyst) without removing it
+
+### Trading Modes
+
+| Mode | Settings | Stock State | Behavior |
+|------|----------|-------------|----------|
+| **Analysis Only** | `dry_run_mode=false`, `auto_execute_enabled=false` | `analysis` | Reports only, no orders |
+| **Paper Trading** | `dry_run_mode=false`, `auto_execute_enabled=true` | `paper` | Paper orders via IB Gateway |
+| **Live Trading** | — | `live` | 🚫 **Blocked in code** (not implemented) |
+
+```bash
+# Analysis only (default)
+python orchestrator.py settings set dry_run_mode false
+python orchestrator.py settings set auto_execute_enabled false
+
+# Enable paper trading for a stock
+python orchestrator.py settings set auto_execute_enabled true
+python orchestrator.py stock set-state NVDA paper
+```
+
 ## Code Standards
 
 - Python 3.11+ with type hints
@@ -156,7 +448,7 @@ When skills save to `trading/knowledge/`, use:
 Tool: mcp__github-vl__push_files
 Parameters:
   owner: vladm3105
-  repo: trading_light_pilot
+  repo: TradegentSwarm
   branch: main
   files:
     - path: trading/knowledge/{output_path}

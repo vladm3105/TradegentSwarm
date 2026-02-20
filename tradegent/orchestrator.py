@@ -587,7 +587,7 @@ def run_analysis(db: NexusDB, ticker: str, analysis_type: AnalysisType,
                  schedule_id: Optional[int] = None) -> Optional[AnalysisResult]:
     """Stage 1: Generate analysis via Claude Code."""
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+    timestamp = datetime.now().strftime("%Y%m%dT%H%M")
     filepath = cfg.analyses_dir / f"{ticker}_{analysis_type.value}_{timestamp}.md"
     stock = db.get_stock(ticker) if ticker != "PORTFOLIO" else None
 
@@ -672,7 +672,7 @@ def run_execution(db: NexusDB, analysis_path: Path) -> ExecutionResult:
                                reason="Execution call failed")
 
     parsed = parse_json_block(output)
-    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    ts = datetime.now().strftime("%Y%m%dT%H%M")
     trade_path = cfg.trades_dir / f"{ticker}_trade_{ts}.md"
     trade_path.write_text(output)
 
@@ -766,7 +766,7 @@ def run_scanners(db: NexusDB, scanner_code: Optional[str] = None):
         if not output:
             continue
 
-        ts = datetime.now().strftime("%Y%m%d_%H%M")
+        ts = datetime.now().strftime("%Y%m%dT%H%M")
         fp = cfg.analyses_dir / f"scanner_{scanner.scanner_code}_{ts}.md"
         fp.write_text(output)
 
@@ -845,7 +845,7 @@ def run_due_schedules(db: NexusDB):
             elif sched.task_type == 'custom' and sched.custom_prompt:
                 output = call_claude_code(sched.custom_prompt, cfg.allowed_tools_analysis, f"CUSTOM-{sched.id}")
                 if output:
-                    ts = datetime.now().strftime("%Y%m%d_%H%M")
+                    ts = datetime.now().strftime("%Y%m%dT%H%M")
                     (cfg.analyses_dir / f"custom_{sched.id}_{ts}.md").write_text(output)
         except Exception as e:
             log.error(f"Schedule '{sched.name}' failed: {e}")

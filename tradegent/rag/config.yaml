@@ -1,12 +1,14 @@
 rag_version: "1.0.0"
-embed_dims: "${EMBED_DIMENSIONS:-768}"
+embed_dims: "${EMBED_DIMENSIONS:-3072}"
 
 database:
   url: "${DATABASE_URL:-postgresql://lightrag:lightrag@localhost:5433/lightrag}"
   schema: "${RAG_SCHEMA:-nexus}"
 
 embedding:
-  default_provider: "${LLM_PROVIDER:-ollama}"
+  # EMBED_PROVIDER allows separate provider for embeddings (should stay consistent!)
+  # Falls back to LLM_PROVIDER for backwards compatibility
+  default_provider: "${EMBED_PROVIDER:-${LLM_PROVIDER:-ollama}}"
   fallback_chain:
     - ollama
     - openrouter
@@ -24,9 +26,9 @@ embedding:
     dimensions: "${EMBED_DIMENSIONS:-768}"
 
   openai:
-    api_key: "${LLM_API_KEY}"
-    model: "${EMBED_MODEL:-text-embedding-3-small}"
-    dimensions: "${EMBED_DIMENSIONS:-768}"
+    api_key: "${OPENAI_API_KEY:-${LLM_API_KEY}}"
+    model: "${EMBED_MODEL:-text-embedding-3-large}"
+    dimensions: "${EMBED_DIMENSIONS:-3072}"
 
 chunking:
   max_tokens: "${CHUNK_MAX_TOKENS:-1500}"

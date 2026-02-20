@@ -85,13 +85,28 @@ cp .env.template .env
 |----------|---------|-------------|
 | `DATABASE_URL` | `postgresql://lightrag:lightrag@localhost:5433/lightrag` | PostgreSQL connection |
 | `RAG_SCHEMA` | `nexus` | Database schema name |
-| `LLM_PROVIDER` | `ollama` | Embedding provider |
+| `EMBED_PROVIDER` | `ollama` | Embedding provider (ollama, openrouter, openai) |
+| `LLM_PROVIDER` | `ollama` | Fallback if EMBED_PROVIDER not set |
 | `LLM_BASE_URL` | `http://localhost:11434` | Ollama API URL |
-| `LLM_API_KEY` | (none) | API key for OpenRouter |
+| `LLM_API_KEY` | (none) | API key for OpenRouter/OpenAI |
 | `EMBED_MODEL` | `nomic-embed-text` | Embedding model |
 | `EMBED_DIMENSIONS` | `768` | Vector dimensions |
 | `CHUNK_MAX_TOKENS` | `1500` | Max tokens per chunk |
 | `CHUNK_MIN_TOKENS` | `50` | Min tokens (skip smaller) |
+
+### Embedding Provider Options
+
+| Provider | Model | Dimensions | Cost | Status |
+|----------|-------|------------|------|--------|
+| `ollama` | nomic-embed-text | 768 | Free (local) | Slower |
+| `openai` | text-embedding-3-large | 3072 | $0.13/1M tokens | ✅ **Recommended** |
+| `openai` | text-embedding-3-small | 768 | $0.02/1M tokens | Budget option |
+
+**Current config:** `EMBED_PROVIDER=openai` with `text-embedding-3-large` (3072 dimensions)
+
+**Cost estimate:** ~$2/year for 7,500 documents (3-year projection)
+
+**⚠️ WARNING:** Do NOT mix embedding providers! All documents must use the same embedding model for semantic search to work correctly. If switching providers, delete all embeddings and re-embed everything.
 
 ### Generation Settings (for RAG answer generation)
 

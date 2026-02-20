@@ -1,8 +1,9 @@
 # Trading Knowledge Graph — Architecture Plan
 
-> **Status**: Planning  
-> **Last updated**: 2026-02-19  
+> **Status**: Implemented
+> **Last updated**: 2026-02-20
 > **Replaces**: LightRAG (extraction timeouts with local Ollama models)
+> **Companions**: [TRADING_RAG_ARCHITECTURE.md](TRADING_RAG_ARCHITECTURE.md) (semantic search), [SCANNER_ARCHITECTURE.md](SCANNER_ARCHITECTURE.md) (opportunity finding)
 
 ## Overview
 
@@ -14,7 +15,7 @@ organically from live trading activity — not backfilled from templates.
 
 1. **Live extraction only** — graph is populated when skills create real analyses, not by batch-processing template files
 2. **Domain-specific entities** — 16 trading entity types (Bias, Catalyst, Strategy, etc.) that generic RAG tools miss
-3. **Dual extraction** — Claude in-context during skill execution (highest quality) + Ollama batch for re-processing (free, local)
+3. **OpenAI extraction** — gpt-4o-mini for fast, accurate entity extraction (~8s/doc, 12x faster than Ollama)
 4. **Field-by-field processing** — each text field sent individually to LLM (avoids the timeout that killed LightRAG)
 5. **Normalize on ingest** — dedup, name standardization, and alias resolution at write time
 
@@ -23,10 +24,10 @@ organically from live trading activity — not backfilled from templates.
 | Factor | LightRAG | Custom Graph |
 |--------|----------|-------------|
 | Entity types | Generic (Person, Org, Location) | Trading-specific (Bias, Catalyst, Strategy) |
-| Extraction model | Requires fast cloud model ($) | Ollama field-by-field (free) or Claude in-context |
+| Extraction model | Requires fast cloud model ($) | OpenAI gpt-4o-mini (~$0.001/doc) |
 | `_graph` sections | Ignores them entirely | Can use as schema hints |
 | Domain accuracy | Low — misses trading concepts | High — prompt-engineered for trading |
-| Operational cost | Cloud API per document | $0 for Ollama, included for Claude |
+| Operational cost | High latency, timeouts | Fast (8s/doc), reliable |
 
 ---
 

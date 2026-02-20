@@ -8,7 +8,9 @@ neo4j:
   database: "${NEO4J_DATABASE:-neo4j}"
 
 extraction:
-  default_extractor: "${LLM_PROVIDER:-ollama}"
+  # EXTRACT_PROVIDER allows separate LLM for entity extraction (can be faster/better than local)
+  # Falls back to LLM_PROVIDER for backwards compatibility
+  default_extractor: "${EXTRACT_PROVIDER:-${LLM_PROVIDER:-ollama}}"
   fallback_chain:
     - ollama
     - openrouter
@@ -33,9 +35,13 @@ extraction:
     top_k: "${LLM_TOP_K:-40}"
 
   openrouter:
-    api_key: "${LLM_API_KEY}"
+    api_key: "${OPENROUTER_API_KEY:-${LLM_API_KEY}}"
     model: "${LLM_MODEL:-anthropic/claude-3-5-sonnet}"
     fallback_model: "anthropic/claude-3-haiku"
+
+  openai:
+    api_key: "${OPENAI_API_KEY:-${LLM_API_KEY}}"
+    model: "${LLM_MODEL:-gpt-4o-mini}"
 
   claude_api:
     api_key: "${LLM_API_KEY}"

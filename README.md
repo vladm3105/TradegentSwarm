@@ -332,6 +332,23 @@ Structured YAML repository of trading data: analyses, trade journals, strategies
 
 See [trading/knowledge/README.md](trading/knowledge/README.md) for details.
 
+### Scanner System (`trading/knowledge/scanners/`)
+
+YAML-based scanner configurations that encode systematic opportunity-finding rules. Scanners combine IB market data with web search, apply quality filters, score candidates, and route to analysis skills.
+
+| Type | Folder | Examples |
+|------|--------|----------|
+| Daily | `scanners/daily/` | premarket-gap, earnings-momentum, 52w-extremes |
+| Intraday | `scanners/intraday/` | options-flow, unusual-volume |
+| Weekly | `scanners/weekly/` | earnings-calendar, institutional-activity |
+
+**Score Routing:**
+- ≥ 7.5: Trigger full analysis skill
+- 5.5-7.4: Add to watchlist
+- < 5.5: Skip
+
+See [docs/SCANNER_ARCHITECTURE.md](docs/SCANNER_ARCHITECTURE.md) for full architecture and [trading/knowledge/scanners/README.md](trading/knowledge/scanners/README.md) for scanner index.
+
 ### Trading Skills (`trading/skills/`)
 
 Agent-agnostic skill definitions with step-by-step frameworks and YAML templates. Works with any LLM — each skill is self-contained and single-purpose.
@@ -351,6 +368,7 @@ GitHub Actions CI/CD for validating documents against JSON schemas. Includes sch
 | Node.js 20+ | Claude Code CLI dependency |
 | Claude Code CLI | AI engine |
 | Anthropic API key | Automated analysis |
+| OpenAI API key | Embeddings + extraction (~$2/year) |
 | IB paper account | Market data & execution |
 ### Port Map
 
@@ -363,7 +381,7 @@ GitHub Actions CI/CD for validating documents against JSON schemas. Includes sch
 | IB Gateway (VNC) | 5901 | ib-gateway | VNC for GUI troubleshooting |
 | IB MCP | 8002 | ibmcp-test | SSE at `/sse` |
 | Browser MCP | 8003 | browser-mcp | HTTP API |
-| Ollama | 11434 | (host) | LLM/embedding engine |
+| Ollama | 11434 | (host) | Optional: local LLM fallback |
 ## Quick Start
 
 ```bash

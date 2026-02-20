@@ -444,7 +444,7 @@ def _extract_relations_from_entities(
 
 
 def _call_cloud_llm(prompt: str, extractor: str, timeout: int) -> str:
-    """Call cloud LLM (Claude API or OpenRouter)."""
+    """Call cloud LLM (Claude API, OpenRouter, or OpenAI)."""
     gen_config = _config.get("extraction", {}).get("generation", {})
     max_tokens = int(gen_config.get("max_tokens", 2000))
     temperature = float(gen_config.get("temperature", 0.1))
@@ -475,6 +475,26 @@ def _call_cloud_llm(prompt: str, extractor: str, timeout: int) -> str:
         model = _config.get("extraction", {}).get("openrouter", {}).get("model", "anthropic/claude-3-5-sonnet")
         response = requests.post(
             "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        return response.json()["choices"][0]["message"]["content"]
+
+    elif extractor == "openai":
+        api_key = os.getenv("OPENAI_API_KEY", "")
+        model = _config.get("extraction", {}).get("openai", {}).get("model", "gpt-4o-mini")
+        response = requests.post(
+            "https://api.openai.com/v1/chat/completions",
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",

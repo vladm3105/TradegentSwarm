@@ -156,10 +156,16 @@ PG_PORT=5433                    # Remapped from 5432
 # Neo4j (knowledge graph)
 NEO4J_PASS=changeme_neo4j_password  # Change this!
 
-# Ollama (local LLM for extraction and embeddings)
-OLLAMA_URL=http://localhost:11434
-LLM_MODEL=llama3.2              # For graph entity extraction
-EMBED_MODEL=nomic-embed-text    # For RAG embeddings
+# LLM Providers (OpenAI recommended - ~$2/year total cost)
+EMBED_PROVIDER=openai           # RAG embeddings (text-embedding-3-large, 3072 dims)
+EXTRACT_PROVIDER=openai         # Graph extraction (gpt-4o-mini, 12x faster than Ollama)
+OPENAI_API_KEY=sk-proj-...      # Get from platform.openai.com/api-keys
+
+# Optional: Ollama fallback (local, free, slower)
+# EMBED_PROVIDER=ollama
+# EXTRACT_PROVIDER=ollama
+# LLM_MODEL=qwen3:8b
+# EMBED_MODEL=nomic-embed-text
 ```
 
 **Note:** After setup, most configuration moves into the `nexus.settings` database table and is hot-reloadable. The `.env` file is only used for secrets and Docker container environment.
@@ -179,7 +185,7 @@ Tracks which stocks the system monitors, analyzes, and trades.
 | ticker | VARCHAR(10) | Stock symbol (unique, primary key field) |
 | name | VARCHAR(100) | Company name |
 | sector | VARCHAR(50) | Sector classification |
-| is_enabled | BOOLEAN | Include in automated runs |
+| is_enabled | BOOLEAN | Include in automated batch runs (see note below) |
 | state | ENUM | `analysis` (observe), `paper` (paper orders), `live` (future) |
 | default_analysis_type | ENUM | `earnings` or `stock` |
 | priority | INT 1-10 | Processing order (10 = highest) |
@@ -193,6 +199,11 @@ Tracks which stocks the system monitors, analyzes, and trades.
 | comments | TEXT | Free-form notes |
 
 **Seed data:** NFLX, NVDA, AAPL, AMZN, MSFT, META, GOOGL, TSLA, AMD, CRM — all in `analysis` state.
+
+**Enable/Disable behavior:**
+- `is_enabled=true` → Stock included in `watchlist` and `run-due` batch commands
+- `is_enabled=false` → Stock skipped in batch runs, but manual `analyze TICKER` still works
+- Use case: Temporarily pause a stock (too volatile, no catalyst) without deleting it from the database
 
 ### nexus.ib_scanners — Market Scanners
 
@@ -441,6 +452,34 @@ Only runs if:
 Claude Code reads the analysis, re-validates the trade plan, checks current prices and exposure, then places a LIMIT order on the IB paper account via the IB MCP server.
 
 **Output:** A trade log in the trades/ directory with order details.
+
+### Trading Modes
+
+| Mode | `dry_run_mode` | `auto_execute_enabled` | Stock `state` | Behavior |
+|------|----------------|------------------------|---------------|----------|
+| **Analysis Only** | `false` | `false` | `analysis` | Reports only, no orders |
+| **Paper Trading** | `false` | `true` | `paper` | Paper orders via IB Gateway (port 4002) |
+| **Live Trading** | `false` | `true` | `live` | 🚫 **Blocked in code** — not implemented |
+
+**Setup commands:**
+
+```bash
+# Analysis only (default safe mode)
+python3 orchestrator.py settings set dry_run_mode false
+python3 orchestrator.py settings set auto_execute_enabled false
+
+# Enable paper trading for specific stocks
+python3 orchestrator.py settings set auto_execute_enabled true
+python3 orchestrator.py stock set-state NVDA paper
+python3 orchestrator.py stock set-state AAPL paper
+
+# Live trading — NOT AVAILABLE
+# Blocked in orchestrator.py for safety. Requires:
+# - Extensive paper trading validation
+# - Position/loss limits implementation
+# - Manual review workflow
+# - IB Gateway live mode (port 4001)
+```
 
 ---
 

@@ -1,12 +1,19 @@
 # Watchlist Template
 # Output: knowledge/watchlist/{TICKER}_{YYYYMMDDTHHMM}.yaml
+#
+# EXPIRATION RULES:
+# - Max 30 days from creation (default ceiling)
+# - Shorter for event-driven: earnings date, FDA decision, etc.
+# - If not triggered in 30 days → status becomes "expired"
+# - Two mechanisms: _meta.expires (absolute) OR time_limit_days (relative)
+# - Whichever comes first triggers expiration
 
 _meta:
   id: "{TICKER}_{YYYYMMDDTHHMM}"
   type: watchlist
   version: 1
   created: "{ISO_DATETIME}"
-  expires: "{YYYY-MM-DD}"  # Max 30 days from creation
+  expires: "{YYYY-MM-DD}"  # ABSOLUTE: Max 30 days, shorter for events
   status: "active|triggered|invalidated|expired"
 
 ticker: "{TICKER}"
@@ -35,12 +42,14 @@ entry_trigger:
     - ""
 
 # Invalidation
+# Conditions that break the thesis (remove without triggering)
 invalidation:
   type: "price|condition|time"
   description: ""
-  
-  price_level: 0.00
-  time_limit_days: 30
+
+  price_level: 0.00           # Price that invalidates thesis
+  time_limit_days: 30         # RELATIVE: Days from creation (max 30)
+                              # Recommended: 5-10 for pullbacks, 7-14 for breakouts
 
 # Key Levels
 key_levels:
@@ -51,10 +60,11 @@ key_levels:
   entry_zone: 0.00
 
 # Upcoming Events
+# Events with impact: "high" can trigger expiration when date passes
 events:
-  - event: ""
-    date: "{YYYY-MM-DD}"
-    impact: "high|medium|low"
+  - event: ""                 # e.g., "Q4 Earnings", "FDA Decision"
+    date: "{YYYY-MM-DD}"      # Event date
+    impact: "high|medium|low" # high = expires after this date
 
 # Monitoring Log
 monitoring_log:

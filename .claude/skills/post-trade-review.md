@@ -36,29 +36,60 @@ Use this skill to analyze completed trades and extract lessons. Closes the learn
 
 ## Workflow
 
-1. **Read skill definition**: Load `trading/skills/post-trade-review/SKILL.md`
-2. **Find closed trade** in `trading/knowledge/trades/`
-3. **Execute review framework**:
-   - Step 1: Document Facts (trade details, original thesis)
-   - Step 2: Execution Analysis
-     - Entry timing (early/on-time/late)
-     - Exit timing and reason
-     - Slippage analysis
-     - Entry/Exit grades (A-F)
-   - Step 3: Thesis Accuracy
-     - Direction: correct?
-     - Magnitude: within 50%?
-     - Timing: correct?
-     - Catalyst: played out?
-   - Step 4: What Worked / What Didn't
-   - Step 5: Bias Check Retrospective (score each 1-5)
-     - Recency, Confirmation, Overconfidence, Loss Aversion, Anchoring
-   - Step 6: Grade the Trade (overall A-F)
-   - Step 7: Extract Lessons (actionable improvements)
-4. **Generate output** using `trading/skills/post-trade-review/template.yaml`
-5. **Save** to `trading/knowledge/reviews/{TICKER}_{YYYYMMDDTHHMM}_review.yaml`
+### Step 1: Find Closed Trade (RAG + Graph)
 
-## Grading Components
+```yaml
+# Find the trade journal entry
+Tool: rag_search
+Input: {"query": "$TICKER trade entry exit", "ticker": "$TICKER", "top_k": 10}
+
+# Get original analysis that triggered trade
+Tool: rag_search
+Input: {"query": "$TICKER analysis recommendation", "ticker": "$TICKER", "top_k": 5}
+
+# Get ticker context
+Tool: graph_context
+Input: {"ticker": "$TICKER"}
+
+# Check historical biases
+Tool: graph_biases
+Input: {}
+```
+
+### Step 2: Get Post-Trade Market Data (IB MCP)
+
+```yaml
+# What happened after exit?
+Tool: mcp__ib-mcp__get_stock_price
+Input: {"symbol": "$TICKER"}
+
+# Price action during trade period
+Tool: mcp__ib-mcp__get_historical_data
+Input: {"symbol": "$TICKER", "duration": "1 M", "bar_size": "1 day"}
+```
+
+### Step 3: Read Skill Definition
+
+Load `trading/skills/post-trade-review/SKILL.md` and execute the review framework:
+
+1. **Step 1: Document Facts** (trade details, original thesis)
+2. **Step 2: Execution Analysis**
+   - Entry timing (early/on-time/late)
+   - Exit timing and reason
+   - Slippage analysis
+   - Entry/Exit grades (A-F)
+3. **Step 3: Thesis Accuracy**
+   - Direction: correct?
+   - Magnitude: within 50%?
+   - Timing: correct?
+   - Catalyst: played out?
+4. **Step 4: What Worked / What Didn't**
+5. **Step 5: Bias Check Retrospective** (score each 1-5)
+   - Recency, Confirmation, Overconfidence, Loss Aversion, Anchoring
+6. **Step 6: Grade the Trade** (overall A-F)
+7. **Step 7: Extract Lessons** (actionable improvements)
+
+### Step 4: Grading Components
 
 ```
 Analysis Quality:      A / B / C / D / F
@@ -70,7 +101,7 @@ Emotional Discipline:  A / B / C / D / F
 OVERALL GRADE:         A / B / C / D / F
 ```
 
-## Lesson Extraction
+### Step 5: Lesson Extraction
 
 For each significant lesson:
 ```
@@ -90,26 +121,44 @@ RULE TO ADD:
 → Save to learnings/rules/
 ```
 
-## Chaining
+### Step 6: Generate Output
 
-- Automatically triggered by **trade-journal** exit
-- Updates **ticker-profile** with trade history and lessons
-- Adds patterns/rules to `trading/knowledge/learnings/`
-- Informs future **earnings-analysis** and **stock-analysis**
+Use `trading/skills/post-trade-review/template.yaml` structure.
 
-## Arguments
+### Step 7: Save Review
 
-- `$ARGUMENTS`: Ticker symbol of closed trade
+Save to `trading/knowledge/reviews/{TICKER}_{YYYYMMDDTHHMM}_review.yaml`
 
-## Auto-Commit to Remote
+Optionally save learnings:
+- `trading/knowledge/learnings/patterns/{pattern_file}.yaml`
+- `trading/knowledge/learnings/rules/{rule_file}.yaml`
 
-After saving the review file (and any learnings), use the GitHub MCP server to push directly:
+### Step 8: Index in Knowledge Base (Post-Save Hooks)
+
+```yaml
+# Extract entities to Graph (captures learnings, biases, patterns)
+Tool: graph_extract
+Input: {"file_path": "trading/knowledge/reviews/{TICKER}_{YYYYMMDDTHHMM}_review.yaml"}
+
+# Embed for semantic search
+Tool: rag_embed
+Input: {"file_path": "trading/knowledge/reviews/{TICKER}_{YYYYMMDDTHHMM}_review.yaml"}
+
+# If patterns extracted
+Tool: graph_extract
+Input: {"file_path": "trading/knowledge/learnings/patterns/{pattern_file}.yaml"}
+
+Tool: rag_embed
+Input: {"file_path": "trading/knowledge/learnings/patterns/{pattern_file}.yaml"}
+```
+
+### Step 9: Push to Remote
 
 ```yaml
 Tool: mcp__github-vl__push_files
 Parameters:
   owner: vladm3105
-  repo: trading_light_pilot
+  repo: TradegentSwarm
   branch: main
   files:
     - path: trading/knowledge/reviews/{TICKER}_{YYYYMMDDTHHMM}_review.yaml
@@ -121,6 +170,30 @@ Parameters:
   message: "Add post-trade review for {TICKER}"
 ```
 
+## Chaining
+
+- Automatically triggered by **trade-journal** exit
+- Updates **ticker-profile** with trade history and lessons
+- Adds patterns/rules to `trading/knowledge/learnings/`
+- Informs future **earnings-analysis** and **stock-analysis**
+
+## Arguments
+
+- `$ARGUMENTS`: Ticker symbol of closed trade
+
+## MCP Tools Used
+
+| Tool | Purpose |
+|------|---------|
+| `rag_search` | Find trade journal and analysis |
+| `graph_context` | Ticker relationships |
+| `graph_biases` | Historical bias patterns |
+| `mcp__ib-mcp__get_stock_price` | Current price (post-exit) |
+| `mcp__ib-mcp__get_historical_data` | Price action during trade |
+| `graph_extract` | Index learnings |
+| `rag_embed` | Embed for search |
+| `mcp__github-vl__push_files` | Push to remote |
+
 ## Execution
 
-Review the closed trade for $ARGUMENTS. Read the full skill definition from `trading/skills/post-trade-review/SKILL.md`. Be honest in grading—learning requires truth. After saving the output file, auto-commit and push to remote.
+Review the closed trade for $ARGUMENTS. Be honest in grading—learning requires truth. Follow all steps: find trade, analyze execution, grade, extract lessons, save, index, and push to remote.

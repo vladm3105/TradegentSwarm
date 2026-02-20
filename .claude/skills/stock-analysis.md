@@ -38,24 +38,77 @@ Use this skill for non-earnings trading opportunities: technical breakouts, valu
 
 ## Workflow
 
-1. **Read skill definition**: Load `trading/skills/stock-analysis/SKILL.md`
-2. **Gather inputs**:
-   - Ticker symbol
-   - Catalyst or reason for analysis
-   - Current stock price
-3. **Execute 7 phases**:
-   - Phase 1: Catalyst Identification (no catalyst = no trade)
-   - Phase 2: Market Environment (regime, sector, volatility)
-   - Phase 3: Technical Analysis (trend, patterns, levels)
-   - Phase 4: Fundamental Check (valuation, growth, red flags)
-   - Phase 5: Sentiment & Positioning
-   - Phase 6: Scenario Analysis (bull/base/bear with probabilities)
-   - Phase 7: Risk Management (position sizing, R:R)
-4. **Calculate setup score** using weighted criteria
-5. **Generate output** using `trading/skills/stock-analysis/template.yaml`
-6. **Save** to `trading/knowledge/analysis/stock/{TICKER}_{YYYYMMDDTHHMM}.yaml`
+### Step 1: Get Historical Context (RAG + Graph)
 
-## Scoring
+Before starting analysis, retrieve relevant context:
+
+```yaml
+Tool: rag_hybrid_context
+Input: {"ticker": "$TICKER", "query": "stock analysis technical patterns catalyst", "analysis_type": "stock-analysis"}
+```
+
+This returns:
+- Past analyses for this ticker
+- Known technical patterns
+- Previous trade outcomes
+- Sector peer data
+
+### Step 2: Get Real-Time Market Data (IB MCP)
+
+```yaml
+# Current stock price
+Tool: mcp__ib-mcp__get_stock_price
+Input: {"symbol": "$TICKER"}
+
+# Historical data for technical analysis
+Tool: mcp__ib-mcp__get_historical_data
+Input: {"symbol": "$TICKER", "duration": "6 M", "bar_size": "1 day"}
+
+# Intraday for entry timing
+Tool: mcp__ib-mcp__get_historical_data
+Input: {"symbol": "$TICKER", "duration": "5 D", "bar_size": "15 mins"}
+
+# Fundamentals
+Tool: mcp__ib-mcp__get_fundamental_data
+Input: {"symbol": "$TICKER", "report_type": "ReportSnapshot"}
+```
+
+### Step 3: Get Sector Context
+
+```yaml
+# Find sector peers from Graph
+Tool: graph_peers
+Input: {"ticker": "$TICKER"}
+
+# Get known risks
+Tool: graph_risks
+Input: {"ticker": "$TICKER"}
+```
+
+### Step 4: Gather External Research
+
+```yaml
+Tool: mcp__brave-search__brave_web_search
+Input: {"query": "$TICKER technical analysis catalyst news"}
+
+# For analyst reports
+Tool: fetch_protected_article
+Input: {"url": "...", "wait_for_selector": "article"}
+```
+
+### Step 5: Read Skill Definition
+
+Load `trading/skills/stock-analysis/SKILL.md` and follow the 7-phase framework:
+
+1. **Phase 1: Catalyst Identification** (no catalyst = no trade)
+2. **Phase 2: Market Environment** (regime, sector, volatility)
+3. **Phase 3: Technical Analysis** (trend, patterns, levels)
+4. **Phase 4: Fundamental Check** (valuation, growth, red flags)
+5. **Phase 5: Sentiment & Positioning**
+6. **Phase 6: Scenario Analysis** (bull/base/bear with probabilities)
+7. **Phase 7: Risk Management** (position sizing, R:R)
+
+### Step 6: Calculate Setup Score
 
 ```
 Catalyst Quality:     ___/10 × 0.25
@@ -72,6 +125,40 @@ TOTAL SCORE:                ___/10
 - Score 5.5-6.4: WATCH
 - Score < 5.5: AVOID
 
+### Step 7: Generate Output
+
+Use `trading/skills/stock-analysis/template.yaml` structure.
+
+### Step 8: Save Analysis
+
+Save to `trading/knowledge/analysis/stock/{TICKER}_{YYYYMMDDTHHMM}.yaml`
+
+### Step 9: Index in Knowledge Base (Post-Save Hooks)
+
+```yaml
+# Extract entities to Graph
+Tool: graph_extract
+Input: {"file_path": "trading/knowledge/analysis/stock/{TICKER}_{YYYYMMDDTHHMM}.yaml"}
+
+# Embed for semantic search
+Tool: rag_embed
+Input: {"file_path": "trading/knowledge/analysis/stock/{TICKER}_{YYYYMMDDTHHMM}.yaml"}
+```
+
+### Step 10: Push to Remote
+
+```yaml
+Tool: mcp__github-vl__push_files
+Parameters:
+  owner: vladm3105
+  repo: TradegentSwarm
+  branch: main
+  files:
+    - path: trading/knowledge/analysis/stock/{TICKER}_{YYYYMMDDTHHMM}.yaml
+      content: [generated analysis content]
+  message: "Add stock analysis for {TICKER}"
+```
+
 ## Chaining
 
 After completion:
@@ -83,22 +170,21 @@ After completion:
 
 - `$ARGUMENTS`: Ticker symbol and optional catalyst description
 
-## Auto-Commit to Remote
+## MCP Tools Used
 
-After saving the analysis file, use the GitHub MCP server to push directly:
-
-```yaml
-Tool: mcp__github-vl__push_files
-Parameters:
-  owner: vladm3105
-  repo: trading_light_pilot
-  branch: main
-  files:
-    - path: trading/knowledge/analysis/stock/{TICKER}_{YYYYMMDDTHHMM}.yaml
-      content: [generated analysis content]
-  message: "Add stock analysis for {TICKER}"
-```
+| Tool | Purpose |
+|------|---------|
+| `rag_hybrid_context` | Get historical context |
+| `mcp__ib-mcp__get_stock_price` | Current price |
+| `mcp__ib-mcp__get_historical_data` | Price history |
+| `mcp__ib-mcp__get_fundamental_data` | Company fundamentals |
+| `graph_peers` | Sector peer comparison |
+| `graph_risks` | Known risk factors |
+| `mcp__brave-search__brave_web_search` | Research |
+| `graph_extract` | Index entities |
+| `rag_embed` | Embed for search |
+| `mcp__github-vl__push_files` | Push to remote |
 
 ## Execution
 
-Analyze $ARGUMENTS using the 7-phase stock analysis framework. Read the full skill definition from `trading/skills/stock-analysis/SKILL.md`. After saving the output file, auto-commit and push to remote.
+Analyze $ARGUMENTS using the 7-phase stock analysis framework. Follow all steps: get context, gather data, execute phases, calculate score, save, index, and push to remote.

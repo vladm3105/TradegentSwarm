@@ -1,45 +1,126 @@
 # Knowledge Base Integration
 
-This document describes how to integrate trading skills with the Knowledge Graph and RAG systems.
+This document describes how trading skills integrate with the RAG (pgvector) and Graph (Neo4j) systems via MCP tools.
 
-## Post-Execution Hooks
+## Skill Integration Pattern
 
-After saving any analysis file to `trading/knowledge/`, run these commands to index the content:
+Every skill follows this pattern:
 
-### 1. Graph Extraction (entities and relationships)
-
-```bash
-cd /opt/data/trading_light_pilot/trader
-python orchestrator.py graph extract <saved_file>
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         SKILL WORKFLOW                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐         │
+│  │   PRE-      │    │   EXECUTE   │    │   POST-     │         │
+│  │   ANALYSIS  │───▶│   SKILL     │───▶│   SAVE      │         │
+│  │   CONTEXT   │    │   WORKFLOW  │    │   HOOKS     │         │
+│  └─────────────┘    └─────────────┘    └─────────────┘         │
+│        │                  │                  │                  │
+│        ▼                  ▼                  ▼                  │
+│  ┌───────────┐      ┌───────────┐      ┌───────────┐           │
+│  │ RAG+Graph │      │ IB MCP +  │      │ Graph +   │           │
+│  │ Context   │      │ Web Data  │      │ RAG Index │           │
+│  └───────────┘      └───────────┘      └───────────┘           │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-This extracts:
-- Tickers and Companies
-- Strategies and Patterns
-- Risks and Biases
-- Catalysts and Events
-- Relationships between entities
+## Pre-Analysis Context (Step 1)
 
-### 2. RAG Embedding (semantic search)
+Before starting any analysis, retrieve historical context:
 
-```bash
-cd /opt/data/trading_light_pilot/trader
-python orchestrator.py rag embed <saved_file>
+```yaml
+# Get hybrid context (vector + graph combined)
+Tool: rag_hybrid_context
+Input: {"ticker": "NVDA", "query": "earnings analysis", "analysis_type": "earnings-analysis"}
+
+# Or use individual tools:
+
+# Semantic search for similar analyses
+Tool: rag_search
+Input: {"query": "NVDA earnings surprise patterns", "ticker": "NVDA", "top_k": 5}
+
+# Get all graph relationships
+Tool: graph_context
+Input: {"ticker": "NVDA"}
+
+# Get sector peers
+Tool: graph_peers
+Input: {"ticker": "NVDA"}
+
+# Get known risks
+Tool: graph_risks
+Input: {"ticker": "NVDA"}
+
+# Check for trading biases
+Tool: graph_biases
+Input: {}
 ```
 
-This enables:
-- Semantic search across all analyses
-- Similar analysis retrieval
-- Historical context for new analyses
+## Real-Time Data (Step 2)
 
-### 3. Verification
+Gather current market data via IB MCP:
 
-```bash
-# Check extraction status
-python orchestrator.py graph status
+```yaml
+# Current price
+Tool: mcp__ib-mcp__get_stock_price
+Input: {"symbol": "NVDA"}
 
-# Check embedding status
-python orchestrator.py rag status
+# Historical bars
+Tool: mcp__ib-mcp__get_historical_data
+Input: {"symbol": "NVDA", "duration": "3 M", "bar_size": "1 day"}
+
+# Options data
+Tool: mcp__ib-mcp__get_option_chain
+Input: {"symbol": "NVDA", "include_greeks": true}
+
+# Fundamentals
+Tool: mcp__ib-mcp__get_fundamental_data
+Input: {"symbol": "NVDA", "report_type": "ReportSnapshot"}
+
+# News
+Tool: mcp__ib-mcp__get_news_headlines
+Input: {"symbol": "NVDA"}
+```
+
+## External Research (Step 3)
+
+Gather web data via Brave Search and browser:
+
+```yaml
+# Web search
+Tool: mcp__brave-search__brave_web_search
+Input: {"query": "NVDA earnings preview analyst estimates"}
+
+# Protected articles (Seeking Alpha, etc.)
+Tool: fetch_protected_article
+Input: {"url": "https://seekingalpha.com/article/...", "wait_for_selector": "article"}
+```
+
+## Post-Save Hooks (Final Step)
+
+After saving any analysis file, index it in the knowledge base:
+
+```yaml
+# 1. Extract entities to Graph (Neo4j)
+Tool: graph_extract
+Input: {"file_path": "trading/knowledge/analysis/earnings/NVDA_20260220T0900.yaml"}
+
+# 2. Embed for semantic search (pgvector)
+Tool: rag_embed
+Input: {"file_path": "trading/knowledge/analysis/earnings/NVDA_20260220T0900.yaml"}
+
+# 3. Push to GitHub
+Tool: mcp__github-vl__push_files
+Parameters:
+  owner: vladm3105
+  repo: TradegentSwarm
+  branch: main
+  files:
+    - path: trading/knowledge/analysis/earnings/NVDA_20260220T0900.yaml
+      content: [generated content]
+  message: "Add earnings analysis for NVDA"
 ```
 
 ## Skill-Specific Entities
@@ -53,20 +134,70 @@ python orchestrator.py rag status
 | `post-trade-review` | Learning, Bias, Strategy, Pattern |
 | `ticker-profile` | Ticker, Company, Sector, Industry, Product, Risk, Pattern |
 | `watchlist` | Ticker, Catalyst, Signal |
+| `scan` | Ticker, Scanner, Signal |
 
-## Pre-Analysis Context
+## MCP Tools Reference
 
-Before starting an analysis, the system can inject relevant historical context:
+### RAG MCP (trading-rag)
 
-```python
-from rag.hybrid import build_analysis_context
+| Tool | Purpose |
+|------|---------|
+| `rag_embed` | Embed a YAML document |
+| `rag_embed_text` | Embed raw text |
+| `rag_search` | Semantic search |
+| `rag_similar` | Find similar analyses |
+| `rag_hybrid_context` | Combined vector + graph context |
+| `rag_status` | Get RAG statistics |
 
-# Get context before analysis
-context = build_analysis_context(ticker="NVDA", analysis_type="earnings-analysis")
-# Returns: past analyses, peer comparisons, known biases, strategy performance
-```
+### Graph MCP (trading-graph)
 
-This is automatically called when using `orchestrator.py analyze`.
+| Tool | Purpose |
+|------|---------|
+| `graph_extract` | Extract entities from document |
+| `graph_extract_text` | Extract from raw text |
+| `graph_search` | Find connected nodes |
+| `graph_peers` | Get sector peers |
+| `graph_risks` | Get known risks |
+| `graph_biases` | Get bias history |
+| `graph_context` | Comprehensive context |
+| `graph_query` | Raw Cypher query |
+| `graph_status` | Get graph statistics |
+
+### IB MCP (ib-mcp)
+
+| Tool | Purpose |
+|------|---------|
+| `get_stock_price` | Real-time quote |
+| `get_historical_data` | OHLCV bars |
+| `get_option_chain` | Options data |
+| `get_fundamental_data` | Fundamentals |
+| `get_positions` | Portfolio positions |
+| `get_pnl` | P&L summary |
+| `run_scanner` | Market scanner |
+| `get_news_headlines` | News |
+
+### Brave Search MCP (brave-search)
+
+| Tool | Purpose |
+|------|---------|
+| `brave_web_search` | Web search |
+
+### Brave Browser MCP (brave-browser)
+
+| Tool | Purpose |
+|------|---------|
+| `fetch_protected_article` | Scrape paywalled content |
+| `take_screenshot` | Page screenshot |
+| `extract_structured_data` | Extract with selectors |
+
+### GitHub MCP (github-vl)
+
+| Tool | Purpose |
+|------|---------|
+| `push_files` | Push multiple files |
+| `create_or_update_file` | Single file |
+| `get_file_contents` | Read file |
+| `list_commits` | Commit history |
 
 ## Automatic Processing
 
@@ -76,19 +207,16 @@ are automatically detected and processed. Manual extraction is only needed for:
 - Re-processing existing documents
 - Testing
 
-## MCP Tool Usage
+## Verification
 
-Claude Code skills can use MCP tools directly:
+Check indexing status:
 
 ```yaml
-# Get context before analysis
-Tool: rag_hybrid_context
-Input: {"ticker": "NVDA", "query": "earnings analysis", "analysis_type": "earnings-analysis"}
+# RAG status
+Tool: rag_status
+Input: {}
 
-# After saving analysis
-Tool: graph_extract
-Input: {"file_path": "trading/knowledge/analysis/earnings/NVDA_20260219T0900.yaml"}
-
-Tool: rag_embed
-Input: {"file_path": "trading/knowledge/analysis/earnings/NVDA_20260219T0900.yaml"}
+# Graph status
+Tool: graph_status
+Input: {}
 ```

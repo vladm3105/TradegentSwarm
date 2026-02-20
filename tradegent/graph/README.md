@@ -87,13 +87,30 @@ cp .env.template .env
 | `NEO4J_USER` | `neo4j` | Neo4j username |
 | `NEO4J_PASS` | (required) | Neo4j password |
 | `NEO4J_DATABASE` | `neo4j` | Database name |
-| `LLM_PROVIDER` | `ollama` | Extraction LLM provider |
+| `EXTRACT_PROVIDER` | `ollama` | LLM provider for entity extraction (ollama, openrouter, openai, claude_api) |
+| `LLM_PROVIDER` | `ollama` | Fallback if EXTRACT_PROVIDER not set |
 | `LLM_BASE_URL` | `http://localhost:11434` | Ollama API URL |
-| `LLM_API_KEY` | (none) | API key for OpenRouter/Claude |
-| `LLM_MODEL` | `llama3.2` | Extraction model |
-| `EXTRACT_TIMEOUT_SECONDS` | `120` | LLM timeout |
+| `LLM_API_KEY` | (none) | API key for OpenRouter/OpenAI/Claude |
+| `LLM_MODEL` | `qwen3:8b` | Extraction model |
+| `EXTRACT_TIMEOUT_SECONDS` | `30` | LLM timeout |
 | `EXTRACT_COMMIT_THRESHOLD` | `0.7` | Auto-commit confidence |
 | `EXTRACT_FLAG_THRESHOLD` | `0.5` | Review flag confidence |
+
+### Provider Options
+
+| Provider | Model | Speed | Quality | Cost |
+|----------|-------|-------|---------|------|
+| `ollama` | qwen3:8b | ~66s | Poor (parse failures) | Free |
+| `openai` | gpt-4o-mini | ~5s | ✅ **Recommended** | ~$0.001/analysis |
+| `openrouter` | claude-3.5-sonnet | ~3s | Good | ~$0.003/1K tokens |
+| `claude_api` | claude-sonnet-4 | ~3s | Good | ~$0.003/1K tokens |
+
+**Benchmark (2026-02-20):**
+- OpenAI gpt-4o-mini is **12x faster** than local Ollama
+- OpenAI produces better structured JSON output
+- Cost: ~$0.01 per 10 analyses, ~$1.00 per 1000 analyses
+
+**Note:** Entity extraction output is structured JSON, so you can freely switch providers without affecting existing data.
 
 ### Generation Settings
 

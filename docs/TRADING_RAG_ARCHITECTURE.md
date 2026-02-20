@@ -1,9 +1,9 @@
 # Trading RAG (Retrieval-Augmented Generation) — Architecture Plan
 
-> **Status**: Planning  
-> **Last updated**: 2026-02-19  
-> **Replaces**: LightRAG vector search component  
-> **Companion**: [TRADING_GRAPH_ARCHITECTURE.md](TRADING_GRAPH_ARCHITECTURE.md) (knowledge graph)
+> **Status**: Implemented
+> **Last updated**: 2026-02-20
+> **Replaces**: LightRAG vector search component
+> **Companions**: [TRADING_GRAPH_ARCHITECTURE.md](TRADING_GRAPH_ARCHITECTURE.md) (knowledge graph), [SCANNER_ARCHITECTURE.md](SCANNER_ARCHITECTURE.md) (opportunity finding)
 
 ## Overview
 
@@ -21,20 +21,20 @@ Together with the Neo4j knowledge graph, this forms a **hybrid RAG** system:
 1. **Section-level chunking** — YAML documents are split by semantic section (thesis, risks, catalysts), not by token count
 2. **Metadata-first filtering** — filter by ticker, doc type, date range *before* vector search (fast + precise)
 3. **Same PostgreSQL instance** — no new infrastructure; pgvector is already available in `nexus-postgres`
-4. **Ollama-first embeddings** — `nomic-embed-text` (768 dims, 2048 token context) locally, $0 cost; LiteLLM/OpenRouter cloud fallback
+4. **OpenAI embeddings** — `text-embedding-3-large` (3072 dims) for best quality at ~$2/year; Ollama fallback available
 5. **Incremental indexing** — embed documents as skills produce them, no batch backfill of templates
 
 ### Key Decision: Why Not LightRAG?
 
 | Factor | LightRAG | Custom pgvector RAG |
 |--------|----------|---------------------|
-| Embedding model | Cloud API ($) | Ollama ($0), LiteLLM/OpenRouter fallback |
+| Embedding model | Cloud API ($) | OpenAI text-embedding-3-large (~$2/year) |
 | Chunking | Generic text splitting | YAML-section-aware |
 | Metadata filtering | Limited | Full SQL (ticker, type, date, tags) |
 | Infrastructure | Separate container + API | Existing PostgreSQL instance |
 | Hybrid search | Built-in but opaque | Explicit: pgvector + Neo4j graph |
 | Operational complexity | High (separate process) | Low (SQL queries via db_layer.py) |
-| Timeout risk | Critical (extraction + embedding) | None (embedding is fast: ~50ms/chunk) |
+| Timeout risk | Critical (extraction + embedding) | None (embedding is fast: ~100ms/doc) |
 
 ---
 
