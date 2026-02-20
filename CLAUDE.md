@@ -199,10 +199,13 @@ Scanners score candidates using weighted criteria (weights sum to 1.0):
 ```
 Score = Σ (Criterion × Weight)
 
-≥ 7.5: Trigger full analysis (earnings-analysis or stock-analysis)
-5.5-7.4: Add to watchlist
+≥ 7.5: High Priority → Trigger full analysis (earnings-analysis or stock-analysis)
+6.5-7.4: Good → Add to watchlist, monitor closely
+5.5-6.4: Marginal → Add to watchlist, lower priority
 < 5.5: Skip
 ```
+
+See `docs/SCANNER_ARCHITECTURE.md` for detailed scoring criteria and routing logic.
 
 ### Running Scanners
 
@@ -346,8 +349,10 @@ export LLM_API_KEY=<api-key>          # Required for openrouter/openai/claude_ap
 | Graph Extraction | `EXTRACT_PROVIDER` | ollama, openrouter, openai, claude_api | Can switch freely |
 
 **Recommended setup (current):**
-- `EMBED_PROVIDER=openai` - Best quality embeddings (text-embedding-3-large, 3072 dims, ~$2/year)
+- `EMBED_PROVIDER=openai` - Best quality embeddings (text-embedding-3-large, 1536 dims via API truncation, ~$2/year)
 - `EXTRACT_PROVIDER=openai` - Fast entity extraction (gpt-4o-mini, 12x faster than Ollama, ~$0.001/analysis)
+
+> **Note**: We use 1536 dimensions (not 3072) because pgvector's HNSW index has a 2000 dimension limit. The OpenAI API truncates embeddings to the requested dimension.
 
 ### Running Commands
 ```bash
@@ -413,18 +418,23 @@ python orchestrator.py watchlist
 
 ### Trading Modes
 
+> **Safety Default**: The system starts with `dry_run_mode=true`, which blocks ALL Claude Code calls and only logs what it would do. You must explicitly disable dry run mode to enable any operation.
+
 | Mode | Settings | Stock State | Behavior |
 |------|----------|-------------|----------|
+| **Dry Run** (default) | `dry_run_mode=true` | any | Logs only, no Claude Code calls, no orders |
 | **Analysis Only** | `dry_run_mode=false`, `auto_execute_enabled=false` | `analysis` | Reports only, no orders |
 | **Paper Trading** | `dry_run_mode=false`, `auto_execute_enabled=true` | `paper` | Paper orders via IB Gateway |
 | **Live Trading** | — | `live` | 🚫 **Blocked in code** (not implemented) |
 
 ```bash
-# Analysis only (default)
+# Step 1: Disable dry run mode (required for any real operation)
 python orchestrator.py settings set dry_run_mode false
+
+# Step 2a: Analysis only (no auto-execute)
 python orchestrator.py settings set auto_execute_enabled false
 
-# Enable paper trading for a stock
+# Step 2b: Enable paper trading for a stock
 python orchestrator.py settings set auto_execute_enabled true
 python orchestrator.py stock set-state NVDA paper
 ```
@@ -571,6 +581,8 @@ python -m ibmcp --transport sse --port 8100
 ```
 
 Server URL: `http://localhost:8100/sse`
+
+> **Note**: Port 8100 is used when running IB MCP directly. The README.md shows Docker deployment using port 8002. Either works - use whatever matches your setup.
 
 ### Architecture: IB Gateway as Proxy
 
