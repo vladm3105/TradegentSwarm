@@ -924,6 +924,11 @@ open coverage_report/index.html
 
 ```
 tradegent/
+├── tests/                    # Core platform tests
+│   ├── conftest.py           # Shared fixtures (DB mocks, settings)
+│   ├── test_orchestrator.py  # Pipeline, CLI, gate checks
+│   └── test_db_layer.py      # Database operations, CRUD
+│
 ├── graph/tests/
 │   ├── conftest.py           # Shared fixtures (Neo4j mocks, test client)
 │   ├── test_webhook.py       # FastAPI endpoint tests (12 endpoints)
@@ -963,20 +968,88 @@ tradegent/
 ```bash
 # Clone
 git clone git@github.com:vladm3105/TradegentSwarm.git
-cd trading_light_pilot
+cd TradegentSwarm
 
 # Setup
-cp .env.template .env
+cp tradegent/.env.template tradegent/.env
 # Edit .env with your credentials
-bash setup.sh
+cd tradegent && bash setup.sh
+
+# Install pre-commit hooks (required)
+pip install pre-commit
+pre-commit install
 
 # Run tests before committing
-cd tradegent && pytest --no-cov -q
+pytest --no-cov -q
 
 # After making changes
 git add -A
 git commit -m "description of change"
 GIT_SSH_COMMAND="LD_LIBRARY_PATH= /usr/bin/ssh" git push
+```
+
+### Pre-commit Hooks
+
+Pre-commit hooks run automatically on every commit:
+- **Gitleaks** — Scans for secrets (API keys, passwords)
+- **detect-secrets** — Additional secret detection
+- **ruff** — Python linting and formatting
+- **bandit** — Security scanning
+
+If a secret is detected, the commit is blocked. Remove the secret and try again.
+
+### CI/CD Pipeline
+
+GitHub Actions runs on all PRs and pushes:
+
+1. **secrets-scan** — Blocks if secrets detected (runs first)
+2. **lint** — ruff, black, mypy
+3. **test** — pytest with coverage
+4. **integration** — Full integration tests (main branch only)
+5. **security** — bandit, safety, detect-secrets
+
+---
+
+## Security
+
+### Audit Logging
+
+All significant actions are logged to `nexus.audit_log`:
+
+```sql
+-- View recent audit events
+SELECT timestamp, action, actor, resource_type, resource_id, result
+FROM nexus.audit_log
+ORDER BY timestamp DESC
+LIMIT 20;
+
+-- Log an event programmatically
+SELECT nexus.audit_log_event(
+    'stock_add',           -- action
+    'stock',               -- resource_type
+    'NVDA',                -- resource_id
+    'success',             -- result
+    '{"priority": 9}'::jsonb  -- details
+);
+```
+
+### Health Endpoint Security
+
+The health endpoint binds to localhost by default:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HEALTH_BIND_ADDR` | `127.0.0.1` | Bind address (use `0.0.0.0` for containers) |
+| `HEALTH_CHECK_TOKEN` | (none) | Bearer token for authenticated access |
+
+Without a token, only basic status is exposed. With a token, detailed metrics are available.
+
+```bash
+# Basic health check
+curl http://localhost:8080/health
+
+# Authenticated (detailed metrics)
+curl -H "Authorization: Bearer $HEALTH_CHECK_TOKEN" http://localhost:8080/health
 ```
 
 ---

@@ -365,6 +365,44 @@ See [trading/skills/README.md](trading/skills/README.md) for the full skill inde
 
 GitHub Actions CI/CD for validating documents against JSON schemas. Includes schemas for all document types.
 
+## Security
+
+The platform includes comprehensive security measures to prevent credential exposure.
+
+### Secret Scanning
+
+| Layer | Tool | Purpose |
+|-------|------|---------|
+| Local | pre-commit hooks | Blocks commits with secrets |
+| CI/CD | Gitleaks + TruffleHog | Scans all PRs and pushes |
+| CI/CD | Custom patterns | Trading-specific credential detection |
+
+**Detected patterns:** OpenAI/Anthropic/OpenRouter API keys, PostgreSQL connection strings, IB credentials, Neo4j passwords, VNC passwords.
+
+### Setup Pre-commit Hooks
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+This runs secret scanning before every commit locally.
+
+### Audit Logging
+
+All significant actions are logged to `nexus.audit_log` for security tracking and compliance.
+
+## CI/CD
+
+GitHub Actions workflows run on every push and PR:
+
+| Workflow | Purpose |
+|----------|---------|
+| `secrets-scan.yml` | Blocks any commit with exposed secrets |
+| `ci.yml` | Lint, test, security scan |
+
+The secrets scan runs **first** and blocks all other jobs if secrets are detected.
+
 ## Prerequisites
 
 | Requirement | Purpose |
@@ -398,6 +436,46 @@ python service.py            # Run the daemon
 ```
 
 See [tradegent/README.md](tradegent/README.md) for detailed instructions.
+
+## Development
+
+### Setup
+
+```bash
+# Clone
+git clone git@github.com:vladm3105/TradegentSwarm.git
+cd TradegentSwarm
+
+# Install dependencies
+pip install -e ".[dev]"
+
+# Setup pre-commit hooks (required)
+pip install pre-commit
+pre-commit install
+```
+
+### Testing
+
+```bash
+cd tradegent
+
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=rag --cov=graph --cov-report=html
+
+# Run specific modules
+pytest tests/                    # Orchestrator + DB layer tests
+pytest rag/tests/                # RAG tests
+pytest graph/tests/              # Graph tests
+```
+
+### Commit Guidelines
+
+- Pre-commit hooks run automatically (secret scanning, linting)
+- CI/CD runs on all PRs and pushes
+- Secrets in commits will be blocked
 
 ## License
 
