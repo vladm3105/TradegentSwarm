@@ -67,28 +67,55 @@ log = logging.getLogger("nexus-service")
 # ─── Health Check HTTP Server ────────────────────────────────────────────────
 
 class HealthHandler(BaseHTTPRequestHandler):
-    """Minimal HTTP handler for Docker/Cloud Run health checks."""
+    """
+    Secure HTTP handler for Docker/Cloud Run health checks.
+
+    Security features:
+    - Binds to localhost by default (HEALTH_BIND_ADDR env var)
+    - Optional token authentication (HEALTH_CHECK_TOKEN env var)
+    - Minimal information exposure in authenticated vs unauthenticated mode
+    """
     db_ref: NexusDB = None
+    auth_token: str = None
+
+    def _check_auth(self) -> bool:
+        """Verify authentication token if configured."""
+        if not self.auth_token:
+            return True  # No auth configured, allow access
+
+        auth_header = self.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            provided_token = auth_header[7:]
+            return provided_token == self.auth_token
+        return False
 
     def do_GET(self):
         if self.path == "/health" or self.path == "/":
             try:
+                # Always respond to health check for liveness probes
                 status = self.db_ref.get_service_status() if self.db_ref else None
-                if status and status.get('state') in ('running', 'starting'):
+                is_healthy = status and status.get('state') in ('running', 'starting')
+
+                if is_healthy:
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json")
                     self.end_headers()
+
                     import json
-                    body = json.dumps({
-                        "status": "healthy",
-                        "state": status.get('state'),
-                        "uptime_since": str(status.get('started_at')),
-                        "last_heartbeat": str(status.get('last_heartbeat')),
-                        "ticks": status.get('ticks_total', 0),
-                        "today_analyses": status.get('today_analyses', 0),
-                        "today_executions": status.get('today_executions', 0),
-                        "pid": os.getpid(),
-                    })
+                    # Only expose detailed metrics if authenticated
+                    if self._check_auth():
+                        body = json.dumps({
+                            "status": "healthy",
+                            "state": status.get('state'),
+                            "uptime_since": str(status.get('started_at')),
+                            "last_heartbeat": str(status.get('last_heartbeat')),
+                            "ticks": status.get('ticks_total', 0),
+                            "today_analyses": status.get('today_analyses', 0),
+                            "today_executions": status.get('today_executions', 0),
+                        })
+                    else:
+                        # Minimal response for unauthenticated requests
+                        body = json.dumps({"status": "healthy"})
                     self.wfile.write(body.encode())
                 else:
                     self.send_response(503)
@@ -107,12 +134,22 @@ class HealthHandler(BaseHTTPRequestHandler):
 
 
 def start_health_server(db: NexusDB, port: int = 8080):
-    """Start health check HTTP server in background thread."""
+    """
+    Start health check HTTP server in background thread.
+
+    Environment variables:
+    - HEALTH_BIND_ADDR: Address to bind (default: 127.0.0.1 for security)
+    - HEALTH_CHECK_TOKEN: Optional bearer token for authentication
+    """
     HealthHandler.db_ref = db
-    server = HTTPServer(("0.0.0.0", port), HealthHandler)
+    HealthHandler.auth_token = os.getenv("HEALTH_CHECK_TOKEN")
+
+    # Default to localhost for security; use 0.0.0.0 only in containerized envs
+    bind_addr = os.getenv("HEALTH_BIND_ADDR", "127.0.0.1")
+    server = HTTPServer((bind_addr, port), HealthHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    log.info(f"Health endpoint listening on :{port}/health")
+    log.info(f"Health endpoint listening on {bind_addr}:{port}/health")
     return server
 
 

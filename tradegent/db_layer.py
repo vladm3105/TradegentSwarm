@@ -725,3 +725,105 @@ class NexusDB:
         except Exception as e:
             log.error(f"DB health check failed: {e}")
             return False
+
+    # ─── Audit Logging ─────────────────────────────────────────────────────
+
+    def audit_log(
+        self,
+        action: str,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        result: str = "success",
+        details: Optional[dict] = None,
+        actor: str = "system",
+    ) -> Optional[int]:
+        """
+        Log an audit event for security and compliance tracking.
+
+        Args:
+            action: The action performed (e.g., 'stock_add', 'setting_change')
+            resource_type: Type of resource affected (e.g., 'stock', 'schedule')
+            resource_id: Identifier of the resource (e.g., ticker, schedule name)
+            result: Outcome ('success', 'failure', 'blocked', 'error')
+            details: Additional context as dict (serialized to JSONB)
+            actor: Who performed the action (e.g., 'system', 'orchestrator', 'cli:user')
+
+        Returns:
+            The audit log entry ID, or None on failure
+        """
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT nexus.audit_log_event(
+                        %s, %s, %s, %s, %s, %s
+                    ) AS id
+                    """,
+                    [action, resource_type, resource_id, result,
+                     json.dumps(details or {}), actor],
+                )
+                row = cur.fetchone()
+                self.conn.commit()
+                return row['id'] if row else None
+        except Exception as e:
+            log.warning(f"Failed to write audit log: {e}")
+            return None
+
+    def get_audit_logs(
+        self,
+        action: Optional[str] = None,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        actor: Optional[str] = None,
+        since: Optional[datetime] = None,
+        limit: int = 100,
+    ) -> list[dict]:
+        """
+        Retrieve audit log entries with optional filters.
+
+        Args:
+            action: Filter by action type
+            resource_type: Filter by resource type
+            resource_id: Filter by resource ID
+            actor: Filter by actor
+            since: Only entries after this timestamp
+            limit: Maximum entries to return
+
+        Returns:
+            List of audit log entries as dictionaries
+        """
+        conditions = []
+        params = []
+
+        if action:
+            conditions.append("action = %s")
+            params.append(action)
+        if resource_type:
+            conditions.append("resource_type = %s")
+            params.append(resource_type)
+        if resource_id:
+            conditions.append("resource_id = %s")
+            params.append(resource_id)
+        if actor:
+            conditions.append("actor = %s")
+            params.append(actor)
+        if since:
+            conditions.append("timestamp >= %s")
+            params.append(since)
+
+        where_clause = " AND ".join(conditions) if conditions else "1=1"
+        params.append(limit)
+
+        with self.conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT id, timestamp, action, actor, resource_type, resource_id,
+                       result, details
+                FROM nexus.audit_log
+                WHERE {where_clause}
+                ORDER BY timestamp DESC
+                LIMIT %s
+                """,
+                params,
+            )
+            return [dict(row) for row in cur.fetchall()]

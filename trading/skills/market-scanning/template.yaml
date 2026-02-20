@@ -1,0 +1,84 @@
+# Market Scanning Output Template
+# Output: knowledge/scanners/runs/{SCANNER}_{YYYYMMDDTHHMM}.yaml
+#
+# This template captures scanner run results and candidate routing.
+
+_meta:
+  id: "{SCANNER}_{YYYYMMDDTHHMM}"
+  type: scanner_run
+  version: 1
+  created: "{ISO_DATETIME}"
+
+# Scanner Details
+scanner:
+  name: "{SCANNER_NAME}"
+  config_file: "knowledge/scanners/{daily|intraday|weekly}/{scanner}.yaml"
+  schedule_time: "{HH:MM}"
+  schedule_type: "daily|intraday|weekly"
+
+# Market Context
+market_context:
+  regime: "bull|bear|neutral|high_volatility"
+  vix_level: 0.00
+  spy_change_pct: 0.00
+  market_phase: "premarket|open|mid_day|close|after_hours"
+
+# Scan Summary
+scan_summary:
+  universe_size: 0         # Total stocks in scan universe
+  passed_quality_filters: 0
+  passed_liquidity_filters: 0
+  scored_candidates: 0
+  high_score_count: 0      # >= 7.5
+  watchlist_count: 0       # 5.5-7.4
+  skipped_count: 0         # < 5.5
+
+# Candidates (ordered by score descending)
+candidates:
+  - ticker: "{TICKER}"
+    score: 0.00
+    action: "FULL_ANALYSIS|WATCHLIST|SKIP"
+    analysis_type: "earnings|stock"  # For FULL_ANALYSIS routing
+
+    # Score breakdown
+    scoring:
+      - criterion: ""
+        score: 0.0
+        weight: 0.00
+        weighted: 0.00
+
+    # Key data that influenced scoring
+    key_data:
+      price: 0.00
+      volume_vs_avg: 0.00
+      gap_pct: 0.00
+      catalyst: ""
+
+    # Why this candidate scored high/low
+    rationale: ""
+
+# Actions Taken
+actions_taken:
+  full_analyses_triggered:
+    - ticker: ""
+      analysis_type: "earnings|stock"
+
+  watchlist_entries_created:
+    - ticker: ""
+      priority: "high|medium|low"
+
+  skipped:
+    - ticker: ""
+      reason: ""
+
+# Execution Notes
+execution:
+  duration_seconds: 0
+  data_sources_used:
+    - ""
+  errors: []
+  warnings: []
+
+# Next Steps
+next_steps:
+  - ""

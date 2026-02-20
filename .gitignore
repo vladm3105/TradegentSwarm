@@ -2,17 +2,33 @@
 __pycache__/
 *.py[cod]
 .mypy_cache/
+*.egg-info/
+dist/
+build/
 
 # IDE
 .vscode/
 .idea/
 
-# Environment
+# Environment - NEVER commit real credentials
 .env
 .env.*
 !.env.template
+!.env.example
+
+# Secrets scanning
+.secrets.baseline.new
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Testing
 .coverage
+htmlcov/
+.pytest_cache/
+coverage.xml
+
+# Logs
+*.log
+logs/

@@ -1,0 +1,83 @@
+# Gitleaks configuration for TradegentSwarm
+# Prevents accidental commit of secrets, credentials, and API keys
+
+title = "TradegentSwarm Secret Detection"
+
+[extend]
+# Use default gitleaks rules as base
+useDefault = true
+
+# Custom rules for trading-specific secrets
+[[rules]]
+id = "ib-credentials"
+description = "Interactive Brokers credentials"
+regex = '''(?i)(ib[-_]?(user|pass|password|account)|tws[-_]?(user|password))\s*[=:]\s*["']?[a-zA-Z0-9_-]{3,}["']?'''
+keywords = ["ib_user", "ib_pass", "ib_password", "ib_account", "tws_user", "tws_password"]
+
+[[rules]]
+id = "openai-api-key"
+description = "OpenAI API Key"
+regex = '''sk-proj-[a-zA-Z0-9_-]{20,}'''
+keywords = ["sk-proj-"]
+
+[[rules]]
+id = "anthropic-api-key"
+description = "Anthropic API Key"
+regex = '''sk-ant-[a-zA-Z0-9_-]{20,}'''
+keywords = ["sk-ant-"]
+
+[[rules]]
+id = "openrouter-api-key"
+description = "OpenRouter API Key"
+regex = '''sk-or-[a-zA-Z0-9_-]{20,}'''
+keywords = ["sk-or-"]
+
+[[rules]]
+id = "postgres-connection-string"
+description = "PostgreSQL connection string with credentials"
+regex = '''postgres(ql)?://[^:]+:[^@]+@'''
+keywords = ["postgresql://", "postgres://"]
+
+[[rules]]
+id = "neo4j-password"
+description = "Neo4j password in config"
+regex = '''(?i)neo4j[-_]?pass(word)?\s*[=:]\s*["']?[a-zA-Z0-9!@#$%^&*_-]{6,}["']?'''
+keywords = ["neo4j_pass", "neo4j_password", "NEO4J_PASS"]
+
+[[rules]]
+id = "database-password"
+description = "Database password in config"
+regex = '''(?i)(pg[-_]?pass|db[-_]?pass(word)?)\s*[=:]\s*["']?[a-zA-Z0-9!@#$%^&*_-]{6,}["']?'''
+keywords = ["pg_pass", "db_pass", "db_password", "PG_PASS"]
+
+[[rules]]
+id = "vnc-password"
+description = "VNC password"
+regex = '''(?i)vnc[-_]?pass(word)?\s*[=:]\s*["']?[a-zA-Z0-9!@#$%^&*_-]{4,}["']?'''
+keywords = ["vnc_pass", "vnc_password", "VNC_PASS"]
+
+[[rules]]
+id = "generic-api-key"
+description = "Generic API key pattern"
+regex = '''(?i)(api[-_]?key|apikey|secret[-_]?key)\s*[=:]\s*["']?[a-zA-Z0-9_-]{20,}["']?'''
+keywords = ["api_key", "apikey", "secret_key", "API_KEY"]
+
+# Allowlist - files and patterns that should be ignored
+[allowlist]
+description = "Global allowlist"
+paths = [
+    '''\.env\.template$''',
+    '''\.env\.example$''',
+    '''requirements.*\.txt$''',
+    '''.*test.*\.py$''',
+    '''conftest\.py$''',
+    '''\.gitleaks\.toml$''',
+]
+regexes = [
+    '''<your-.*>''',
+    '''<generate-.*>''',
+    '''changeme.*''',
+    '''placeholder''',
+    '''example\.com''',
+    '''localhost''',
+]

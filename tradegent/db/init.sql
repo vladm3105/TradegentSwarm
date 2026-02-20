@@ -459,3 +459,66 @@ COMMENT ON TABLE nexus.run_history IS 'Audit log of every orchestrator run. Trac
 COMMENT ON TABLE nexus.analysis_results IS 'Structured analysis outputs parsed from Claude Code responses. Enables trend analysis.';
 COMMENT ON TABLE nexus.settings IS 'Hot-reloadable key-value settings. Changes take effect on next scheduler tick.';
 COMMENT ON TABLE nexus.service_status IS 'Singleton row tracking service health. Used for heartbeat and monitoring.';
+
+-- ─── 8. Audit Log (Security Tracking) ──────────────────────────
+
+CREATE TABLE IF NOT EXISTS nexus.audit_log (
+    id              BIGSERIAL PRIMARY KEY,
+    timestamp       TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    -- What happened
+    action          VARCHAR(50) NOT NULL,
+    -- Actions: stock_add, stock_delete, stock_update, setting_change,
+    --          schedule_create, schedule_delete, order_placed, order_cancelled,
+    --          login_attempt, api_key_used, cypher_blocked, etc.
+
+    -- Who did it
+    actor           VARCHAR(100) NOT NULL DEFAULT 'system',
+    -- e.g., 'system', 'orchestrator', 'service', 'cli:user', 'api:token_xxx'
+
+    -- What was affected
+    resource_type   VARCHAR(50),
+    -- e.g., 'stock', 'schedule', 'setting', 'order', 'analysis'
+    resource_id     VARCHAR(100),
+    -- e.g., ticker symbol, schedule name, setting key
+
+    -- Result
+    result          VARCHAR(20) NOT NULL DEFAULT 'success',
+    -- success, failure, blocked, error
+
+    -- Details (JSONB for flexibility)
+    details         JSONB DEFAULT '{}',
+    -- e.g., {"old_value": "...", "new_value": "...", "reason": "..."}
+
+    -- Context
+    ip_address      INET,
+    user_agent      VARCHAR(500),
+    session_id      VARCHAR(100)
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON nexus.audit_log(timestamp);
+CREATE INDEX IF NOT EXISTS idx_audit_log_action ON nexus.audit_log(action);
+CREATE INDEX IF NOT EXISTS idx_audit_log_actor ON nexus.audit_log(actor);
+CREATE INDEX IF NOT EXISTS idx_audit_log_resource ON nexus.audit_log(resource_type, resource_id);
+
+-- Function to log audit events
+CREATE OR REPLACE FUNCTION nexus.audit_log_event(
+    p_action VARCHAR(50),
+    p_resource_type VARCHAR(50) DEFAULT NULL,
+    p_resource_id VARCHAR(100) DEFAULT NULL,
+    p_result VARCHAR(20) DEFAULT 'success',
+    p_details JSONB DEFAULT '{}',
+    p_actor VARCHAR(100) DEFAULT 'system'
+) RETURNS BIGINT AS $$
+DECLARE
+    v_id BIGINT;
+BEGIN
+    INSERT INTO nexus.audit_log (action, actor, resource_type, resource_id, result, details)
+    VALUES (p_action, p_actor, p_resource_type, p_resource_id, p_result, p_details)
+    RETURNING id INTO v_id;
+    RETURN v_id;
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON TABLE nexus.audit_log IS 'Security audit log tracking all significant actions. Required for compliance and incident response.';
+COMMENT ON FUNCTION nexus.audit_log_event IS 'Helper function to log audit events with consistent structure.';

@@ -1,0 +1,130 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tradegent-swarm"
+version = "2.2.0"
+description = "AI-driven trading platform using Claude Code CLI, Interactive Brokers, and hybrid RAG+Graph knowledge system"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+authors = [
+    {name = "TradegentSwarm Team"}
+]
+keywords = ["trading", "ai", "rag", "knowledge-graph", "interactive-brokers", "claude"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial :: Investment",
+]
+
+dependencies = [
+    "psycopg[binary]>=3.1",
+    "requests>=2.31",
+    "neo4j>=5.15.0",
+    "litellm>=1.40.0",
+    "fastapi>=0.109.0",
+    "uvicorn>=0.27.0",
+    "tiktoken>=0.5.2",
+    "pyyaml>=6.0.1",
+    "python-dotenv>=1.0.0",
+    "ratelimit>=2.2.1",
+    "tenacity>=8.2.3",
+    "mcp>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.1",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.3",
+    "black>=24.2",
+    "mypy>=1.8",
+    "bandit>=1.7",
+    "safety>=3.0",
+]
+advanced = [
+    "sentence-transformers>=2.3.1",
+    "redis>=5.0.1",
+    "numpy>=1.26.3",
+]
+
+[project.urls]
+Homepage = "https://github.com/vladm3105/TradegentSwarm"
+Repository = "https://github.com/vladm3105/TradegentSwarm.git"
+Issues = "https://github.com/vladm3105/TradegentSwarm/issues"
+
+[project.scripts]
+tradegent = "tradegent.orchestrator:main"
+tradegent-service = "tradegent.service:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["tradegent*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "S",      # flake8-bandit (security)
+]
+ignore = [
+    "E501",   # line too long (handled by black)
+    "S101",   # assert used (ok in tests)
+    "S608",   # SQL injection (false positives with parameterized queries)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101", "S105", "S106"]
+"conftest.py" = ["S101"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_ignores = true
+ignore_missing_imports = true
+exclude = ["tests", "tmp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tradegent/rag/tests", "tradegent/graph/tests", "tradegent/tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+markers = [
+    "unit: Unit tests (no external dependencies)",
+    "integration: Integration tests (requires Neo4j, PostgreSQL)",
+    "slow: Long-running tests",
+]
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["tradegent"]
+branch = true
+omit = ["*/tests/*", "*/__init__.py", "*/conftest.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]

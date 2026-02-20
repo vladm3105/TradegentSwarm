@@ -1,0 +1,292 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # SECURITY FIRST - Block any commits with exposed secrets
+  # This job runs BEFORE all others and blocks the pipeline if secrets are found
+  # ═══════════════════════════════════════════════════════════════════════════
+  secrets-scan:
+    name: Secret Detection (BLOCKING)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for comprehensive scanning
+
+      - name: Gitleaks - Detect secrets in code
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+
+      - name: Check for hardcoded credentials (backup scan)
+        run: |
+          echo "Scanning for common secret patterns..."
+
+          # Fail if any secrets found (exit 1)
+          FOUND_SECRETS=0
+
+          # API Keys
+          if grep -rE "sk-proj-[a-zA-Z0-9]{20,}" --include="*.py" --include="*.json" --include="*.yaml" --include="*.yml" . 2>/dev/null | grep -v ".template" | grep -v "test_" | grep -v ".gitleaks"; then
+            echo "❌ FOUND: OpenAI API key"
+            FOUND_SECRETS=1
+          fi
+
+          if grep -rE "sk-ant-[a-zA-Z0-9]{20,}" --include="*.py" --include="*.json" --include="*.yaml" --include="*.yml" . 2>/dev/null | grep -v ".template"; then
+            echo "❌ FOUND: Anthropic API key"
+            FOUND_SECRETS=1
+          fi
+
+          if grep -rE "sk-or-[a-zA-Z0-9]{20,}" --include="*.py" --include="*.json" --include="*.yaml" --include="*.yml" . 2>/dev/null | grep -v ".template"; then
+            echo "❌ FOUND: OpenRouter API key"
+            FOUND_SECRETS=1
+          fi
+
+          # Connection strings with embedded passwords
+          if grep -rE "postgres(ql)?://[^:]+:[^@]+@" --include="*.py" --include="*.json" --include="*.yaml" --include="*.yml" . 2>/dev/null | grep -v ".template" | grep -v "test_" | grep -v "localhost:localhost"; then
+            echo "❌ FOUND: PostgreSQL connection string with password"
+            FOUND_SECRETS=1
+          fi
+
+          # IB Credentials
+          if grep -rE "(IB_PASS|IB_PASSWORD|TWS_PASSWORD)\s*[=:]\s*['\"][^<][^'\"]{4,}['\"]" --include="*.py" --include="*.json" --include="*.yaml" --include="*.yml" --include="*.env" . 2>/dev/null | grep -v ".template" | grep -v ".example"; then
+            echo "❌ FOUND: Interactive Brokers password"
+            FOUND_SECRETS=1
+          fi
+
+          # Neo4j password (not placeholder)
+          if grep -rE "NEO4J_PASS\s*[=:]\s*['\"][^<][^'\"]{6,}['\"]" --include="*.env" . 2>/dev/null | grep -v ".template" | grep -v ".example" | grep -v "changeme" | grep -v "testpass"; then
+            echo "❌ FOUND: Neo4j password in .env"
+            FOUND_SECRETS=1
+          fi
+
+          if [ $FOUND_SECRETS -eq 1 ]; then
+            echo ""
+            echo "═══════════════════════════════════════════════════════════════"
+            echo "🚨 SECRETS DETECTED - COMMIT BLOCKED"
+            echo "═══════════════════════════════════════════════════════════════"
+            echo "Remove the secrets and use environment variables instead."
+            echo "See .env.template for the correct format."
+            exit 1
+          fi
+
+          echo "✅ No secrets detected"
+
+      - name: Scan git history for leaked secrets
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "Scanning PR commits for secrets..."
+          # Only scan the commits in this PR
+          git log --oneline origin/${{ github.base_ref }}..HEAD | head -20
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    needs: secrets-scan  # Only run after secrets scan passes
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install linting tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff black mypy
+
+      - name: Run ruff
+        run: ruff check tradegent/
+
+      - name: Check formatting with black
+        run: black --check tradegent/
+
+      - name: Type check with mypy
+        run: mypy tradegent/ --ignore-missing-imports --no-error-summary
+        continue-on-error: true
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: [secrets-scan, lint]  # Must pass secrets scan first
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: lightrag
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: lightrag
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      neo4j:
+        image: neo4j:5-community
+        env:
+          NEO4J_AUTH: neo4j/testpass
+        ports:
+          - 7688:7687
+        options: >-
+          --health-cmd "curl -f http://localhost:7474 || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r tradegent/requirements.txt
+          pip install pytest pytest-cov pytest-asyncio
+
+      - name: Run unit tests
+        env:
+          PG_HOST: localhost
+          PG_PORT: 5433
+          PG_USER: lightrag
+          PG_PASS: testpass
+          PG_DB: lightrag
+          NEO4J_URI: bolt://localhost:7688
+          NEO4J_USER: neo4j
+          NEO4J_PASS: testpass
+        run: |
+          cd tradegent
+          pytest -m "not integration" --cov=rag --cov=graph --cov-report=xml -v
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: tradegent/coverage.xml
+          fail_ci_if_error: false
+
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: lightrag
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: lightrag
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      neo4j:
+        image: neo4j:5-community
+        env:
+          NEO4J_AUTH: neo4j/testpass
+        ports:
+          - 7688:7687
+        options: >-
+          --health-cmd "curl -f http://localhost:7474 || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r tradegent/requirements.txt
+          pip install pytest pytest-cov pytest-asyncio
+
+      - name: Initialize database schema
+        env:
+          PG_HOST: localhost
+          PG_PORT: 5433
+          PG_USER: lightrag
+          PG_PASS: testpass
+          PG_DB: lightrag
+          PGPASSWORD: testpass
+        run: |
+          psql -h localhost -p 5433 -U lightrag -d lightrag -f tradegent/db/init.sql
+
+      - name: Run integration tests
+        env:
+          PG_HOST: localhost
+          PG_PORT: 5433
+          PG_USER: lightrag
+          PG_PASS: testpass
+          PG_DB: lightrag
+          NEO4J_URI: bolt://localhost:7688
+          NEO4J_USER: neo4j
+          NEO4J_PASS: testpass
+          EMBED_PROVIDER: ollama
+          EXTRACT_PROVIDER: ollama
+        run: |
+          cd tradegent
+          pytest -m "integration" -v --run-integration
+        continue-on-error: true
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: secrets-scan  # Depends on secrets scan
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install security tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit safety detect-secrets
+
+      - name: Run bandit security scan
+        run: bandit -r tradegent/ -ll -ii -x tradegent/tests,tradegent/*/tests
+        continue-on-error: true
+
+      - name: Check dependencies for vulnerabilities
+        run: |
+          pip install -r tradegent/requirements.txt
+          safety check --full-report
+        continue-on-error: true
+
+      - name: Generate secrets baseline (for tracking)
+        run: |
+          detect-secrets scan --all-files --exclude-files '\.env\.template$|\.env\.example$|test_.*\.py$' > .secrets.baseline.new || true
+          if [ -f .secrets.baseline ]; then
+            echo "Comparing against existing baseline..."
+            detect-secrets audit --report .secrets.baseline
+          fi

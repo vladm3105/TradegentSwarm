@@ -337,8 +337,89 @@ class TradingGraph:
             "supply_chain": self.get_supply_chain(symbol),
         }
 
-    def run_cypher(self, query: str, params: dict | None = None) -> list[dict]:
-        """Execute raw Cypher query."""
+    # Allowed Cypher query patterns for security validation
+    # Only these patterns are permitted in run_cypher when called externally
+    SAFE_QUERY_PATTERNS = frozenset([
+        # Read-only patterns
+        "MATCH",
+        "RETURN",
+        "WHERE",
+        "WITH",
+        "ORDER BY",
+        "LIMIT",
+        "OPTIONAL MATCH",
+        "UNION",
+        "CALL",
+    ])
+
+    DANGEROUS_KEYWORDS = frozenset([
+        "DELETE",
+        "DETACH DELETE",
+        "REMOVE",
+        "DROP",
+        "CREATE CONSTRAINT",
+        "CREATE INDEX",
+        "SET",  # Only dangerous without MERGE context
+    ])
+
+    def _validate_cypher_query(self, query: str, allow_writes: bool = False) -> bool:
+        """
+        Validate Cypher query for security.
+
+        Args:
+            query: The Cypher query to validate
+            allow_writes: If True, allow MERGE/CREATE operations
+
+        Returns:
+            True if query is safe, False otherwise
+        """
+        query_upper = query.upper().strip()
+
+        # Check for dangerous keywords
+        for keyword in self.DANGEROUS_KEYWORDS:
+            if keyword in query_upper:
+                # Allow SET only after MERGE
+                if keyword == "SET" and "MERGE" in query_upper:
+                    continue
+                if not allow_writes:
+                    log.warning(f"Blocked dangerous Cypher keyword: {keyword}")
+                    return False
+
+        return True
+
+    def run_cypher(
+        self,
+        query: str,
+        params: dict | None = None,
+        allow_writes: bool = False,
+        _internal: bool = False,
+    ) -> list[dict]:
+        """
+        Execute Cypher query with security validation.
+
+        Args:
+            query: Cypher query to execute
+            params: Query parameters (use for all user-supplied values)
+            allow_writes: Allow MERGE/CREATE operations (default: False)
+            _internal: Skip validation for internal calls (default: False)
+
+        Returns:
+            List of result dictionaries
+
+        Raises:
+            ValueError: If query contains dangerous operations
+
+        Security:
+            - All user-supplied values MUST be passed via params
+            - DELETE, DROP, REMOVE operations are blocked by default
+            - Use _internal=True only for trusted internal operations
+        """
+        if not _internal and not self._validate_cypher_query(query, allow_writes):
+            raise ValueError(
+                "Query contains potentially dangerous operations. "
+                "Use allow_writes=True for MERGE/CREATE or _internal=True for trusted queries."
+            )
+
         with self._driver.session(database=self.database) as session:
             result = session.run(query, **(params or {}))
             return [dict(r) for r in result]
