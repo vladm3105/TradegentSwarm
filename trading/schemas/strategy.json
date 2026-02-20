@@ -1,0 +1,200 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "strategy.json",
+  "title": "Trading Strategy",
+  "description": "Trading strategy definition and performance tracking schema",
+  "type": "object",
+  "required": ["_meta", "name", "category", "overview", "entry_rules", "exit_rules"],
+  "properties": {
+    "_meta": {
+      "type": "object",
+      "required": ["id", "type", "version", "created", "status"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^STR-[a-z0-9-]+$",
+          "description": "Unique identifier: STR-{name-slug}"
+        },
+        "type": {
+          "type": "string",
+          "const": "strategy"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "created": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "testing", "deprecated"]
+        }
+      }
+    },
+    "name": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string",
+      "enum": ["earnings", "technical", "income", "swing", "momentum", "mean-reversion", "other"]
+    },
+    "overview": {
+      "type": "object",
+      "required": ["description", "edge_source", "best_conditions"],
+      "properties": {
+        "description": { "type": "string" },
+        "edge_source": { "type": "string" },
+        "best_conditions": { "type": "array", "items": { "type": "string" } },
+        "avoid_when": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "entry_rules": {
+      "type": "object",
+      "required": ["criteria", "sizing"],
+      "properties": {
+        "criteria": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["condition", "required"],
+            "properties": {
+              "condition": { "type": "string" },
+              "required": { "type": "boolean" },
+              "weight": { "type": "number" }
+            }
+          }
+        },
+        "sizing": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["condition", "size_pct"],
+            "properties": {
+              "condition": { "type": "string" },
+              "size_pct": { "type": "number", "minimum": 0, "maximum": 100 }
+            }
+          }
+        },
+        "preferred_structures": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "exit_rules": {
+      "type": "object",
+      "required": ["profit_taking", "stop_loss"],
+      "properties": {
+        "profit_taking": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "trigger": { "type": "string" },
+              "action": { "type": "string" }
+            }
+          }
+        },
+        "stop_loss": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string" },
+              "trigger": { "type": "string" }
+            }
+          }
+        },
+        "time_exit": {
+          "type": "object",
+          "properties": {
+            "max_hold_days": { "type": "integer" },
+            "action": { "type": "string" }
+          }
+        }
+      }
+    },
+    "performance": {
+      "type": "object",
+      "description": "Auto-updated from trade results",
+      "properties": {
+        "total_trades": { "type": "integer" },
+        "wins": { "type": "integer" },
+        "losses": { "type": "integer" },
+        "win_rate_pct": { "type": "number" },
+        "avg_win_pct": { "type": "number" },
+        "avg_loss_pct": { "type": "number" },
+        "profit_factor": { "type": "number" },
+        "expectancy_pct": { "type": "number" },
+        "last_updated": { "type": "string", "format": "date" },
+        "by_ticker": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "ticker": { "type": "string" },
+              "trades": { "type": "integer" },
+              "wins": { "type": "integer" },
+              "win_rate_pct": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "known_weaknesses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "weakness": { "type": "string" },
+          "countermeasure": { "type": "string" },
+          "status": { "type": "string", "enum": ["active", "monitoring", "resolved"] }
+        }
+      }
+    },
+    "changelog": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["version", "date", "changes"],
+        "properties": {
+          "version": { "type": "integer" },
+          "date": { "type": "string", "format": "date" },
+          "changes": { "type": "string" }
+        }
+      }
+    },
+    "_graph": {
+      "type": "object",
+      "properties": {
+        "entities": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "relations": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "_links": {
+      "type": "object",
+      "properties": {
+        "trades": { "type": "string" },
+        "learnings": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

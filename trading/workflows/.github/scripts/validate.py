@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Validate trading knowledge documents against JSON schemas.
-Used by GitHub Actions before syncing to LightRAG.
+Used by GitHub Actions before syncing to RAG+Graph.
 """
 
 import sys
@@ -17,6 +17,7 @@ SCHEMA_MAP = {
     'trades': 'trade-journal.json',
     'strategies': 'strategy.json',
     'tickers': 'ticker.json',
+    'ticker-profiles': 'ticker.json',
     'learnings': 'learning.json',
     'research': 'research.json',
     'watchlist': 'watchlist.json',
@@ -24,13 +25,21 @@ SCHEMA_MAP = {
     'reviews': 'post-trade-review.json',
 }
 
+# Schema directory - try multiple locations
+SCHEMA_DIRS = [
+    Path('trading/schemas'),
+    Path('trading/workflows/.lightrag/schemas'),
+    Path('.lightrag/schemas'),
+]
+
 def load_schema(schema_name: str) -> dict:
-    """Load JSON schema from .lightrag/schemas/"""
-    schema_path = Path('.lightrag/schemas') / schema_name
-    if not schema_path.exists():
-        raise FileNotFoundError(f"Schema not found: {schema_path}")
-    with open(schema_path) as f:
-        return json.load(f)
+    """Load JSON schema from trading/schemas/ or fallback locations."""
+    for schema_dir in SCHEMA_DIRS:
+        schema_path = schema_dir / schema_name
+        if schema_path.exists():
+            with open(schema_path) as f:
+                return json.load(f)
+    raise FileNotFoundError(f"Schema not found: {schema_name} (searched: {SCHEMA_DIRS})")
 
 def get_schema_for_path(file_path: str) -> str | None:
     """Determine which schema to use based on file path."""

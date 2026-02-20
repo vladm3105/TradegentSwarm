@@ -15,6 +15,14 @@ try:
     from trader.utils import is_real_document
 except ImportError:
     from utils import is_real_document
+try:
+    from trader.validation import validate_document, get_schema_for_path
+except ImportError:
+    try:
+        from validation import validate_document, get_schema_for_path
+    except ImportError:
+        validate_document = None
+        get_schema_for_path = None
 from . import RAG_VERSION
 from .models import EmbedResult, ChunkResult
 from .chunk import chunk_yaml_document
@@ -80,6 +88,14 @@ def embed_document(file_path: str, force: bool = False) -> EmbedResult:
 
     if not doc:
         raise EmbedError(f"Empty or invalid YAML: {file_path}")
+
+    # Schema validation (optional - logs warnings but doesn't block)
+    if validate_document is not None:
+        validation_result = validate_document(file_path)
+        if not validation_result.valid:
+            log.warning(f"Schema validation failed for {file_path}: {validation_result.error_summary}")
+        elif validation_result.warnings:
+            log.debug(f"Validation warnings for {file_path}: {validation_result.warnings}")
 
     # Extract metadata
     meta = doc.get("_meta", {})

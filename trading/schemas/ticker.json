@@ -1,0 +1,215 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "ticker.json",
+  "title": "Ticker Profile",
+  "description": "Company profile, key metrics, and trading edge schema",
+  "type": "object",
+  "required": ["_meta", "ticker", "company", "key_metrics", "trading_patterns"],
+  "properties": {
+    "_meta": {
+      "type": "object",
+      "required": ["id", "type", "version", "created"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Z]{1,5}$",
+          "description": "Ticker symbol"
+        },
+        "type": {
+          "type": "string",
+          "const": "ticker"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "created": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "ticker": {
+      "type": "string",
+      "pattern": "^[A-Z]{1,5}$"
+    },
+    "company": {
+      "type": "object",
+      "required": ["name", "sector", "industry"],
+      "properties": {
+        "name": { "type": "string" },
+        "sector": { "type": "string" },
+        "industry": { "type": "string" },
+        "market_cap": { "type": "string" },
+        "description": { "type": "string" }
+      }
+    },
+    "revenue_breakdown": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["segment", "pct"],
+        "properties": {
+          "segment": { "type": "string" },
+          "pct": { "type": "number", "minimum": 0, "maximum": 100 },
+          "growth_driver": { "type": "string" }
+        }
+      }
+    },
+    "key_metrics": {
+      "type": "object",
+      "required": ["primary"],
+      "properties": {
+        "primary": {
+          "type": "object",
+          "required": ["name", "importance"],
+          "properties": {
+            "name": { "type": "string" },
+            "importance": { "type": "string" },
+            "why": { "type": "string" }
+          }
+        },
+        "secondary": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "importance": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "earnings_history": {
+      "type": "object",
+      "properties": {
+        "beat_streak": { "type": "integer" },
+        "typical_reaction": { "type": "string" },
+        "earnings_time": { "type": "string", "enum": ["before_open", "after_close"] },
+        "recent_quarters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "quarter": { "type": "string" },
+              "eps_est": { "type": "number" },
+              "eps_act": { "type": "number" },
+              "beat_pct": { "type": "number" },
+              "stock_reaction_pct": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "trading_patterns": {
+      "type": "object",
+      "properties": {
+        "pre_earnings": { "type": "string" },
+        "post_earnings": { "type": "string" },
+        "support_levels": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "price": { "type": "number" },
+              "significance": { "type": "string" }
+            }
+          }
+        },
+        "resistance_levels": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "price": { "type": "number" },
+              "significance": { "type": "string" }
+            }
+          }
+        },
+        "avg_daily_volume": { "type": "string" },
+        "options_liquid": { "type": "boolean" },
+        "typical_iv_rank": { "type": "string" }
+      }
+    },
+    "my_edge": {
+      "type": "object",
+      "properties": {
+        "what_works": { "type": "array", "items": { "type": "string" } },
+        "best_strategies": { "type": "array", "items": { "type": "string" } },
+        "historical_performance": {
+          "type": "object",
+          "properties": {
+            "total_trades": { "type": "integer" },
+            "wins": { "type": "integer" },
+            "win_rate_pct": { "type": "number" },
+            "total_pnl": { "type": "number" }
+          }
+        },
+        "watch_out_for": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "risk": { "type": "string" },
+              "likelihood": { "type": "string" },
+              "mitigation": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "upcoming_catalysts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["date", "event"],
+        "properties": {
+          "date": { "type": "string", "format": "date" },
+          "event": { "type": "string" },
+          "expected_impact": { "type": "string" }
+        }
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "date": { "type": "string", "format": "date" },
+          "note": { "type": "string" }
+        }
+      }
+    },
+    "_graph": {
+      "type": "object",
+      "properties": {
+        "entities": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "relations": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "_links": {
+      "type": "object",
+      "properties": {
+        "analyses": { "type": "string" },
+        "trades": { "type": "string" }
+      }
+    }
+  }
+}
