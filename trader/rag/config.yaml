@@ -6,25 +6,26 @@ database:
   schema: "${RAG_SCHEMA:-nexus}"
 
 embedding:
-  default_provider: "${EMBED_DEFAULT_PROVIDER:-ollama}"
+  default_provider: "${LLM_PROVIDER:-ollama}"
   fallback_chain:
-    - ollama           # Try local first ($0)
-    - openrouter       # Fallback to cloud
+    - ollama
+    - openrouter
   timeout_seconds: "${EMBED_TIMEOUT_SECONDS:-30}"
   dimensions: "${EMBED_DIMENSIONS:-768}"
 
+  # Unified LLM config - provider selected by LLM_PROVIDER
   ollama:
-    base_url: "${OLLAMA_BASE_URL:-http://localhost:11434}"
-    model: "${OLLAMA_EMBED_MODEL:-nomic-embed-text}"
+    base_url: "${LLM_BASE_URL:-http://localhost:11434}"
+    model: "${EMBED_MODEL:-nomic-embed-text}"
 
   openrouter:
-    api_key: "${OPENROUTER_API_KEY}"
-    model: "${OPENROUTER_EMBED_MODEL:-openai/text-embedding-3-small}"
+    api_key: "${LLM_API_KEY}"
+    model: "${EMBED_MODEL:-openai/text-embedding-3-small}"
     dimensions: "${EMBED_DIMENSIONS:-768}"
 
   openai:
-    api_key: "${OPENAI_API_KEY}"
-    model: "${OPENAI_EMBED_MODEL:-text-embedding-3-small}"
+    api_key: "${LLM_API_KEY}"
+    model: "${EMBED_MODEL:-text-embedding-3-small}"
     dimensions: "${EMBED_DIMENSIONS:-768}"
 
 chunking:

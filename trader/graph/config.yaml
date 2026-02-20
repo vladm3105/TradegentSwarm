@@ -8,10 +8,10 @@ neo4j:
   database: "${NEO4J_DATABASE:-neo4j}"
 
 extraction:
-  default_extractor: "${EXTRACT_DEFAULT_EXTRACTOR:-ollama}"
+  default_extractor: "${LLM_PROVIDER:-ollama}"
   fallback_chain:
-    - ollama           # Try local first ($0)
-    - openrouter       # Fallback to cloud if Ollama fails
+    - ollama
+    - openrouter
   timeout_seconds: "${EXTRACT_TIMEOUT_SECONDS:-30}"
 
   # Confidence thresholds
@@ -19,18 +19,19 @@ extraction:
   flag_threshold: "${EXTRACT_FLAG_THRESHOLD:-0.5}"
   skip_threshold: "${EXTRACT_FLAG_THRESHOLD:-0.5}"
 
+  # Unified LLM config - provider selected by LLM_PROVIDER
   ollama:
-    base_url: "${OLLAMA_BASE_URL:-http://localhost:11434}"
-    model: "${OLLAMA_EXTRACT_MODEL:-qwen3:8b}"
+    base_url: "${LLM_BASE_URL:-http://localhost:11434}"
+    model: "${LLM_MODEL:-qwen3:8b}"
 
   openrouter:
-    api_key: "${OPENROUTER_API_KEY}"
-    model: "${OPENROUTER_EXTRACT_MODEL:-anthropic/claude-3-5-sonnet}"
+    api_key: "${LLM_API_KEY}"
+    model: "${LLM_MODEL:-anthropic/claude-3-5-sonnet}"
     fallback_model: "anthropic/claude-3-haiku"
 
   claude_api:
-    api_key: "${ANTHROPIC_API_KEY}"
-    model: "claude-sonnet-4-20250514"
+    api_key: "${LLM_API_KEY}"
+    model: "${LLM_MODEL:-claude-sonnet-4-20250514}"
 
 logging:
   extraction_log: "logs/graph_extractions.jsonl"
