@@ -11,7 +11,11 @@ trading_light_pilot/
 │   ├── service.py           # Long-running daemon
 │   ├── orchestrator.py      # Pipeline engine + CLI
 │   ├── db_layer.py          # PostgreSQL access layer
-│   └── docker-compose.yml   # Infrastructure services
+│   ├── docker-compose.yml   # Infrastructure services
+│   ├── rag/                 # RAG module (embeddings, search)
+│   │   └── mcp_server.py    # MCP server (primary interface)
+│   └── graph/               # Graph module (Neo4j, extraction)
+│       └── mcp_server.py    # MCP server (primary interface)
 │
 └── trading/                 # Trading Knowledge System
     ├── skills/              # Agent skill definitions (SKILL.md + template.yaml)
@@ -144,6 +148,91 @@ Parameters:
 | `mcp__github-vl__create_or_update_file` | Create/update single file |
 | `mcp__github-vl__get_file_contents` | Read file from repo |
 | `mcp__github-vl__list_commits` | View commit history |
+
+## Trading RAG MCP Server (Primary)
+
+Semantic search and embedding for trading knowledge. **Use MCP tools as the primary interface** for all RAG operations.
+
+**Server**: `trading-rag` | **Location**: `trader/rag/mcp_server.py`
+
+### Available Tools
+
+| Tool | Purpose |
+|------|----------|
+| `rag_embed` | Embed a YAML document for semantic search |
+| `rag_embed_text` | Embed raw text for semantic search |
+| `rag_search` | Semantic search across embedded documents |
+| `rag_similar` | Find similar past analyses for a ticker |
+| `rag_hybrid_context` | Get combined vector + graph context for analysis |
+| `rag_status` | Get RAG statistics (document/chunk counts) |
+
+### Usage Examples
+
+```yaml
+# Embed a document
+Tool: rag_embed
+Input: {"file_path": "trading/knowledge/analysis/earnings/NVDA_20250120T0900.yaml"}
+
+# Search for context
+Tool: rag_search
+Input: {"query": "NVDA earnings surprise", "ticker": "NVDA", "top_k": 5}
+
+# Get hybrid context (vector + graph)
+Tool: rag_hybrid_context
+Input: {"ticker": "NVDA", "query": "earnings catalyst analysis"}
+
+# Check RAG status
+Tool: rag_status
+Input: {}
+```
+
+## Trading Graph MCP Server (Primary)
+
+Knowledge graph for entities, relationships, and trading patterns. **Use MCP tools as the primary interface** for all graph operations.
+
+**Server**: `trading-graph` | **Location**: `trader/graph/mcp_server.py`
+
+### Available Tools
+
+| Tool | Purpose |
+|------|----------|
+| `graph_extract` | Extract entities and relationships from a YAML document |
+| `graph_extract_text` | Extract entities from raw text (for external content) |
+| `graph_search` | Find all nodes connected to a ticker within N hops |
+| `graph_peers` | Get sector peers and competitors for a ticker |
+| `graph_risks` | Get known risks for a ticker |
+| `graph_biases` | Get bias history across trades |
+| `graph_context` | Get comprehensive context (peers, risks, strategies, biases) |
+| `graph_query` | Execute raw Cypher query |
+| `graph_status` | Get graph statistics (node/edge counts) |
+
+### Usage Examples
+
+```yaml
+# Extract from document
+Tool: graph_extract
+Input: {"file_path": "trading/knowledge/analysis/earnings/NVDA_20250120T0900.yaml"}
+
+# Get ticker context
+Tool: graph_context
+Input: {"ticker": "NVDA"}
+
+# Find sector peers
+Tool: graph_peers
+Input: {"ticker": "NVDA"}
+
+# Get known risks
+Tool: graph_risks
+Input: {"ticker": "NVDA"}
+
+# Check for trading biases
+Tool: graph_biases
+Input: {}
+
+# Custom Cypher query
+Tool: graph_query
+Input: {"cypher": "MATCH (t:Ticker {symbol: $ticker})-[r]->(n) RETURN type(r), n.name LIMIT 10", "params": {"ticker": "NVDA"}}
+```
 
 ## IB MCP Server (Interactive Brokers)
 
@@ -333,6 +422,7 @@ Host github.com
 
 ## Important Notes
 
+- **Use MCP servers as primary interface** for RAG (`trading-rag`) and Graph (`trading-graph`) operations
 - Do not commit `.env` files (contains credentials)
 - IB Gateway requires valid paper trading account
 - LightRAG syncs trading knowledge for semantic search
