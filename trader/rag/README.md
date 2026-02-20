@@ -57,6 +57,7 @@ for r in results:
 
 | File | Purpose |
 |------|---------|
+| `mcp_server.py` | **MCP server (primary interface)** |
 | `embed.py` | Document embedding pipeline |
 | `search.py` | Semantic and hybrid search |
 | `chunk.py` | Text chunking with token limits |
@@ -65,10 +66,20 @@ for r in results:
 | `models.py` | Data classes (EmbedResult, SearchResult) |
 | `hybrid.py` | Combined vector + graph context |
 | `config.yaml` | Configuration settings |
+| `.env` | Environment variables (not committed) |
+| `.env.template` | Environment template |
 
 ## Configuration
 
-Settings are loaded from `config.yaml` with environment variable overrides:
+Settings are loaded from `.env` and `config.yaml` with environment variable overrides.
+
+**Setup:**
+```bash
+cp .env.template .env
+# Edit .env with your database credentials
+```
+
+### Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -76,10 +87,22 @@ Settings are loaded from `config.yaml` with environment variable overrides:
 | `RAG_SCHEMA` | `nexus` | Database schema name |
 | `LLM_PROVIDER` | `ollama` | Embedding provider |
 | `LLM_BASE_URL` | `http://localhost:11434` | Ollama API URL |
+| `LLM_API_KEY` | (none) | API key for OpenRouter |
 | `EMBED_MODEL` | `nomic-embed-text` | Embedding model |
 | `EMBED_DIMENSIONS` | `768` | Vector dimensions |
 | `CHUNK_MAX_TOKENS` | `1500` | Max tokens per chunk |
 | `CHUNK_MIN_TOKENS` | `50` | Min tokens (skip smaller) |
+
+### Generation Settings (for RAG answer generation)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LLM_MODEL` | `llama3.2` | LLM model for generation |
+| `LLM_TEMPERATURE` | `0.1` | Generation temperature |
+| `LLM_NUM_PREDICT` | `200` | Max tokens to generate |
+| `LLM_MAX_TOKENS` | `200` | Max tokens (cloud LLMs) |
+| `LLM_TOP_P` | `0.9` | Top-p sampling |
+| `LLM_TOP_K` | `40` | Top-k sampling |
 
 ## Database Schema
 
@@ -232,16 +255,45 @@ pytest rag/tests/test_integration.py --run-integration
 ### Full RAG Test
 
 ```bash
-# Set database URL
-export DATABASE_URL="postgresql://user:pass@localhost:5433/lightrag"
+# Ensure .env is configured
+cp trader/rag/.env.template trader/rag/.env
+# Edit trader/rag/.env with your database credentials
 
-# Run full pipeline test
+# Run full pipeline test (embeds story, searches, generates answers)
 python tmp/test_rag.py
 ```
 
-## MCP Server
+**Expected output:**
+```
+======================================================================
+Full RAG Test: Store → Retrieve → Generate
+======================================================================
 
-The RAG module is exposed via MCP server at `mcp_trading_rag/`:
+[1] Embedding story (~200 tokens)...
+    Stored 1 chunk(s)
+    Document ID: test_story_marcus_chen
+
+[2] RAG Question-Answering
+----------------------------------------------------------------------
+
+Q1: What is Marcus Chen's risk management rule?
+    Retrieved context (similarity: 0.562)
+    Answer: Marcus Chen's risk management rule is the "5-3-2 Rule"...
+
+Q2: Where did Marcus Chen start his trading career?
+    Retrieved context (similarity: 0.727)
+    Answer: Marcus Chen started his trading career at Goldman Sachs in 2008.
+
+Q3: What was Marcus Chen's most profitable trade?
+    Retrieved context (similarity: 0.696)
+    Answer: Marcus Chen's most profitable trade was accumulating NVIDIA shares...
+```
+
+## MCP Server (Primary Interface)
+
+The RAG module is exposed via MCP server at `mcp_server.py`. **Use MCP tools as the primary interface** for all RAG operations.
+
+**Server name:** `trading-rag`
 
 | Tool | Description |
 |------|-------------|
@@ -251,6 +303,36 @@ The RAG module is exposed via MCP server at `mcp_trading_rag/`:
 | `rag_similar` | Find similar analyses |
 | `rag_hybrid_context` | Combined vector + graph context |
 | `rag_status` | Get RAG statistics |
+
+### MCP Usage Examples
+
+```yaml
+# Embed a document
+Tool: rag_embed
+Input: {"file_path": "trading/knowledge/analysis/earnings/NVDA_20250120T0900.yaml"}
+
+# Search for context
+Tool: rag_search
+Input: {"query": "NVDA earnings surprise", "ticker": "NVDA", "top_k": 5}
+
+# Get hybrid context (vector + graph)
+Tool: rag_hybrid_context
+Input: {"ticker": "NVDA", "query": "earnings catalyst analysis"}
+
+# Check RAG status
+Tool: rag_status
+Input: {}
+```
+
+### Running the MCP Server
+
+```bash
+# Direct execution
+python trader/rag/mcp_server.py
+
+# Or import and run
+python -c "from rag.mcp_server import server; print(server.name)"
+```
 
 ## Index Tuning
 
@@ -271,7 +353,8 @@ CREATE INDEX idx_rag_chunks_embedding
 ## Troubleshooting
 
 **"connection failed: password authentication failed"**
-- Check `DATABASE_URL` environment variable
+- Check `trader/rag/.env` has correct `DATABASE_URL`
+- Verify password matches `PG_PASS` in `trader/.env`
 - Verify PostgreSQL is running: `docker compose ps`
 
 **"relation nexus.rag_documents does not exist"**
