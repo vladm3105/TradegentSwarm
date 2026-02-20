@@ -827,7 +827,7 @@ git push
 This project uses SSH authentication. Ensure your remote is set to SSH:
 
 ```bash
-git remote set-url origin git@github.com:vladm3105/trading_light_pilot.git
+git remote set-url origin git@github.com:vladm3105/TradegentSwarm.git
 ```
 
 Requires `~/.ssh/config` entry:
@@ -835,7 +835,7 @@ Requires `~/.ssh/config` entry:
 Host github.com
     HostName github.com
     User git
-    IdentityFile ~/.ssh/github-vladm3105
+    IdentityFile ~/.ssh/your-github-key
     IdentitiesOnly yes
 ```
 
@@ -923,7 +923,7 @@ trader/
 
 ```bash
 # Clone
-git clone git@github.com:vladm3105/trading_light_pilot.git
+git clone git@github.com:vladm3105/TradegentSwarm.git
 cd trading_light_pilot
 
 # Setup

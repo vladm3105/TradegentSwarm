@@ -449,7 +449,7 @@ Input: {
 This project uses SSH authentication. The remote is configured as:
 
 ```bash
-git remote set-url origin git@github.com:vladm3105/trading_light_pilot.git
+git remote set-url origin git@github.com:vladm3105/TradegentSwarm.git
 ```
 
 **Standard workflow (when MCP unavailable):**
@@ -485,7 +485,7 @@ Requires `~/.ssh/config` entry:
 Host github.com
     HostName github.com
     User git
-    IdentityFile ~/.ssh/github-vladm3105
+    IdentityFile ~/.ssh/your-github-key
     IdentitiesOnly yes
 ```
 

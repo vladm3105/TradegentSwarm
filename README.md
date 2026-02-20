@@ -40,7 +40,7 @@
 │   │  IB Gateway Docker :4002 (socat proxy)   │                         │
 │   │  ├── IBC (automated login)               │                         │
 │   │  ├── Xvfb + VNC :5901                    │                         │
-│   │  └── Paper Trading (DUK291525)           │                         │
+│   │  └── Paper Trading Account               │                         │
 │   └──────────────────────────────────────────┘                         │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -118,7 +118,7 @@ Custom IB Gateway container with automated login via IBC (IB Controller). Uses s
 | **API Port** | `4002` (external) → `4010` (internal via socat) |
 | **VNC Port** | `5901` (for GUI troubleshooting) |
 | **Trading Mode** | `paper` |
-| **Account** | `DUK291525` |
+| **Account** | Your paper account (DU_XXXXXX) |
 
 ```bash
 cd /opt/data/trading/ib-gateway-docker
