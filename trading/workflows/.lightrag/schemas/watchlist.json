@@ -1,0 +1,107 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "watchlist.json",
+  "title": "Watchlist Entry",
+  "description": "Tracking potential trades that don't yet meet entry criteria",
+  "type": "object",
+  "required": ["_meta", "ticker", "added_date", "thesis", "entry_triggers"],
+  "properties": {
+    "_meta": {
+      "type": "object",
+      "required": ["id", "type", "version", "created", "status"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^WL-[A-Z]+-[0-9]{4}-[0-9]{3}$"
+        },
+        "type": {
+          "type": "string",
+          "const": "watchlist"
+        },
+        "version": { "type": "integer", "minimum": 1 },
+        "created": { "type": "string", "format": "date-time" },
+        "updated": { "type": "string", "format": "date-time" },
+        "status": {
+          "type": "string",
+          "enum": ["watching", "triggered", "expired", "converted", "removed"]
+        },
+        "expires": { "type": "string", "format": "date" },
+        "priority": {
+          "type": "string",
+          "enum": ["high", "medium", "low"]
+        }
+      }
+    },
+    "ticker": { "type": "string", "pattern": "^[A-Z]{1,5}$" },
+    "added_date": { "type": "string", "format": "date" },
+    "source": { "type": "string" },
+    "source_id": { "type": "string" },
+    
+    "thesis": {
+      "type": "object",
+      "required": ["summary", "catalyst_type"],
+      "properties": {
+        "summary": { "type": "string" },
+        "catalyst_type": { "type": "string" },
+        "detailed": { "type": "string" },
+        "bull_case": { "type": "string" },
+        "bear_case": { "type": "string" },
+        "timeframe": { "type": "object" }
+      }
+    },
+    
+    "current_status": {
+      "type": "object",
+      "properties": {
+        "price_when_added": { "type": "number" },
+        "current_price": { "type": "number" },
+        "change_since_added_pct": { "type": "number" },
+        "setup_quality": { "type": "object" }
+      }
+    },
+    
+    "entry_triggers": {
+      "type": "object",
+      "properties": {
+        "primary_trigger": { "type": "object" },
+        "secondary_triggers": { "type": "array" },
+        "alerts": { "type": "array" }
+      }
+    },
+    
+    "key_levels": {
+      "type": "object",
+      "properties": {
+        "support": { "type": "array" },
+        "resistance": { "type": "array" },
+        "options_levels": { "type": "object" }
+      }
+    },
+    
+    "removal_conditions": {
+      "type": "object",
+      "properties": {
+        "invalidation": { "type": "array" },
+        "expiration": { "type": "object" },
+        "converted_to": { "type": "object" }
+      }
+    },
+    
+    "monitoring_log": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "date": { "type": "string" },
+          "note": { "type": "string" },
+          "price": { "type": "number" },
+          "action_taken": { "type": "string" }
+        }
+      }
+    },
+    
+    "quick_reference": { "type": "object" },
+    "_graph": { "type": "object" },
+    "_links": { "type": "object" }
+  }
+}

@@ -1,0 +1,213 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "earnings-analysis.json",
+  "$comment": "Aligned with earnings-analysis skill v2.0",
+  "title": "Earnings Analysis",
+  "description": "8-phase pre/post earnings analysis document schema",
+  "type": "object",
+  "required": ["_meta", "ticker", "earnings_date", "quarter", "phase1_preparation", "phase5_probability", "recommendation"],
+  "properties": {
+    "_meta": {
+      "type": "object",
+      "required": ["id", "type", "version", "created", "status"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^EA-[A-Z]+-Q[1-4]-[0-9]{4}$",
+          "description": "Unique identifier: EA-{TICKER}-Q{N}-{YYYY}"
+        },
+        "type": {
+          "type": "string",
+          "const": "earnings-analysis"
+        },
+        "version": { "type": "integer", "minimum": 1 },
+        "created": { "type": "string", "format": "date-time" },
+        "updated": { "type": "string", "format": "date-time" },
+        "status": {
+          "type": "string",
+          "enum": ["pre-earnings", "post-earnings", "archived"]
+        },
+        "skill_version": { "type": "string" }
+      }
+    },
+    "ticker": { "type": "string", "pattern": "^[A-Z]{1,5}$" },
+    "earnings_date": { "type": "string", "format": "date" },
+    "quarter": { "type": "string" },
+    "analysis_date": { "type": "string", "format": "date" },
+    "days_to_earnings": { "type": "integer" },
+    
+    "phase1_preparation": {
+      "type": "object",
+      "required": ["current_price", "implied_move_pct", "key_metric"],
+      "properties": {
+        "current_price": { "type": "number", "minimum": 0 },
+        "current_iv": { "type": "number" },
+        "implied_move_pct": { "type": "number" },
+        "consensus_eps": { "type": "number" },
+        "consensus_revenue_b": { "type": "number" },
+        "beat_history": { "type": "object" },
+        "key_metric": { "type": "string" },
+        "key_metric_consensus": { "type": "number" }
+      }
+    },
+    
+    "phase2_fundamentals": {
+      "type": "object",
+      "properties": {
+        "business_performance": { "type": "object" },
+        "competitive_context": { "type": "object" },
+        "recent_developments": { "type": "array" },
+        "customer_demand": {
+          "type": "object",
+          "properties": {
+            "weight": { "type": "number" },
+            "methodology": { "type": "string" },
+            "signals": { "type": "array" },
+            "aggregate": {
+              "type": "object",
+              "properties": {
+                "signal": { "type": "string", "enum": ["very_bullish", "bullish", "neutral", "bearish", "very_bearish"] },
+                "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+                "rationale": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    
+    "phase3_technical": {
+      "type": "object",
+      "properties": {
+        "weight": { "type": "number" },
+        "purpose": { "type": "string" },
+        "support_levels": { "type": "array" },
+        "resistance_levels": { "type": "array" },
+        "indicators": { "type": "object" },
+        "recent_price_action": { "type": "object" },
+        "key_insight": { "type": "string" },
+        "entry_signal": { "type": "string" }
+      }
+    },
+    
+    "phase4_sentiment": {
+      "type": "object",
+      "properties": {
+        "analyst_consensus": { "type": "object" },
+        "institutional_ownership": { "type": "object" },
+        "short_interest": { "type": "object" },
+        "media_sentiment": { "type": "object" },
+        "bias_check": { "type": "object" }
+      }
+    },
+    
+    "phase5_probability": {
+      "type": "object",
+      "required": ["scenarios", "expected_value_pct"],
+      "properties": {
+        "scenarios": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "required": ["name", "probability", "expected_move_pct"],
+            "properties": {
+              "name": { "type": "string" },
+              "description": { "type": "string" },
+              "probability": { "type": "number", "minimum": 0, "maximum": 1 },
+              "key_metric_outcome": { "type": "string" },
+              "expected_move_pct": { "type": "number" },
+              "contribution_to_ev": { "type": "number" },
+              "triggers": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "expected_value_pct": { "type": "number" },
+        "probability_sum_check": { "type": "number" }
+      }
+    },
+    
+    "phase6_risk_and_bias": {
+      "type": "object",
+      "properties": {
+        "bias_checks": {
+          "type": "object",
+          "properties": {
+            "recency": { "type": "object" },
+            "confirmation": { "type": "object" },
+            "timing_conservatism": { "type": "object" },
+            "anchoring": { "type": "object" }
+          }
+        },
+        "steel_man": {
+          "type": "object",
+          "properties": {
+            "bear_case": { "type": "string" },
+            "can_argue_both_sides": { "type": "boolean" },
+            "bias_assessment": { "type": "string" }
+          }
+        }
+      }
+    },
+    
+    "phase7_decision": {
+      "type": "object",
+      "properties": {
+        "do_nothing_gate": { "type": "object" },
+        "position_determination": { "type": "object" },
+        "entry_strategy": { "type": "object" },
+        "entry_levels": { "type": "object" },
+        "position_structure": { "type": "object" },
+        "recommendation": { "type": "object" },
+        "falsification": { "type": "object" }
+      }
+    },
+    
+    "phase8_post_earnings": {
+      "type": "object",
+      "properties": {
+        "status": { "type": "string", "enum": ["pending", "in_progress", "completed"] },
+        "review_scheduled": { "type": "string" },
+        "outcome": { "type": ["object", "null"] },
+        "error_analysis": { "type": ["object", "null"] },
+        "entry_timing": { "type": ["object", "null"] },
+        "data_source_review": { "type": ["object", "null"] }
+      }
+    },
+    
+    "summary": {
+      "type": "object",
+      "properties": {
+        "header": { "type": "string" },
+        "current_setup": { "type": "object" },
+        "probability_assessment": { "type": "object" },
+        "recommendation": { "type": "object" },
+        "position": { "type": "object" },
+        "falsification": { "type": "string" },
+        "biases_checked": { "type": "object" },
+        "post_earnings_review": { "type": "string" }
+      }
+    },
+    
+    "recommendation": {
+      "type": "object",
+      "required": ["direction", "confidence"],
+      "properties": {
+        "direction": { "type": "string", "enum": ["long", "short", "neutral", "avoid"] },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "entry_price": { "type": "number" },
+        "entry_zone": { "type": "array" },
+        "target_price": { "type": "number" },
+        "stop_loss": { "type": "number" },
+        "position_size_pct": { "type": "number" },
+        "structure": { "type": "string" },
+        "expiration": { "type": "string" },
+        "specific_trade": { "type": "string" },
+        "max_loss_pct": { "type": "number" }
+      }
+    },
+    
+    "_graph": { "type": "object" },
+    "_links": { "type": "object" }
+  }
+}

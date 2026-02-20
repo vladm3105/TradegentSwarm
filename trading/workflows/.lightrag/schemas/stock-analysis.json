@@ -1,0 +1,280 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "stock-analysis.json",
+  "$comment": "Aligned with stock-analysis skill v1.0",
+  "title": "Stock Analysis",
+  "description": "Non-earnings stock analysis using 7-phase framework",
+  "type": "object",
+  "required": ["_meta", "ticker", "analysis_date", "catalyst_type", "phase1_catalyst", "phase6_scenarios", "recommendation"],
+  "properties": {
+    "_meta": {
+      "type": "object",
+      "required": ["id", "type", "version", "created", "status"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^SA-[A-Z]+-[0-9]{4}-[0-9]{3}$",
+          "description": "Unique identifier: SA-{TICKER}-{YYYY}-{NNN}"
+        },
+        "type": {
+          "type": "string",
+          "const": "stock-analysis"
+        },
+        "version": { "type": "integer", "minimum": 1 },
+        "created": { "type": "string", "format": "date-time" },
+        "updated": { "type": "string", "format": "date-time" },
+        "status": {
+          "type": "string",
+          "enum": ["active", "triggered", "closed", "expired", "cancelled"]
+        },
+        "skill_version": { "type": "string" }
+      }
+    },
+    "ticker": { "type": "string", "pattern": "^[A-Z]{1,5}$" },
+    "analysis_date": { "type": "string", "format": "date" },
+    "catalyst_type": {
+      "type": "string",
+      "enum": ["technical", "news", "sector", "momentum", "squeeze", "earnings_adjacent", "other"]
+    },
+    
+    "phase1_catalyst": {
+      "type": "object",
+      "required": ["catalyst", "thesis"],
+      "properties": {
+        "catalyst": {
+          "type": "object",
+          "required": ["type", "name", "description"],
+          "properties": {
+            "type": { "type": "string" },
+            "name": { "type": "string" },
+            "description": { "type": "string" }
+          }
+        },
+        "thesis": {
+          "type": "object",
+          "required": ["summary"],
+          "properties": {
+            "summary": { "type": "string" },
+            "detailed": { "type": "string" }
+          }
+        },
+        "timeframe": {
+          "type": "object",
+          "properties": {
+            "expected_duration": { "type": "string" },
+            "catalyst_date": { "type": "string" }
+          }
+        },
+        "invalidation": {
+          "type": "object",
+          "properties": {
+            "thesis_wrong_if": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    
+    "phase2_market_environment": {
+      "type": "object",
+      "properties": {
+        "broader_market": { "type": "object" },
+        "sector_performance": { "type": "object" },
+        "correlation_dynamics": { "type": "object" },
+        "environment_assessment": { "type": "object" }
+      }
+    },
+    
+    "phase3_technical": {
+      "type": "object",
+      "properties": {
+        "price_action": { "type": "object" },
+        "consolidation_pattern": { "type": "object" },
+        "support_resistance": { "type": "object" },
+        "volume_analysis": { "type": "object" },
+        "technical_indicators": { "type": "object" },
+        "multiple_timeframe": { "type": "object" },
+        "recent_crash": { "type": "object" },
+        "setup_quality": {
+          "type": "object",
+          "properties": {
+            "score": { "type": "integer", "minimum": 1, "maximum": 10 },
+            "scoring_breakdown": { "type": "object" },
+            "notes": { "type": "string" }
+          }
+        }
+      }
+    },
+    
+    "phase4_fundamentals": {
+      "type": "object",
+      "properties": {
+        "business_overview": { "type": "object" },
+        "recent_developments": { "type": "array" },
+        "key_metrics": { "type": "object" },
+        "valuation": { "type": "object" },
+        "what_is_priced_in": { "type": "object" },
+        "potential_surprises": { "type": "object" }
+      }
+    },
+    
+    "phase5_sentiment": {
+      "type": "object",
+      "properties": {
+        "analyst_sentiment": { "type": "object" },
+        "institutional_positioning": { "type": "object" },
+        "short_interest": { "type": "object" },
+        "retail_sentiment": { "type": "object" },
+        "positioning_assessment": { "type": "object" },
+        "trade_type": { "type": "object" }
+      }
+    },
+    
+    "phase6_scenarios": {
+      "type": "object",
+      "required": ["expected_value"],
+      "properties": {
+        "bull_case": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "probability": { "type": "number", "minimum": 0, "maximum": 1 },
+            "price_target": { "type": "number" },
+            "upside_pct": { "type": "number" },
+            "timeframe": { "type": "string" },
+            "triggers": { "type": "array", "items": { "type": "string" } },
+            "contribution_to_ev": { "type": "number" }
+          }
+        },
+        "base_case": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "probability": { "type": "number", "minimum": 0, "maximum": 1 },
+            "price_target": { "type": "number" },
+            "upside_pct": { "type": "number" },
+            "timeframe": { "type": "string" },
+            "triggers": { "type": "array", "items": { "type": "string" } },
+            "contribution_to_ev": { "type": "number" }
+          }
+        },
+        "base_case_positive": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "probability": { "type": "number", "minimum": 0, "maximum": 1 },
+            "price_target": { "type": "number" },
+            "upside_pct": { "type": "number" },
+            "timeframe": { "type": "string" },
+            "triggers": { "type": "array", "items": { "type": "string" } },
+            "contribution_to_ev": { "type": "number" }
+          }
+        },
+        "base_case_negative": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "probability": { "type": "number", "minimum": 0, "maximum": 1 },
+            "price_target": { "type": "number" },
+            "downside_pct": { "type": "number" },
+            "timeframe": { "type": "string" },
+            "triggers": { "type": "array", "items": { "type": "string" } },
+            "contribution_to_ev": { "type": "number" }
+          }
+        },
+        "bear_case": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "probability": { "type": "number", "minimum": 0, "maximum": 1 },
+            "price_target": { "type": "number" },
+            "downside_pct": { "type": "number" },
+            "timeframe": { "type": "string" },
+            "triggers": { "type": "array", "items": { "type": "string" } },
+            "contribution_to_ev": { "type": "number" }
+          }
+        },
+        "expected_value": {
+          "type": "object",
+          "required": ["ev_pct"],
+          "properties": {
+            "ev_pct": { "type": "number" },
+            "probability_sum_check": { "type": "number" },
+            "ev_threshold_per_skill": { "type": "number" },
+            "ev_assessment": { "type": "string" }
+          }
+        }
+      }
+    },
+    
+    "phase7_risk_management": {
+      "type": "object",
+      "properties": {
+        "bias_checks": {
+          "type": "object",
+          "properties": {
+            "recency_bias": { "type": "object" },
+            "confirmation_bias": { "type": "object" },
+            "anchoring_bias": { "type": "object" },
+            "loss_aversion": { "type": "object" },
+            "overconfidence": { "type": "object" }
+          }
+        },
+        "entry": { "type": "object" },
+        "position_sizing": { "type": "object" },
+        "stop_loss": { "type": "object" },
+        "profit_targets": { "type": "object" },
+        "risk_reward": { "type": "object" }
+      }
+    },
+    
+    "trade_selection": {
+      "type": "object",
+      "properties": {
+        "pass_criteria_check": { "type": "object" },
+        "trade_criteria_check": { "type": "object" },
+        "final_decision": {
+          "type": "string",
+          "enum": ["TRADE", "PASS", "WATCH"]
+        },
+        "decision_rationale": { "type": "string" }
+      }
+    },
+    
+    "recommendation": {
+      "type": "object",
+      "required": ["action", "ticker"],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": ["BUY", "BUY_ON_BREAKOUT", "BUY_ON_PULLBACK", "SELL", "SHORT", "WATCH", "PASS"]
+        },
+        "ticker": { "type": "string" },
+        "do_not_enter_now": { "type": "boolean" },
+        "reason": { "type": "string" },
+        "entry": { "type": "object" },
+        "position": { "type": "object" },
+        "exit_plan": { "type": "object" },
+        "risk_metrics": { "type": "object" },
+        "timeframe": { "type": "string" },
+        "monitoring": { "type": "object" },
+        "potential_entry_setups": { "type": "object" },
+        "forecast_2_weeks": { "type": "object" }
+      }
+    },
+    
+    "post_trade": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["pending", "watching", "in_progress", "completed"]
+        },
+        "outcome": { "type": ["object", "null"] },
+        "review": { "type": ["object", "null"] }
+      }
+    },
+    
+    "_graph": { "type": "object" },
+    "_links": { "type": "object" }
+  }
+}

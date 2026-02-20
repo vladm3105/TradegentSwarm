@@ -1,0 +1,79 @@
+# LightRAG Sync Configuration
+# This file configures how documents sync from GitHub to LightRAG
+
+version: "1.0"
+
+# Connection settings (use environment variables in CI)
+connection:
+  api_url: "${LIGHTRAG_API_URL}"
+  api_key: "${LIGHTRAG_API_KEY}"
+
+# Sync behavior
+sync:
+  mode: incremental          # incremental | full
+  on_push: true              # Sync on git push
+  batch_size: 50             # Documents per batch
+  parallel_workers: 4        # Concurrent processing
+
+# Space definitions (LightRAG namespaces)
+spaces:
+  - name: earnings
+    path: "earnings/"
+    schema: "schemas/earnings-analysis.json"
+    retention: permanent
+    description: "Pre and post earnings analyses (8-phase skill)"
+
+  - name: analysis
+    path: "analysis/"
+    schema: "schemas/stock-analysis.json"
+    retention: permanent
+    description: "Non-earnings stock analysis (7-phase skill)"
+
+  - name: trades
+    path: "trades/"
+    schema: "schemas/trade-journal.json"
+    retention: permanent
+    description: "Trade execution records and reviews"
+
+  - name: strategies
+    path: "strategies/"
+    schema: "schemas/strategy.json"
+    retention: permanent
+    description: "Trading strategy definitions"
+
+  - name: tickers
+    path: "tickers/"
+    schema: "schemas/ticker.json"
+    retention: permanent
+    update_mode: upsert       # Update existing on conflict
+    description: "Company profiles and trading edge"
+
+  - name: learnings
+    path: "learnings/"
+    schema: "schemas/learning.json"
+    retention: permanent
+    description: "Meta-learnings and bias patterns"
+
+  - name: research
+    path: "research/"
+    schema: "schemas/research.json"
+    retention: 90_days        # Auto-archive after 90 days
+    description: "Market research and thematic analysis"
+
+# Entity extraction settings
+extraction:
+  use_frontmatter_hints: true   # Use _graph.entities from documents
+  llm_extraction: true          # Also use LLM for extraction
+  merge_strategy: union         # Combine both sources
+  
+# Embedding settings
+embedding:
+  model: "text-embedding-3-small"
+  dimensions: 1536
+  batch_size: 100
+
+# Graph settings
+graph:
+  auto_dedupe: true             # Merge similar entities
+  dedupe_threshold: 0.85        # Similarity threshold
+  max_relation_depth: 3         # For traversal queries
