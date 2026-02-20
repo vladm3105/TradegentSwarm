@@ -124,35 +124,47 @@ def format_context(
     if graph_context:
         graph_sections = []
 
-        # Peers
-        peers = graph_context.get("peers", [])
-        if peers:
-            peer_list = ", ".join([p.get("peer", "") for p in peers[:5]])
-            graph_sections.append(f"**Sector Peers**: {peer_list}")
-
-        # Competitors
-        competitors = graph_context.get("competitors", [])
-        if competitors:
-            comp_list = ", ".join([c.get("competitor", "") for c in competitors[:5]])
-            graph_sections.append(f"**Competitors**: {comp_list}")
-
-        # Risks
-        risks = graph_context.get("risks", [])
-        if risks:
-            risk_list = ", ".join([r.get("risk", "") for r in risks[:5]])
-            graph_sections.append(f"**Known Risks**: {risk_list}")
-
-        # Supply chain
-        supply = graph_context.get("supply_chain", {})
-        if supply.get("suppliers"):
-            graph_sections.append(f"**Suppliers**: {', '.join(supply['suppliers'][:5])}")
-        if supply.get("customers"):
-            graph_sections.append(f"**Customers**: {', '.join(supply['customers'][:5])}")
-
-        if graph_sections:
+        # Check for empty graph status
+        if graph_context.get("_status") == "empty":
             sections.append("### Knowledge Graph\n")
-            sections.append("\n".join(graph_sections))
+            sections.append("*Graph context unavailable - no data indexed yet.*")
+            sections.append(f"*Tip: {graph_context.get('_message', 'Run graph extraction on analysis documents')}*")
             sections.append("")
+        else:
+            # Peers
+            peers = graph_context.get("peers", [])
+            if peers:
+                peer_list = ", ".join([p.get("peer", "") for p in peers[:5]])
+                graph_sections.append(f"**Sector Peers**: {peer_list}")
+
+            # Competitors
+            competitors = graph_context.get("competitors", [])
+            if competitors:
+                comp_list = ", ".join([c.get("competitor", "") for c in competitors[:5]])
+                graph_sections.append(f"**Competitors**: {comp_list}")
+
+            # Risks
+            risks = graph_context.get("risks", [])
+            if risks:
+                risk_list = ", ".join([r.get("risk", "") for r in risks[:5]])
+                graph_sections.append(f"**Known Risks**: {risk_list}")
+
+            # Supply chain
+            supply = graph_context.get("supply_chain", {})
+            if supply.get("suppliers"):
+                graph_sections.append(f"**Suppliers**: {', '.join(supply['suppliers'][:5])}")
+            if supply.get("customers"):
+                graph_sections.append(f"**Customers**: {', '.join(supply['customers'][:5])}")
+
+            if graph_sections:
+                sections.append("### Knowledge Graph\n")
+                sections.append("\n".join(graph_sections))
+                sections.append("")
+            elif graph_context.get("symbol"):
+                # Graph has data but nothing for this specific ticker
+                sections.append("### Knowledge Graph\n")
+                sections.append(f"*No relationships found for {ticker} in the knowledge graph.*")
+                sections.append("")
 
     # Vector search results
     if vector_results:

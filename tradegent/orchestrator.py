@@ -986,6 +986,35 @@ def show_status(db: NexusDB):
         print(f"    {(sch.name or '')[:40]:<40} {sch.frequency:<12} [{status}]")
 
     print(f"\n  TODAY: {db.get_today_run_count()} runs (limit {cfg.max_daily_analyses})")
+
+    # Knowledge Base Status
+    print("\n  KNOWLEDGE BASE")
+    try:
+        from graph.layer import TradingGraph
+
+        with TradingGraph() as g:
+            status = g.get_status()
+            if status.get("connected"):
+                if status.get("populated"):
+                    print(f"    Graph: ✅ {status['node_count']} nodes, {status['edge_count']} edges")
+                else:
+                    print("    Graph: ⚠️  Empty (run 'graph init' and index documents)")
+            else:
+                print("    Graph: ❌ Not connected")
+    except Exception as e:
+        print(f"    Graph: ❌ {e}")
+
+    try:
+        from rag.schema import get_db_stats
+
+        rag_stats = get_db_stats()
+        if rag_stats:
+            print(f"    RAG: ✅ {rag_stats.get('documents', 0)} docs, {rag_stats.get('chunks', 0)} chunks")
+        else:
+            print("    RAG: ⚠️  Empty")
+    except Exception:
+        print("    RAG: Not available")
+
     print(f"{'═' * 60}\n")
 
 
@@ -1017,7 +1046,11 @@ def _check_all_health() -> None:
 
         with TradingGraph() as g:
             if g.health_check():
-                print("✅ Neo4j (graph): OK")
+                status = g.get_status()
+                if status.get("populated"):
+                    print(f"✅ Neo4j (graph): OK ({status['node_count']} nodes, {status['edge_count']} edges)")
+                else:
+                    print("⚠️  Neo4j (graph): EMPTY - run 'python orchestrator.py graph init' and index documents")
             else:
                 print("❌ Neo4j (graph): FAIL")
     except Exception as e:

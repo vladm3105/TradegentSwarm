@@ -13,6 +13,9 @@ from .models import GraphStats
 
 log = logging.getLogger(__name__)
 
+# Module-level flag to track if we've warned about empty graph
+_empty_graph_warned = False
+
 
 class TradingGraph:
     """Neo4j graph layer for trading knowledge."""
@@ -69,6 +72,71 @@ class TradingGraph:
             return True
         except Exception:
             return False
+
+    def is_populated(self) -> bool:
+        """
+        Check if the graph has any data.
+
+        Returns True if at least one node exists in the graph.
+        This is used to determine if queries will return useful context.
+        """
+        try:
+            with self._driver.session(database=self.database) as session:
+                # Simple count of all nodes - doesn't trigger label warnings
+                result = session.run("MATCH (n) RETURN count(n) AS cnt LIMIT 1")
+                record = result.single()
+                return record and record["cnt"] > 0
+        except Exception:
+            return False
+
+    def get_status(self) -> dict:
+        """
+        Get graph status summary for diagnostics.
+
+        Returns:
+            Dict with connection status, node counts, and population status
+        """
+        global _empty_graph_warned
+
+        status = {
+            "connected": False,
+            "populated": False,
+            "node_count": 0,
+            "edge_count": 0,
+            "message": "Unknown",
+        }
+
+        if not self.health_check():
+            status["message"] = "Neo4j not reachable"
+            return status
+
+        status["connected"] = True
+
+        try:
+            with self._driver.session(database=self.database) as session:
+                # Get total counts
+                result = session.run("MATCH (n) RETURN count(n) AS nodes")
+                record = result.single()
+                status["node_count"] = record["nodes"] if record else 0
+
+                result = session.run("MATCH ()-[r]->() RETURN count(r) AS edges")
+                record = result.single()
+                status["edge_count"] = record["edges"] if record else 0
+
+            status["populated"] = status["node_count"] > 0
+
+            if not status["populated"]:
+                status["message"] = "Graph is empty - run 'python orchestrator.py graph init' and index some documents"
+                if not _empty_graph_warned:
+                    log.warning(f"Knowledge graph is empty. {status['message']}")
+                    _empty_graph_warned = True
+            else:
+                status["message"] = f"Graph has {status['node_count']} nodes and {status['edge_count']} edges"
+
+        except Exception as e:
+            status["message"] = f"Error checking graph status: {e}"
+
+        return status
 
     # --- Schema Management ---
 
@@ -331,7 +399,23 @@ class TradingGraph:
         - Known risks
         - Strategies that work
         - Past biases in trades
+
+        Returns empty context with status message if graph is not populated.
         """
+        # Check if graph has data before running queries (prevents noisy warnings)
+        if not self.is_populated():
+            status = self.get_status()
+            return {
+                "symbol": symbol,
+                "peers": [],
+                "competitors": [],
+                "risks": [],
+                "strategies": [],
+                "supply_chain": {"suppliers": [], "customers": []},
+                "_status": "empty",
+                "_message": status.get("message", "Graph is empty"),
+            }
+
         return {
             "symbol": symbol,
             "peers": self.get_sector_peers(symbol),

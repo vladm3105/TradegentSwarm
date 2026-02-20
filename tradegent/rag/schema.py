@@ -135,6 +135,21 @@ def health_check() -> bool:
         return False
 
 
+def get_db_stats() -> dict | None:
+    """Get RAG database statistics (document and chunk counts)."""
+    try:
+        schema = get_config().get("database", {}).get("schema", "nexus")
+        with psycopg.connect(get_database_url()) as conn:
+            with conn.cursor() as cur:
+                cur.execute(f"SELECT COUNT(*) FROM {schema}.rag_documents")
+                documents = cur.fetchone()[0]
+                cur.execute(f"SELECT COUNT(*) FROM {schema}.rag_chunks")
+                chunks = cur.fetchone()[0]
+                return {"documents": documents, "chunks": chunks}
+    except Exception:
+        return None
+
+
 def run_migrations() -> None:
     """
     Run all pending database migrations.
