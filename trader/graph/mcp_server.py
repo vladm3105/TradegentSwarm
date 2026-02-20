@@ -15,12 +15,9 @@ if env_path.exists():
     load_dotenv(env_path)
 else:
     # Fallback to trader/.env
-    trader_env = Path(__file__).parent.parent / "trader" / ".env"
+    trader_env = Path(__file__).parent.parent / ".env"
     if trader_env.exists():
         load_dotenv(trader_env)
-
-# Add trader package to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "trader"))
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -169,9 +166,9 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
 async def _execute_tool(name: str, args: dict) -> dict:
     """Execute a tool and return result."""
-    from graph.layer import TradingGraph
-    from graph.extract import extract_document, extract_text
-    from graph.exceptions import GraphUnavailableError, ExtractionError
+    from .layer import TradingGraph
+    from .extract import extract_document, extract_text
+    from .exceptions import GraphUnavailableError, ExtractionError
 
     if name == "graph_extract":
         result = extract_document(

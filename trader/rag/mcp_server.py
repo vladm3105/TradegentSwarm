@@ -16,12 +16,9 @@ if env_path.exists():
     load_dotenv(env_path)
 else:
     # Fallback to trader/.env
-    trader_env = Path(__file__).parent.parent / "trader" / ".env"
+    trader_env = Path(__file__).parent.parent / ".env"
     if trader_env.exists():
         load_dotenv(trader_env)
-
-# Add trader package to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "trader"))
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -136,10 +133,10 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
 async def _execute_tool(name: str, args: dict) -> dict:
     """Execute a tool and return result."""
-    from rag.embed import embed_document, embed_text
-    from rag.search import semantic_search, get_similar_analyses, get_rag_stats
-    from rag.hybrid import get_hybrid_context
-    from rag.exceptions import RAGUnavailableError, EmbedError
+    from .embed import embed_document, embed_text
+    from .search import semantic_search, get_similar_analyses, get_rag_stats
+    from .hybrid import get_hybrid_context
+    from .exceptions import RAGUnavailableError, EmbedError
 
     if name == "rag_embed":
         result = embed_document(
