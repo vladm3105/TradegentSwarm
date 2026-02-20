@@ -22,8 +22,8 @@ class TestSettings:
             }
         )
 
-        with patch("tradegent.orchestrator.NexusDB", return_value=mock_nexus_db):
-            from tradegent.orchestrator import Settings
+        with patch("orchestrator.NexusDB", return_value=mock_nexus_db):
+            from orchestrator import Settings
 
             settings = Settings(mock_nexus_db)
 
@@ -41,8 +41,8 @@ class TestSettings:
             }
         )
 
-        with patch("tradegent.orchestrator.NexusDB", return_value=mock_nexus_db):
-            from tradegent.orchestrator import Settings
+        with patch("orchestrator.NexusDB", return_value=mock_nexus_db):
+            from orchestrator import Settings
 
             settings = Settings(mock_nexus_db)
 
@@ -59,111 +59,79 @@ class TestSettings:
             assert settings.max_daily_analyses == 25
 
 
-class TestAnalysisParsing:
-    """Test analysis output parsing."""
+class TestJsonParsing:
+    """Test JSON block parsing."""
 
-    def test_parse_analysis_output_valid(self):
-        """Test parsing valid analysis output."""
-        from tradegent.orchestrator import parse_analysis_output
+    def test_parse_json_block_valid(self):
+        """Test parsing valid JSON block from output."""
+        from orchestrator import parse_json_block
 
-        analysis_yaml = """
-gate_passed: true
-recommendation: BUY
-confidence: 75
-expected_value_pct: 12.5
-entry_price: 125.00
-stop_loss: 118.75
-target_price: 143.75
-position_size_pct: 3.0
-structure: call_spread
-rationale: Strong earnings momentum
+        output = """
+Some analysis text here...
+
+```json
+{
+    "ticker": "NVDA",
+    "gate_passed": true,
+    "recommendation": "BUY",
+    "confidence": 75,
+    "expected_value_pct": 12.5
+}
+```
 """
-        result = parse_analysis_output(analysis_yaml)
+        result = parse_json_block(output)
 
         assert result is not None
         assert result.get("gate_passed") is True
         assert result.get("recommendation") == "BUY"
         assert result.get("confidence") == 75
 
-    def test_parse_analysis_output_invalid(self):
-        """Test parsing invalid analysis output."""
-        from tradegent.orchestrator import parse_analysis_output
+    def test_parse_json_block_invalid(self):
+        """Test parsing invalid JSON block."""
+        from orchestrator import parse_json_block
 
-        result = parse_analysis_output("invalid: [yaml: broken")
+        result = parse_json_block("invalid: [json: broken")
 
-        assert result is None or result == {}
+        assert result is None
 
+    def test_parse_json_block_no_fenced_block(self):
+        """Test parsing JSON without fenced code block."""
+        from orchestrator import parse_json_block
 
-class TestGateCheck:
-    """Test Do Nothing gate check."""
-
-    def test_gate_passes(self, sample_analysis_result):
-        """Test that gate passes for valid analysis."""
-        from tradegent.orchestrator import check_do_nothing_gate
-
-        result = check_do_nothing_gate(sample_analysis_result)
-
-        assert result["passed"] is True
-
-    def test_gate_fails_low_confidence(self, sample_analysis_result):
-        """Test that gate fails for low confidence."""
-        from tradegent.orchestrator import check_do_nothing_gate
-
-        sample_analysis_result["confidence"] = 40
-        result = check_do_nothing_gate(sample_analysis_result)
-
-        # Should fail due to low confidence
-        assert result["passed"] is False or "confidence" in str(result.get("reason", "")).lower()
-
-    def test_gate_fails_no_recommendation(self):
-        """Test that gate fails without recommendation."""
-        from tradegent.orchestrator import check_do_nothing_gate
-
-        analysis = {"gate_passed": False}
-        result = check_do_nothing_gate(analysis)
-
-        assert result["passed"] is False
-
-
-class TestFileOperations:
-    """Test file handling operations."""
-
-    def test_save_analysis_file(self, tmp_analyses_dir):
-        """Test saving analysis to file."""
-        from tradegent.orchestrator import save_analysis_file
-
-        analysis_data = {
-            "ticker": "NVDA",
-            "recommendation": "BUY",
-            "confidence": 75,
-        }
-
-        filepath = save_analysis_file(
-            analysis_data,
-            ticker="NVDA",
-            analysis_type="earnings",
-            output_dir=tmp_analyses_dir,
-        )
-
-        assert filepath.exists()
-        assert "NVDA" in filepath.name
-
-    def test_load_analysis_file(self, tmp_analyses_dir):
-        """Test loading analysis from file."""
-        import yaml
-
-        from tradegent.orchestrator import load_analysis_file
-
-        # Create a test file
-        test_file = tmp_analyses_dir / "NVDA_20250120T0900.yaml"
-        test_data = {"ticker": "NVDA", "recommendation": "BUY"}
-        with open(test_file, "w") as f:
-            yaml.dump(test_data, f)
-
-        result = load_analysis_file(test_file)
+        output = """
+Analysis complete.
+{"ticker": "NVDA", "gate_passed": false}
+"""
+        result = parse_json_block(output)
 
         assert result is not None
-        assert result["ticker"] == "NVDA"
+        assert result.get("ticker") == "NVDA"
+        assert result.get("gate_passed") is False
+
+
+class TestAnalysisResult:
+    """Test AnalysisResult data class."""
+
+    def test_analysis_result_creation(self):
+        """Test AnalysisResult dataclass."""
+        from pathlib import Path
+
+        from orchestrator import AnalysisResult, AnalysisType
+
+        result = AnalysisResult(
+            ticker="NVDA",
+            type=AnalysisType.EARNINGS,
+            filepath=Path("/tmp/test.md"),
+            gate_passed=True,
+            recommendation="BUY",
+            confidence=75,
+            expected_value=12.5,
+            raw_output="test output",
+        )
+
+        assert result.ticker == "NVDA"
+        assert result.gate_passed is True
+        assert result.confidence == 75
 
 
 class TestClaudeCodeExecution:
@@ -171,16 +139,17 @@ class TestClaudeCodeExecution:
 
     def test_call_claude_code_success(self, mock_settings):
         """Test successful Claude Code execution."""
-        with patch("tradegent.orchestrator.subprocess.run") as mock_run:
+        with patch("orchestrator.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=0,
                 stdout="recommendation: BUY\nconfidence: 75",
                 stderr="",
             )
 
-            from tradegent.orchestrator import call_claude_code
+            from orchestrator import call_claude_code
 
-            with patch("tradegent.orchestrator.cfg", mock_settings):
+            with patch("orchestrator.cfg", mock_settings):
+                mock_settings.dry_run_mode = False
                 result = call_claude_code(
                     prompt="Analyze NVDA",
                     allowed_tools="mcp__ib-mcp__*",
@@ -190,21 +159,37 @@ class TestClaudeCodeExecution:
             assert result is not None
 
     def test_call_claude_code_timeout(self, mock_settings):
-        """Test Claude Code timeout handling."""
+        """Test Claude Code timeout handling - returns empty string."""
         import subprocess
 
-        with patch("tradegent.orchestrator.subprocess.run") as mock_run:
+        with patch("orchestrator.subprocess.run") as mock_run:
             mock_run.side_effect = subprocess.TimeoutExpired(cmd="claude", timeout=600)
 
-            from tradegent.orchestrator import call_claude_code
+            from orchestrator import call_claude_code
 
-            with patch("tradegent.orchestrator.cfg", mock_settings):
-                with pytest.raises(subprocess.TimeoutExpired):
-                    call_claude_code(
-                        prompt="Analyze NVDA",
-                        allowed_tools="mcp__ib-mcp__*",
-                        label="test",
-                    )
+            with patch("orchestrator.cfg", mock_settings):
+                mock_settings.dry_run_mode = False
+                # call_claude_code catches TimeoutExpired and returns empty string
+                result = call_claude_code(
+                    prompt="Analyze NVDA",
+                    allowed_tools="mcp__ib-mcp__*",
+                    label="test",
+                )
+                assert result == ""
+
+    def test_call_claude_code_dry_run(self, mock_settings):
+        """Test Claude Code in dry run mode."""
+        from orchestrator import call_claude_code
+
+        with patch("orchestrator.cfg", mock_settings):
+            mock_settings.dry_run_mode = True
+            result = call_claude_code(
+                prompt="Analyze NVDA",
+                allowed_tools="mcp__ib-mcp__*",
+                label="test",
+            )
+            # Dry run returns empty string without calling subprocess
+            assert result == ""
 
 
 class TestStockCommands:
@@ -220,10 +205,16 @@ class TestStockCommands:
         assert len(stocks) == 2
         assert stocks[0]["ticker"] == "NVDA"
 
-    def test_stock_add_command(self, mock_nexus_db, mock_db_connection):
+    def test_stock_add_command(self, mock_nexus_db, mock_db_connection, sample_stock):
         """Test stock add command."""
         _, mock_cursor = mock_db_connection
-        mock_cursor.fetchone.return_value = {"ticker": "PLTR", "name": "Palantir"}
+        # upsert_stock calls get_stock which expects a full stock row
+        pltr_stock = sample_stock.copy()
+        pltr_stock["ticker"] = "PLTR"
+        pltr_stock["name"] = "Palantir"
+        pltr_stock["priority"] = 6
+        pltr_stock["tags"] = ["ai", "defense"]
+        mock_cursor.fetchone.return_value = pltr_stock
 
         result = mock_nexus_db.upsert_stock(
             ticker="PLTR",
@@ -233,6 +224,7 @@ class TestStockCommands:
         )
 
         assert result is not None
+        assert result.ticker == "PLTR"
 
 
 class TestScheduleExecution:
@@ -241,11 +233,13 @@ class TestScheduleExecution:
     def test_run_due_schedules_empty(self, mock_nexus_db):
         """Test running when no schedules are due."""
         mock_nexus_db.get_due_schedules = MagicMock(return_value=[])
+        mock_nexus_db.get_today_run_count = MagicMock(return_value=0)
 
-        from tradegent.orchestrator import run_due_schedules
+        from orchestrator import run_due_schedules
 
-        with patch("tradegent.orchestrator.cfg") as mock_cfg:
+        with patch("orchestrator.cfg") as mock_cfg:
             mock_cfg.dry_run_mode = True
+            mock_cfg.max_daily_analyses = 15
             run_due_schedules(mock_nexus_db)
 
         # Should complete without error
@@ -254,17 +248,19 @@ class TestScheduleExecution:
     def test_run_due_schedules_with_task(self, mock_nexus_db, sample_schedule):
         """Test running with a due schedule."""
         mock_nexus_db.get_due_schedules = MagicMock(return_value=[sample_schedule])
+        mock_nexus_db.get_today_run_count = MagicMock(return_value=0)
         mock_nexus_db.start_run = MagicMock(return_value=1)
         mock_nexus_db.complete_run = MagicMock()
         mock_nexus_db.update_next_run = MagicMock()
+        mock_nexus_db.calculate_next_run = MagicMock(return_value=None)
 
-        from tradegent.orchestrator import run_due_schedules
+        from orchestrator import run_due_schedules
 
-        with patch("tradegent.orchestrator.cfg") as mock_cfg:
+        with patch("orchestrator.cfg") as mock_cfg:
             mock_cfg.dry_run_mode = True
             mock_cfg.max_daily_analyses = 15
 
-            with patch("tradegent.orchestrator.run_analysis") as mock_run:
+            with patch("orchestrator.run_analysis") as mock_run:
                 mock_run.return_value = {"success": True}
                 run_due_schedules(mock_nexus_db)
 
@@ -318,3 +314,60 @@ class TestCircuitBreaker:
 
         is_circuit_ok = sample_schedule.consecutive_fails < sample_schedule.max_consecutive_fails
         assert is_circuit_ok is True
+
+
+class TestPromptBuilders:
+    """Test prompt building functions."""
+
+    def test_build_analysis_prompt_earnings(self):
+        """Test building earnings analysis prompt."""
+        from orchestrator import AnalysisType, build_analysis_prompt
+
+        with patch("orchestrator.build_kb_context", return_value=""):
+            prompt = build_analysis_prompt("NVDA", AnalysisType.EARNINGS)
+
+            assert "NVDA" in prompt
+            assert "earnings" in prompt.lower()
+            assert "json" in prompt.lower()
+
+    def test_build_analysis_prompt_stock(self):
+        """Test building stock analysis prompt."""
+        from orchestrator import AnalysisType, build_analysis_prompt
+
+        with patch("orchestrator.build_kb_context", return_value=""):
+            prompt = build_analysis_prompt("AAPL", AnalysisType.STOCK)
+
+            assert "AAPL" in prompt
+            assert "stock" in prompt.lower()
+
+    def test_build_scanner_prompt(self):
+        """Test building scanner prompt."""
+        from orchestrator import build_scanner_prompt
+
+        scanner = MagicMock()
+        scanner.scanner_code = "TEST_SCANNER"
+        scanner.display_name = "Test Scanner"
+        scanner.instrument = "STK"
+        scanner.location = "STK.US.MAJOR"
+        scanner.num_results = 50
+        scanner.max_candidates = 10
+        scanner.filters = {}
+
+        prompt = build_scanner_prompt(scanner)
+
+        assert "TEST_SCANNER" in prompt
+        assert "json" in prompt.lower()
+
+
+class TestAnalysisType:
+    """Test AnalysisType enum."""
+
+    def test_analysis_type_values(self):
+        """Test AnalysisType enum values."""
+        from orchestrator import AnalysisType
+
+        assert AnalysisType.EARNINGS.value == "earnings"
+        assert AnalysisType.STOCK.value == "stock"
+        assert AnalysisType.SCAN.value == "scan"
+        assert AnalysisType.REVIEW.value == "review"
+        assert AnalysisType.POSTMORTEM.value == "postmortem"

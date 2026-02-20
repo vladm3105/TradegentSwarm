@@ -31,8 +31,8 @@ class TestEmbeddingClient:
     def test_init_defaults(self):
         client = EmbeddingClient(config={})
         # Defaults from config file (may include fallbacks)
-        assert "ollama" in client.fallback_chain
-        assert client.dimensions == 768
+        assert len(client.fallback_chain) > 0  # Has at least one provider
+        assert client.dimensions == 1536  # OpenAI text-embedding-3-large default
         assert client.timeout == 30
 
 

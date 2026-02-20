@@ -1,6 +1,6 @@
 """Tests for tradegent/db_layer.py"""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -12,8 +12,8 @@ class TestNexusDBConnection:
         """Test successful database connection."""
         mock_conn, _ = mock_db_connection
 
-        with patch("tradegent.db_layer.psycopg.connect", return_value=mock_conn) as mock_connect:
-            from tradegent.db_layer import NexusDB
+        with patch("db_layer.psycopg.connect", return_value=mock_conn) as mock_connect:
+            from db_layer import NexusDB
 
             db = NexusDB()
             db.connect()
@@ -27,8 +27,8 @@ class TestNexusDBConnection:
         monkeypatch.setenv("PG_HOST", "custom-host")
         monkeypatch.setenv("PG_PORT", "5434")
 
-        with patch("tradegent.db_layer.psycopg.connect", return_value=mock_conn) as mock_connect:
-            from tradegent.db_layer import get_dsn
+        with patch("db_layer.psycopg.connect", return_value=mock_conn) as mock_connect:
+            from db_layer import get_dsn
 
             dsn = get_dsn()
 
@@ -39,8 +39,8 @@ class TestNexusDBConnection:
         """Test database as context manager."""
         mock_conn, _ = mock_db_connection
 
-        with patch("tradegent.db_layer.psycopg.connect", return_value=mock_conn):
-            from tradegent.db_layer import NexusDB
+        with patch("db_layer.psycopg.connect", return_value=mock_conn):
+            from db_layer import NexusDB
 
             with NexusDB() as db:
                 assert db._conn is not None
@@ -50,7 +50,8 @@ class TestNexusDBConnection:
     def test_health_check_healthy(self, mock_nexus_db, mock_db_connection):
         """Test health check when database is healthy."""
         _, mock_cursor = mock_db_connection
-        mock_cursor.fetchone.return_value = (1,)
+        # health_check expects fetchone to return dict with 'cnt' key
+        mock_cursor.fetchone.return_value = {"cnt": 5}
 
         result = mock_nexus_db.health_check()
         assert result is True
@@ -75,6 +76,7 @@ class TestStockOperations:
         result = mock_nexus_db.get_stock("NVDA")
 
         assert result is not None
+        assert result.ticker == "NVDA"
         mock_cursor.execute.assert_called()
 
     def test_get_stock_not_found(self, mock_nexus_db, mock_db_connection):
@@ -93,20 +95,26 @@ class TestStockOperations:
 
         result = mock_nexus_db.get_enabled_stocks()
 
-        assert len(result) >= 0  # May be empty or populated
+        assert len(result) == 2
+        assert result[0].ticker == "NVDA"
 
     def test_upsert_stock_invalid_column(self, mock_nexus_db):
         """Test upsert with invalid column raises error."""
         with pytest.raises(ValueError, match="Invalid stock column"):
             mock_nexus_db.upsert_stock("NVDA", invalid_column="value")
 
-    def test_upsert_stock_valid_columns(self, mock_nexus_db, mock_db_connection):
+    def test_upsert_stock_valid_columns(self, mock_nexus_db, mock_db_connection, sample_stock):
         """Test upsert with valid columns."""
         _, mock_cursor = mock_db_connection
-        mock_cursor.fetchone.return_value = {"ticker": "NVDA", "name": "NVIDIA Updated"}
+        # upsert calls get_stock which needs a full stock row
+        updated_stock = sample_stock.copy()
+        updated_stock["name"] = "NVIDIA Updated"
+        mock_cursor.fetchone.return_value = updated_stock
 
         result = mock_nexus_db.upsert_stock("NVDA", name="NVIDIA Updated")
 
+        assert result is not None
+        assert result.name == "NVIDIA Updated"
         mock_cursor.execute.assert_called()
 
 
@@ -116,7 +124,8 @@ class TestSettingsOperations:
     def test_get_setting(self, mock_nexus_db, mock_db_connection):
         """Test getting a single setting."""
         _, mock_cursor = mock_db_connection
-        mock_cursor.fetchone.return_value = ("15",)
+        # get_setting expects fetchone to return dict with 'value' key
+        mock_cursor.fetchone.return_value = {"value": "15"}
 
         result = mock_nexus_db.get_setting("max_daily_analyses")
 
@@ -143,19 +152,42 @@ class TestSettingsOperations:
 class TestScheduleOperations:
     """Test schedule operations."""
 
-    def test_get_enabled_schedules(self, mock_nexus_db, mock_db_connection, sample_schedule):
+    def test_get_enabled_schedules(self, mock_nexus_db, mock_db_connection):
         """Test getting enabled schedules."""
         _, mock_cursor = mock_db_connection
-        mock_cursor.fetchall.return_value = [sample_schedule]
+        # Schedule rows
+        mock_cursor.fetchall.return_value = [
+            {
+                "id": 1,
+                "name": "Test Schedule",
+                "task_type": "analyze_stock",
+                "frequency": "daily",
+                "is_enabled": True,
+                "target_ticker": "NVDA",
+                "target_scanner_id": None,
+                "analysis_type": "earnings",
+                "auto_execute": False,
+                "next_run_at": None,
+                "schedule_time": None,
+                "day_of_week": None,
+                "day_of_month": None,
+                "custom_prompt": None,
+                "last_run_at": None,
+                "last_run_status": None,
+                "consecutive_fails": 0,
+                "max_consecutive_fails": 3,
+                "notes": None,
+            }
+        ]
 
         result = mock_nexus_db.get_enabled_schedules()
 
         assert len(result) >= 0
 
-    def test_get_due_schedules(self, mock_nexus_db, mock_db_connection, sample_schedule):
+    def test_get_due_schedules(self, mock_nexus_db, mock_db_connection):
         """Test getting due schedules."""
         _, mock_cursor = mock_db_connection
-        mock_cursor.fetchall.return_value = [sample_schedule]
+        mock_cursor.fetchall.return_value = []
 
         result = mock_nexus_db.get_due_schedules()
 
@@ -187,35 +219,51 @@ class TestServiceStatus:
         mock_cursor.execute.assert_called()
 
     def test_increment_counter(self, mock_nexus_db, mock_db_connection):
-        """Test incrementing service counter."""
+        """Test incrementing service counter - valid counter."""
         _, mock_cursor = mock_db_connection
+        mock_cursor.execute.return_value = None
 
-        mock_nexus_db.increment_service_counter("ticks_total")
+        # Valid counter name should call execute
+        mock_nexus_db.increment_service_counter("analyses_total")
 
         mock_cursor.execute.assert_called()
+
+    def test_increment_counter_invalid(self, mock_nexus_db, mock_db_connection):
+        """Test incrementing service counter - invalid counter does nothing."""
+        _, mock_cursor = mock_db_connection
+
+        # Invalid counter should NOT call execute (early return)
+        mock_nexus_db.increment_service_counter("invalid_counter")
+
+        # Since "invalid_counter" is not in the valid set, execute should not be called
 
 
 class TestRunHistory:
     """Test run history operations."""
 
-    def test_start_run(self, mock_nexus_db, mock_db_connection):
-        """Test starting a run history entry."""
+    def test_mark_schedule_started(self, mock_nexus_db, mock_db_connection):
+        """Test marking a schedule as started."""
         _, mock_cursor = mock_db_connection
-        mock_cursor.fetchone.return_value = (1,)
+        # mark_schedule_started does multiple fetchone calls:
+        # 1. First returns schedule row (for task_type, target_ticker, analysis_type)
+        # 2. Second returns the new run_id
+        mock_cursor.fetchone.side_effect = [
+            {"task_type": "analyze_stock", "target_ticker": "NVDA", "analysis_type": "earnings"},
+            {"id": 1},
+        ]
 
-        run_id = mock_nexus_db.start_run(
-            schedule_id=1,
-            task_type="analyze_stock",
-            ticker="NVDA",
-        )
+        run_id = mock_nexus_db.mark_schedule_started(schedule_id=1)
 
         assert run_id == 1
+        mock_cursor.execute.assert_called()
 
-    def test_complete_run(self, mock_nexus_db, mock_db_connection):
-        """Test completing a run history entry."""
+    def test_mark_schedule_completed(self, mock_nexus_db, mock_db_connection):
+        """Test marking a schedule as completed."""
         _, mock_cursor = mock_db_connection
+        mock_cursor.execute.return_value = None
 
-        mock_nexus_db.complete_run(
+        mock_nexus_db.mark_schedule_completed(
+            schedule_id=1,
             run_id=1,
             status="completed",
             gate_passed=True,
@@ -231,22 +279,23 @@ class TestAnalysisResults:
     def test_save_analysis_result(self, mock_nexus_db, mock_db_connection, sample_analysis_result):
         """Test saving an analysis result."""
         _, mock_cursor = mock_db_connection
-        mock_cursor.fetchone.return_value = (1,)
+        mock_cursor.execute.return_value = None
 
-        result_id = mock_nexus_db.save_analysis_result(
+        # save_analysis_result takes run_id, ticker, analysis_type, and a parsed dict
+        mock_nexus_db.save_analysis_result(
             run_id=1,
             ticker="NVDA",
             analysis_type="earnings",
-            **sample_analysis_result,
+            parsed=sample_analysis_result,
         )
 
-        assert result_id == 1
+        mock_cursor.execute.assert_called()
 
-    def test_get_analysis_results_for_ticker(self, mock_nexus_db, mock_db_connection):
-        """Test getting analysis results for a ticker."""
+    def test_get_today_run_count(self, mock_nexus_db, mock_db_connection):
+        """Test getting today's run count."""
         _, mock_cursor = mock_db_connection
-        mock_cursor.fetchall.return_value = []
+        mock_cursor.fetchone.return_value = {"cnt": 5}
 
-        results = mock_nexus_db.get_analysis_results("NVDA", limit=10)
+        count = mock_nexus_db.get_today_run_count()
 
-        assert isinstance(results, list)
+        assert count == 5

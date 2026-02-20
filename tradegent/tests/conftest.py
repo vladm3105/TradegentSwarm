@@ -38,8 +38,8 @@ def mock_nexus_db(mock_db_connection):
     """Mock NexusDB instance."""
     mock_conn, mock_cursor = mock_db_connection
 
-    with patch("tradegent.db_layer.psycopg.connect", return_value=mock_conn):
-        from tradegent.db_layer import NexusDB
+    with patch("db_layer.psycopg.connect", return_value=mock_conn):
+        from db_layer import NexusDB
 
         db = NexusDB()
         db._conn = mock_conn

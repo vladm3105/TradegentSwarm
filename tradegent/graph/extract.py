@@ -5,7 +5,7 @@ import json
 import logging
 import os
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import requests
@@ -140,7 +140,7 @@ def extract_document(
         source_doc_type=doc_type,
         source_file_path=file_path,
         source_text_hash=text_hash,
-        extracted_at=datetime.utcnow(),
+        extracted_at=datetime.now(UTC),
         extractor=extractor,
         extraction_version=EXTRACT_VERSION,
     )
@@ -223,7 +223,7 @@ def extract_text(
         source_doc_type=doc_type,
         source_file_path=source_url or "text",
         source_text_hash=text_hash,
-        extracted_at=datetime.utcnow(),
+        extracted_at=datetime.now(UTC),
         extractor=extractor,
         extraction_version=EXTRACT_VERSION,
     )
@@ -659,7 +659,7 @@ def _queue_pending_commit(result: ExtractionResult) -> None:
         f.write(
             json.dumps(
                 {
-                    "ts": datetime.utcnow().isoformat(),
+                    "ts": datetime.now(UTC).isoformat(),
                     "doc": result.source_doc_id,
                     "file_path": result.source_file_path,
                     "reason": result.error_message or "unknown",
@@ -681,7 +681,7 @@ def _log_extraction(result: ExtractionResult) -> None:
         f.write(
             json.dumps(
                 {
-                    "ts": datetime.utcnow().isoformat(),
+                    "ts": datetime.now(UTC).isoformat(),
                     "doc": result.source_doc_id,
                     "doc_type": result.source_doc_type,
                     "extractor": result.extractor,

@@ -53,7 +53,7 @@ def mock_embedding_client():
     """Mock embedding client for tests."""
     with patch("rag.embedding_client.requests.post") as mock_post:
         mock_response = MagicMock()
-        mock_response.json.return_value = {"embeddings": [[0.1] * 768]}
+        mock_response.json.return_value = {"embeddings": [[0.1] * 1536]}
         mock_post.return_value = mock_response
         yield mock_post
 
@@ -63,9 +63,13 @@ def mock_config():
     """Mock RAG configuration."""
     config = {
         "embedding": {
-            "fallback_chain": ["ollama"],
-            "dimensions": 768,
+            "default_provider": "openai",
+            "fallback_chain": ["openai", "ollama"],
+            "dimensions": 1536,
             "timeout_seconds": 30,
+            "openai": {
+                "model": "text-embedding-3-large",
+            },
             "ollama": {
                 "base_url": "http://localhost:11434",
                 "model": "nomic-embed-text",
@@ -86,5 +90,5 @@ def mock_config():
 
 @pytest.fixture
 def sample_embedding():
-    """Sample 768-dimensional embedding vector."""
-    return [0.1 + i * 0.001 for i in range(768)]
+    """Sample 1536-dimensional embedding vector."""
+    return [0.1 + i * 0.001 for i in range(1536)]

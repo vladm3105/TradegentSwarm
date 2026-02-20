@@ -5,7 +5,7 @@ import json
 import logging
 import os
 import time
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import psycopg
@@ -464,7 +464,7 @@ def _log_embed(result: EmbedResult) -> None:
         f.write(
             json.dumps(
                 {
-                    "ts": datetime.utcnow().isoformat(),
+                    "ts": datetime.now(UTC).isoformat(),
                     "doc": result.doc_id,
                     "doc_type": result.doc_type,
                     "model": result.embed_model,
