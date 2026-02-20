@@ -491,7 +491,7 @@ class NexusDB:
             )
         self.conn.commit()
 
-    def save_analysis_result(self, run_id: int, ticker: str, analysis_type: str, parsed: dict):
+    def save_analysis_result(self, run_id: Optional[int], ticker: str, analysis_type: str, parsed: dict):
         """Save structured analysis result from parsed JSON."""
         with self.conn.cursor() as cur:
             cur.execute("""

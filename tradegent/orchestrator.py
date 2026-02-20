@@ -626,7 +626,7 @@ def run_analysis(db: NexusDB, ticker: str, analysis_type: AnalysisType,
 
     if parsed and ticker not in ("PORTFOLIO", "SCAN"):
         try:
-            db.save_analysis_result(run_id or 0, ticker, analysis_type.value, parsed)
+            db.save_analysis_result(run_id, ticker, analysis_type.value, parsed)
         except Exception as e:
             log.warning(f"Save analysis result failed: {e}")
 
