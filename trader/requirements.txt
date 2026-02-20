@@ -18,6 +18,9 @@ tiktoken>=0.5.2                  # Token estimation
 # YAML parsing
 pyyaml>=6.0.1                    # YAML parsing
 
+# Environment configuration
+python-dotenv>=1.0.0             # Load .env files
+
 # Rate limiting & resilience
 ratelimit>=2.2.1                 # Rate limiting decorator
 tenacity>=8.2.3                  # Retry with backoff

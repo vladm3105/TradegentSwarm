@@ -2,30 +2,30 @@ schema_version: "1.0.0"
 extract_version: "1.0.0"
 
 neo4j:
-  uri: "bolt://localhost:7688"
-  user: "neo4j"
+  uri: "${NEO4J_URI:-bolt://localhost:7688}"
+  user: "${NEO4J_USER:-neo4j}"
   password: "${NEO4J_PASS}"
-  database: "neo4j"
+  database: "${NEO4J_DATABASE:-neo4j}"
 
 extraction:
-  default_extractor: ollama
+  default_extractor: "${EXTRACT_DEFAULT_EXTRACTOR:-ollama}"
   fallback_chain:
     - ollama           # Try local first ($0)
     - openrouter       # Fallback to cloud if Ollama fails
-  timeout_seconds: 30
+  timeout_seconds: "${EXTRACT_TIMEOUT_SECONDS:-30}"
 
   # Confidence thresholds
-  commit_threshold: 0.7       # >= 0.7: commit normally
-  flag_threshold: 0.5         # 0.5-0.7: commit with needs_review flag
-  skip_threshold: 0.5         # < 0.5: do not commit
+  commit_threshold: "${EXTRACT_COMMIT_THRESHOLD:-0.7}"
+  flag_threshold: "${EXTRACT_FLAG_THRESHOLD:-0.5}"
+  skip_threshold: "${EXTRACT_FLAG_THRESHOLD:-0.5}"
 
   ollama:
-    base_url: "http://localhost:11434"
-    model: "qwen3:8b"
+    base_url: "${OLLAMA_BASE_URL:-http://localhost:11434}"
+    model: "${OLLAMA_EXTRACT_MODEL:-qwen3:8b}"
 
   openrouter:
     api_key: "${OPENROUTER_API_KEY}"
-    model: "anthropic/claude-3-5-sonnet"
+    model: "${OPENROUTER_EXTRACT_MODEL:-anthropic/claude-3-5-sonnet}"
     fallback_model: "anthropic/claude-3-haiku"
 
   claude_api:

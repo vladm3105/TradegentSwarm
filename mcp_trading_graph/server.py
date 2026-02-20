@@ -3,8 +3,21 @@
 import asyncio
 import json
 import logging
+import os
 import sys
 from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+env_path = Path(__file__).parent / ".env"
+if env_path.exists():
+    load_dotenv(env_path)
+else:
+    # Fallback to trader/.env
+    trader_env = Path(__file__).parent.parent / "trader" / ".env"
+    if trader_env.exists():
+        load_dotenv(trader_env)
 
 # Add trader package to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "trader"))

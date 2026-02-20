@@ -32,12 +32,21 @@ _config_path = Path(__file__).parent / "config.yaml"
 _config: dict = {}
 _field_mappings: dict = {}
 
+def _expand_env_vars(content: str) -> str:
+    """Expand ${VAR} and ${VAR:-default} patterns in config."""
+    import re
+    # Match ${VAR:-default} or ${VAR}
+    pattern = r'\$\{([A-Z_][A-Z0-9_]*)(?::-([^}]*))?\}'
+    def replacer(match):
+        var_name = match.group(1)
+        default = match.group(2) if match.group(2) is not None else ""
+        return os.getenv(var_name, default)
+    return re.sub(pattern, replacer, content)
+
 if _config_path.exists():
     with open(_config_path, "r") as f:
         config_content = f.read()
-        # Substitute environment variables
-        for key in ["NEO4J_PASS", "OPENROUTER_API_KEY", "ANTHROPIC_API_KEY"]:
-            config_content = config_content.replace(f"${{{key}}}", os.getenv(key, ""))
+        config_content = _expand_env_vars(config_content)
         _config = yaml.safe_load(config_content)
 
 _field_mappings_path = Path(__file__).parent / "field_mappings.yaml"
