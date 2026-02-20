@@ -24,6 +24,14 @@ extraction:
     base_url: "${LLM_BASE_URL:-http://localhost:11434}"
     model: "${LLM_MODEL:-qwen3:8b}"
 
+  # Generation options for LLM calls
+  generation:
+    temperature: "${LLM_TEMPERATURE:-0.1}"
+    num_predict: "${LLM_NUM_PREDICT:-2000}"
+    max_tokens: "${LLM_MAX_TOKENS:-2000}"
+    top_p: "${LLM_TOP_P:-0.9}"
+    top_k: "${LLM_TOP_K:-40}"
+
   openrouter:
     api_key: "${LLM_API_KEY}"
     model: "${LLM_MODEL:-anthropic/claude-3-5-sonnet}"

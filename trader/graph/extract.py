@@ -320,14 +320,37 @@ def _infer_doc_type(file_path: str) -> str:
     return "unknown"
 
 
+def _get_generation_options() -> dict:
+    """Get LLM generation options from config."""
+    gen_config = _config.get("extraction", {}).get("generation", {})
+    options = {}
+
+    if gen_config.get("temperature"):
+        options["temperature"] = float(gen_config["temperature"])
+    if gen_config.get("num_predict"):
+        options["num_predict"] = int(gen_config["num_predict"])
+    if gen_config.get("top_p"):
+        options["top_p"] = float(gen_config["top_p"])
+    if gen_config.get("top_k"):
+        options["top_k"] = int(gen_config["top_k"])
+
+    return options
+
+
 @sleep_and_retry
 @limits(calls=45, period=1)  # Ollama rate limit: 45 req/sec
 def _call_ollama_rate_limited(prompt: str, model: str, timeout: int) -> str:
     """Rate-limited Ollama API call."""
     base_url = _config.get("extraction", {}).get("ollama", {}).get("base_url", "http://localhost:11434")
+    gen_options = _get_generation_options()
+
+    payload = {"model": model, "prompt": prompt, "stream": False}
+    if gen_options:
+        payload["options"] = gen_options
+
     response = requests.post(
         f"{base_url}/api/generate",
-        json={"model": model, "prompt": prompt, "stream": False},
+        json=payload,
         timeout=timeout,
     )
     response.raise_for_status()
@@ -406,6 +429,10 @@ def _extract_relations_from_entities(
 
 def _call_cloud_llm(prompt: str, extractor: str, timeout: int) -> str:
     """Call cloud LLM (Claude API or OpenRouter)."""
+    gen_config = _config.get("extraction", {}).get("generation", {})
+    max_tokens = int(gen_config.get("max_tokens", 2000))
+    temperature = float(gen_config.get("temperature", 0.1))
+
     if extractor == "claude-api":
         api_key = os.getenv("ANTHROPIC_API_KEY", "")
         model = _config.get("extraction", {}).get("claude_api", {}).get("model", "claude-sonnet-4-20250514")
@@ -418,7 +445,8 @@ def _call_cloud_llm(prompt: str, extractor: str, timeout: int) -> str:
             },
             json={
                 "model": model,
-                "max_tokens": 2000,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
                 "messages": [{"role": "user", "content": prompt}],
             },
             timeout=timeout,
@@ -437,6 +465,8 @@ def _call_cloud_llm(prompt: str, extractor: str, timeout: int) -> str:
             },
             json={
                 "model": model,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
                 "messages": [{"role": "user", "content": prompt}],
             },
             timeout=timeout,

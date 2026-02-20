@@ -32,5 +32,14 @@ chunking:
   max_tokens: "${CHUNK_MAX_TOKENS:-1500}"
   min_tokens: "${CHUNK_MIN_TOKENS:-50}"
 
+# LLM Generation Settings (for RAG answer generation)
+generation:
+  model: "${LLM_MODEL:-llama3.2}"
+  temperature: "${LLM_TEMPERATURE:-0.1}"
+  num_predict: "${LLM_NUM_PREDICT:-200}"
+  max_tokens: "${LLM_MAX_TOKENS:-200}"
+  top_p: "${LLM_TOP_P:-0.9}"
+  top_k: "${LLM_TOP_K:-40}"
+
 logging:
   embed_log: "logs/rag_embed.jsonl"

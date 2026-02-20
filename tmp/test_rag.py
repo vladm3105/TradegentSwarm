@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Test full RAG pipeline: retrieve context + generate answer with LLM."""
 
+import os
+import re
 import sys
 import requests
+import yaml
 from pathlib import Path
 
 # Add trader to path
@@ -11,9 +14,33 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "trader"))
 from rag.embed import embed_text
 from rag.search import semantic_search
 
-# LLM settings
-LLM_URL = "http://localhost:11434/api/generate"
-LLM_MODEL = "llama3.2"  # Direct output, no thinking mode
+
+def _expand_env_vars(content: str) -> str:
+    """Expand ${VAR} and ${VAR:-default} patterns in config."""
+    pattern = r'\$\{([A-Z_][A-Z0-9_]*)(?::-([^}]*))?\}'
+    def replacer(match):
+        var_name = match.group(1)
+        default = match.group(2) if match.group(2) is not None else ""
+        return os.getenv(var_name, default)
+    return re.sub(pattern, replacer, content)
+
+
+# Load config
+_config_path = Path(__file__).parent.parent / "trader" / "rag" / "config.yaml"
+_config = {}
+if _config_path.exists():
+    with open(_config_path, "r") as f:
+        config_content = _expand_env_vars(f.read())
+        _config = yaml.safe_load(config_content)
+
+# LLM settings from config
+_gen_config = _config.get("generation", {})
+_embed_config = _config.get("embedding", {}).get("ollama", {})
+LLM_BASE_URL = _embed_config.get("base_url", "http://localhost:11434")
+LLM_URL = f"{LLM_BASE_URL}/api/generate"
+LLM_MODEL = _gen_config.get("model", "llama3.2")
+LLM_TEMPERATURE = float(_gen_config.get("temperature", 0.1))
+LLM_NUM_PREDICT = int(_gen_config.get("num_predict", 200))
 
 # A trading story with ~200 tokens
 STORY = """
