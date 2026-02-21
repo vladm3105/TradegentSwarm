@@ -21,14 +21,14 @@ flowchart TB
             graph_mod["graph/"]
         end
 
-        subgraph Trading["trading/"]
+        subgraph Knowledge["tradegent_knowledge/ (private repo)"]
             skills["skills/<br/>(how-to guides)"]
             knowledge["knowledge/<br/>(data & docs)"]
             workflows["workflows/<br/>(CI/CD & schemas)"]
         end
 
-        Platform -->|"reads/writes"| Trading
-        Trading --> KB["Knowledge Base<br/>(RAG + Graph)"]
+        Platform -->|"reads/writes"| Knowledge
+        Knowledge --> KB["Knowledge Base<br/>(RAG + Graph)"]
 
         subgraph Docker["Docker Services"]
             postgres["PostgreSQL<br/>(pgvector)"]
@@ -59,7 +59,7 @@ flowchart TB
 ## Repository Structure
 
 ```
-tradegent/
+TradegentSwarm/
 ├── tradegent/                      # Tradegent Platform
 │   ├── service.py                  # Long-running daemon (tick loop)
 │   ├── orchestrator.py             # Pipeline engine + CLI
@@ -79,29 +79,37 @@ tradegent/
 │   ├── setup.sh                    # One-command setup
 │   └── README.md                   # Platform documentation
 │
-└── trading/                        # Trading Knowledge System
-    ├── knowledge/                  # Actual trading data & analyses
-    │   ├── analysis/               # Earnings, stock, research, profiles
-    │   ├── trades/                 # Executed trade journals
-    │   ├── strategies/             # Strategy definitions
-    │   ├── scanners/               # Scanner configs (daily/intraday/weekly)
-    │   ├── learnings/              # Biases, patterns, rules
-    │   ├── watchlist/              # Pending trade triggers
-    │   └── reviews/                # Post-trade reviews
-    │
-    ├── skills/                     # Agent-agnostic skill definitions
-    │   ├── earnings-analysis/      # 8-phase earnings framework
-    │   ├── stock-analysis/         # 7-phase stock framework
-    │   ├── research-analysis/      # Macro/sector/thematic research
-    │   ├── trade-journal/          # Trade documentation
-    │   ├── post-trade-review/      # Learning loop
-    │   ├── watchlist/              # Trigger monitoring
-    │   ├── ticker-profile/         # Persistent ticker knowledge
-    │   └── market-scanning/        # Scanner execution
-    │
-    └── workflows/                  # CI/CD & validation
-        ├── .github/                # Actions workflows & scripts
-        └── .lightrag/              # Schemas & sync config
+├── tradegent_knowledge/            # Trading Knowledge System (private repo)
+│   ├── knowledge/                  # Actual trading data & analyses
+│   │   ├── analysis/               # Earnings, stock, research, profiles
+│   │   ├── trades/                 # Executed trade journals
+│   │   ├── strategies/             # Strategy definitions
+│   │   ├── scanners/               # Scanner configs (daily/intraday/weekly)
+│   │   ├── learnings/              # Biases, patterns, rules
+│   │   ├── watchlist/              # Pending trade triggers
+│   │   └── reviews/                # Post-trade reviews
+│   │
+│   ├── skills/                     # Agent-agnostic skill definitions
+│   │   ├── earnings-analysis/      # 14-phase earnings framework (v2.5)
+│   │   ├── stock-analysis/         # 13-phase stock framework (v2.5)
+│   │   ├── research-analysis/      # 8-phase research framework (v2.1)
+│   │   ├── trade-journal/          # 7-step trade documentation (v2.1)
+│   │   ├── post-trade-review/      # 10-step learning loop (v2.1)
+│   │   ├── watchlist/              # 8-step trigger monitoring (v2.1)
+│   │   ├── ticker-profile/         # 10-phase ticker knowledge (v2.1)
+│   │   └── market-scanning/        # Scanner execution (v1.0)
+│   │
+│   └── workflows/                  # CI/CD & validation
+│       ├── .github/                # Actions workflows & scripts
+│       └── .lightrag/              # Schemas & sync config
+│
+├── docs/                           # Platform documentation
+│   ├── RISK_MANAGEMENT.md          # Position sizing, stops, gates
+│   ├── RUNBOOKS.md                 # Operational procedures
+│   └── SCANNER_ARCHITECTURE.md     # Scanner system design
+│
+└── scripts/                        # Utility scripts
+    └── index_knowledge_base.py     # Bulk index to RAG + Graph
 ```
 
 ## Components
@@ -340,6 +348,13 @@ screenshot_b64 = response.json()["screenshot"]
 
 Structured YAML repository of trading data: analyses, trade journals, strategies, scanner configs, and learnings. All files follow the `{TICKER}_{YYYYMMDDTHHMM}.yaml` naming convention.
 
+**Three-Layer Data Model:**
+- **Layer 1: Files** - Source of truth (YAML documents in `knowledge/`)
+- **Layer 2: RAG** - Semantic search (PostgreSQL with pgvector)
+- **Layer 3: Graph** - Entity relationships (Neo4j)
+
+Files are authoritative. If RAG/Graph conflict with files, files win. Both RAG and Graph can be rebuilt from files.
+
 See [tradegent_knowledge/knowledge/README.md](tradegent_knowledge/knowledge/README.md) for details.
 
 ### Scanner System (`tradegent_knowledge/knowledge/scanners/`)
@@ -357,17 +372,29 @@ YAML-based scanner configurations that encode systematic opportunity-finding rul
 - 5.5-7.4: Add to watchlist
 - < 5.5: Skip
 
-See [docs/SCANNER_ARCHITECTURE.md](docs/SCANNER_ARCHITECTURE.md) for full architecture and [tradegent_knowledge/knowledge/scanners/README.md](tradegent_knowledge/knowledge/scanners/README.md) for scanner index.
+See [docs/SCANNER_ARCHITECTURE.md](docs/SCANNER_ARCHITECTURE.md) for full architecture.
 
 ### Trading Skills (`tradegent_knowledge/skills/`)
 
 Agent-agnostic skill definitions with step-by-step frameworks and YAML templates. Works with any LLM — each skill is self-contained and single-purpose.
+
+**v2.5 Features (stock-analysis, earnings-analysis):**
+- Steel-man bear case with scored arguments
+- Bias countermeasures (rule + implementation + checklist + mantra)
+- Pre-exit gate for loss aversion prevention
+- Do Nothing gate (EV >5%, Confidence >60%, R:R >2:1, Edge exists)
+- 4-scenario framework (bull, base, bear, disaster)
+- Post-save indexing to RAG + Graph
 
 See [tradegent_knowledge/skills/README.md](tradegent_knowledge/skills/README.md) for the full skill index.
 
 ### Trading Workflows (`tradegent_knowledge/workflows/`)
 
 GitHub Actions CI/CD for validating documents against JSON schemas. Includes schemas for all document types.
+
+### Private Repository Note
+
+The `tradegent_knowledge/` directory is cloned from a separate private repository (`vladm3105/tradegent-knowledge`) to keep trading data, scanner configs, and analyses confidential. This public repository contains only the platform code.
 
 ## Security
 

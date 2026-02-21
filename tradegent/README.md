@@ -720,6 +720,123 @@ The `init.sql` file is mounted into PostgreSQL's `docker-entrypoint-initdb.d/` d
 
 ---
 
+## Knowledge Base Integration
+
+The platform integrates with the `tradegent_knowledge/` directory for trading data, skills, and analyses.
+
+> **Note:** `tradegent_knowledge/` is cloned from a separate private repository (`vladm3105/tradegent-knowledge`) to keep trading data, scanner configs, and analyses confidential.
+
+### Three-Layer Data Model
+
+```
+Layer 1: FILES (Source of Truth)
+  Location: tradegent_knowledge/knowledge/**/*.yaml
+  Properties: Authoritative, portable, rebuildable
+
+Layer 2: RAG (Semantic Search)
+  Storage: PostgreSQL with pgvector (rag schema)
+  Rebuilds from: Layer 1 files
+
+Layer 3: GRAPH (Entity Relations)
+  Storage: Neo4j
+  Rebuilds from: Layer 1 files
+```
+
+**Key principle:** Files are authoritative. If RAG/Graph conflict with files, files win.
+
+### Skill System
+
+Skills in `tradegent_knowledge/skills/` provide agent-agnostic frameworks for trading tasks:
+
+| Skill | Version | Phases | Purpose |
+|-------|---------|--------|---------|
+| `earnings-analysis` | v2.5 | 14 | Pre-earnings systematic analysis |
+| `stock-analysis` | v2.5 | 13 | Technical/value/catalyst analysis |
+| `research-analysis` | v2.1 | 8 | Macro/sector/thematic research |
+| `ticker-profile` | v2.1 | 10 | Persistent ticker knowledge |
+| `trade-journal` | v2.1 | 7 | Record executed trades |
+| `watchlist` | v2.1 | 8 | Track potential trades |
+| `post-trade-review` | v2.1 | 10 | Analyze completed trades |
+| `market-scanning` | v1.0 | — | Find trading opportunities |
+
+### v2.5 Features (Analysis Skills)
+
+- Steel-man bear case with scored arguments
+- Bias countermeasures (rule + implementation + checklist + mantra)
+- Pre-exit gate for loss aversion prevention
+- Do Nothing gate (EV >5%, Confidence >60%, R:R >2:1)
+- 4-scenario framework (bull, base, bear, disaster)
+- Post-save indexing to RAG + Graph
+
+### Post-Save Indexing
+
+Every skill includes a post-save phase that indexes documents:
+
+```yaml
+# 1. Extract entities to Graph (Neo4j)
+Tool: graph_extract
+Input: {"file_path": "tradegent_knowledge/knowledge/analysis/..."}
+
+# 2. Embed for semantic search (pgvector)
+Tool: rag_embed
+Input: {"file_path": "tradegent_knowledge/knowledge/analysis/..."}
+
+# 3. Push to private Knowledge Repo
+Tool: mcp__github-vl__push_files
+```
+
+### Knowledge Base Structure
+
+```
+tradegent_knowledge/
+├── knowledge/                  # Trading data & analyses
+│   ├── analysis/               # Earnings, stock, research, profiles
+│   ├── trades/                 # Executed trade journals
+│   ├── strategies/             # Strategy definitions
+│   ├── scanners/               # Scanner configs (daily/intraday/weekly)
+│   ├── learnings/              # Biases, patterns, rules
+│   ├── watchlist/              # Pending trade triggers
+│   └── reviews/                # Post-trade reviews
+│
+├── skills/                     # Agent-agnostic skill definitions
+│   ├── earnings-analysis/      # SKILL.md + template.yaml
+│   ├── stock-analysis/
+│   └── ...
+│
+└── workflows/                  # CI/CD & validation schemas
+```
+
+### Bulk Indexing
+
+To rebuild RAG and Graph from files:
+
+```bash
+# Index all knowledge documents
+python scripts/index_knowledge_base.py
+
+# RAG only
+python scripts/index_knowledge_base.py --rag-only
+
+# Graph only
+python scripts/index_knowledge_base.py --graph-only
+
+# Force re-index (even if already indexed)
+python scripts/index_knowledge_base.py --force
+```
+
+### Related Documentation
+
+| Document | Location | Purpose |
+|----------|----------|---------|
+| Knowledge Base README | `tradegent_knowledge/knowledge/README.md` | Data structure and naming conventions |
+| Skills README | `tradegent_knowledge/skills/README.md` | Full skill index and workflows |
+| MCP Integration | `tradegent_knowledge/skills/KNOWLEDGE_BASE_INTEGRATION.md` | MCP tool reference |
+| Risk Management | `docs/RISK_MANAGEMENT.md` | Position sizing, stops, gates |
+| Runbooks | `docs/RUNBOOKS.md` | Operational procedures and disaster recovery |
+| Scanner Architecture | `docs/SCANNER_ARCHITECTURE.md` | Scanner system design |
+
+---
+
 ## MCP Server Configuration
 
 Claude Code's MCP servers are configured in `~/.claude/` on the host. The orchestrator relies on these being set up correctly.
