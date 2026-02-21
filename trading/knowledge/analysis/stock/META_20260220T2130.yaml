@@ -1,0 +1,208 @@
+# Stock Analysis Template
+# Output: knowledge/analysis/stock/META_20260220T2130.yaml
+
+_meta:
+  id: "META_20260220T2130"
+  type: stock-analysis
+  version: 1
+  created: "2026-02-20T21:30:00-05:00"
+  status: "active"
+
+ticker: "META"
+current_price: 654.76
+analysis_date: "2026-02-20"
+analysis_type: "post_earnings"
+
+# Phase 1: Catalyst
+catalyst:
+  type: "fundamental"
+  description: "Q4 2025 earnings beat (EPS $8.88 vs $8.19 expected, revenue $59.9B vs $58.35B expected) with 24% YoY revenue growth. Massive AI capex guidance ($115-135B for 2026) signals continued AI leadership. Stock pulling back -11% from Jan 29 post-earnings high of $738, creating potential re-entry."
+  specificity: "high"
+  timing: "near_term"
+  catalyst_score: 8  # Strong earnings beat + AI investment catalyst, timing good post-pullback
+
+# Phase 2: Market Environment
+market_environment:
+  regime: "bull_pullback"
+  sector: "Communication Services"
+  sector_trend: "neutral"
+  vix_level: 20.82
+  vix_environment: "normal"
+  environment_score: 6  # VIX elevated at 20.82 (up 18%), sector neutral vs SPY, pullback from highs
+
+# Phase 3: Technical Analysis
+technical:
+  trend:
+    primary_weekly: "up"
+    intermediate_daily: "sideways"
+    short_term: "up"
+
+  moving_averages:
+    vs_20d: "above"
+    vs_50d: "above"
+    vs_200d: "above"
+    alignment: "bullish"
+
+  patterns:
+    pattern_identified: "Post-earnings consolidation flag"
+    completion_status: "forming"
+    measured_target: 720.00
+
+  key_levels:
+    immediate_support: 628.00
+    immediate_resistance: 677.00
+    major_support: 600.00
+    major_resistance: 738.00
+
+  volume:
+    trend: "stable"
+    vs_average: "at"
+
+  momentum:
+    rsi: 52
+    rsi_trend: "rising"
+    relative_strength_vs_spy: "inline"
+
+  technical_score: 7  # 10-day crossed above 50-day bullishly, above all MAs, but range-bound since earnings
+
+# Phase 4: Fundamentals
+fundamentals:
+  valuation:
+    pe_ratio: 21.54
+    pe_vs_peers: "fair"
+    pe_vs_history: "fair"
+    ps_ratio: 8.5
+
+  growth:
+    revenue_growth_yoy: 24.00
+    earnings_growth_yoy: 9.00
+    trajectory: "stable"
+
+  quality:
+    profit_margin: 41.00
+    roe: 35.00
+    free_cash_flow: 22.0
+    debt_to_equity: 0.15
+
+  insider_activity:
+    recent_buys: 0
+    recent_sells: 0
+    net_direction: "neutral"
+
+  red_flags:
+    declining_revenue: false
+    rising_debt: false
+    insider_selling: false
+    accounting_concerns: false
+
+  fundamental_score: 8  # Exceptional margins (41%), 24% revenue growth, low debt, no red flags
+
+# Phase 5: Sentiment
+sentiment:
+  analyst:
+    buy: 62
+    hold: 5
+    sell: 0
+    avg_target: 838.00
+    recent_changes: "mixed"
+
+  short_interest:
+    pct_float: 1.5
+    days_to_cover: 1.2
+    trend: "stable"
+
+  options:
+    put_call_ratio: 0.85
+    unusual_flow: "none"
+
+  contrarian_signal: false
+  sentiment_score: 7  # Strong buy consensus (92%), but some downgrades post-capex guidance
+
+# Phase 6: Scenarios
+scenarios:
+  bull_case:
+    probability: 35.00
+    description: "AI investments drive accelerating ad revenue monetization, Q1 2026 guidance beat leads to multiple expansion toward analyst high targets"
+    target_price: 750.00
+    return_pct: 14.5
+    timeline_days: 60
+    key_driver: "AI-driven ad revenue acceleration and sentiment reversal on capex concerns"
+
+  base_case:
+    probability: 45.00
+    description: "Stock grinds higher toward consensus price target as execution on AI continues, but elevated capex limits multiple expansion"
+    target_price: 700.00
+    return_pct: 6.9
+    timeline_days: 60
+    key_driver: "Continued execution on core ad business with gradual AI monetization"
+
+  bear_case:
+    probability: 20.00
+    description: "Market rotation away from AI plays, macro concerns (inflation, Fed) lead to broader tech selloff, capex concerns weigh on sentiment"
+    target_price: 580.00
+    return_pct: -11.4
+    timeline_days: 60
+    key_driver: "Macro volatility and capex skepticism"
+
+  expected_value: 5.0  # (0.35*14.5) + (0.45*6.9) + (0.20*-11.4) = 5.08 + 3.11 - 2.28 = 5.91
+
+# Phase 7: Risk Management
+risk_management:
+  entry:
+    trigger: "Hold above 650 with market stabilization, or buy pullback to 630-640 range"
+    price: 650.00
+    order_type: "limit"
+
+  stop_loss:
+    price: 600.00
+    basis: "technical_level"
+    type: "hard"
+    distance_pct: 7.7
+
+  position_size:
+    account_risk_pct: 1.5
+    dollar_risk: 50.00
+    shares: 10
+    position_value: 6500.00
+    portfolio_pct: 5.0
+
+  risk_reward:
+    risk_dollars: 500.00
+    risk_pct: 7.7
+    reward_dollars: 500.00
+    reward_pct: 7.7
+    ratio: 2.0
+
+  targets:
+    target_1: 700.00
+    target_1_sell_pct: 50
+    target_2: 750.00
+    target_2_sell_pct: 50
+
+  time_stop:
+    days: 45
+    action: "Re-evaluate if no progress toward 700"
+
+# Scoring & Recommendation
+scoring:
+  catalyst_score: 8.0
+  environment_score: 6.0
+  technical_score: 7.0
+  risk_reward_score: 7.0
+  sentiment_score: 7.0
+
+  # Weighted: Catalyst 0.25, Environment 0.15, Technical 0.25, R/R 0.25, Sentiment 0.10
+  # (8*0.25) + (6*0.15) + (7*0.25) + (7*0.25) + (7*0.10) = 2.0 + 0.9 + 1.75 + 1.75 + 0.7 = 7.1
+  weighted_total: 7.1
+
+recommendation: "BUY"
+
+rationale: |
+  META presents a compelling post-earnings entry opportunity. Q4 2025 beat expectations with 24% revenue growth and record margins (41%), while the -11% pullback from $738 provides a better risk/reward entry than chasing the post-earnings gap. Strong analyst consensus (92% buy, median PT $838) supports upside, though elevated VIX (20.82) and massive AI capex ($115-135B) introduce execution risk. The 10-day/50-day golden cross and support at $628 provide technical confirmation. EV of +5% with 2:1 R/R makes this actionable at current levels.
+
+watchlist_trigger: ""
+
+_links:
+  trade_journal: ""
+  post_review: ""
+  ticker_profile: ""

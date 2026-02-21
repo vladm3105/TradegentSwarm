@@ -1,0 +1,212 @@
+# Stock Analysis: CRM (Salesforce)
+# Output: knowledge/analysis/stock/CRM_20260220T2130.yaml
+
+_meta:
+  id: "CRM_20260220T2130"
+  type: stock-analysis
+  version: 1
+  created: "2026-02-20T21:30:00Z"
+  status: "active"
+
+ticker: "CRM"
+current_price: 187.79
+analysis_date: "2026-02-20"
+analysis_type: "momentum"
+
+# Phase 1: Catalyst
+catalyst:
+  type: "momentum"
+  description: "Agentforce AI platform showing explosive growth - ARR +330% YoY, 9,500+ paid deals, combined Agentforce+Data360 ARR at $1.4B. FY26 revenue guidance raised to $41.45-41.55B. Q4 earnings expected late February."
+  specificity: "high"
+  timing: "near_term"
+  catalyst_score: 7
+
+# Phase 2: Market Environment
+market_environment:
+  regime: "bull_pullback"
+  sector: "Technology"
+  sector_trend: "lagging"
+  vix_level: 18.0  # estimated normal range
+  vix_environment: "normal"
+  environment_score: 5
+
+# Phase 3: Technical Analysis
+technical:
+  trend:
+    primary_weekly: "down"
+    intermediate_daily: "down"
+    short_term: "sideways"
+
+  moving_averages:
+    vs_20d: "below"
+    vs_50d: "below"
+    vs_200d: "below"
+    alignment: "bearish"
+
+  patterns:
+    pattern_identified: "Distribution / Absorption at $225 pivot"
+    completion_status: "forming"
+    measured_target: 165.00
+
+  key_levels:
+    immediate_support: 185.00
+    immediate_resistance: 221.00
+    major_support: 165.00
+    major_resistance: 250.00
+
+  volume:
+    trend: "stable"
+    vs_average: "at"
+
+  momentum:
+    rsi: 51
+    rsi_trend: "flat"
+    relative_strength_vs_spy: "underperforming"
+
+  technical_score: 4
+
+# Phase 4: Fundamentals
+fundamentals:
+  valuation:
+    pe_ratio: 23.00
+    pe_vs_peers: "fair"
+    pe_vs_history: "cheap"
+    ps_ratio: 4.5
+
+  growth:
+    revenue_growth_yoy: 9.5
+    earnings_growth_yoy: 12.0
+    trajectory: "accelerating"
+
+  quality:
+    profit_margin: 21.0
+    roe: 8.5
+    free_cash_flow: 8800000000.0  # ~$8.8B annual
+    debt_to_equity: 0.15
+
+  insider_activity:
+    recent_buys: 0
+    recent_sells: 0
+    net_direction: "neutral"
+
+  red_flags:
+    declining_revenue: false
+    rising_debt: false
+    insider_selling: false
+    accounting_concerns: false
+
+  fundamental_score: 8
+
+# Phase 5: Sentiment
+sentiment:
+  analyst:
+    buy: 29
+    hold: 9
+    sell: 1
+    avg_target: 319.00
+    recent_changes: "mixed"
+
+  short_interest:
+    pct_float: 1.5
+    days_to_cover: 2.0
+    trend: "stable"
+
+  options:
+    put_call_ratio: 0.85
+    unusual_flow: "none"
+
+  contrarian_signal: true
+  sentiment_score: 7
+
+# Phase 6: Scenarios
+scenarios:
+  bull_case:
+    probability: 0.30
+    description: "Q4 earnings beat with Agentforce acceleration, guidance raise, AI narrative shift"
+    target_price: 250.00
+    return_pct: 33.0
+    timeline_days: 45
+    key_driver: "AI monetization inflection recognized by market"
+
+  base_case:
+    probability: 0.45
+    description: "Q4 inline with guidance, gradual technical recovery, sector rotation stabilizes"
+    target_price: 215.00
+    return_pct: 14.0
+    timeline_days: 75
+    key_driver: "Mean reversion as fundamentals acknowledged"
+
+  bear_case:
+    probability: 0.25
+    description: "Macro deterioration, tech selloff continues, growth compression"
+    target_price: 165.00
+    return_pct: -12.0
+    timeline_days: 45
+    key_driver: "Risk-off intensifies, multiple compression"
+
+  expected_value: 13.2
+
+# Phase 7: Risk Management
+risk_management:
+  entry:
+    trigger: "Break above $200 with volume OR bounce at $175 support with reversal"
+    price: 188.00
+    order_type: "limit"
+
+  stop_loss:
+    price: 172.00
+    basis: "technical_level"
+    type: "hard"
+    distance_pct: 8.5
+
+  position_size:
+    account_risk_pct: 1.5
+    dollar_risk: 16.00  # per share
+    shares: 0  # calculate at entry
+    position_value: 0.00
+    portfolio_pct: 4.0  # reduced from 6% max due to technical weakness
+
+  risk_reward:
+    risk_dollars: 16.00
+    risk_pct: 8.5
+    reward_dollars: 27.00
+    reward_pct: 14.0
+    ratio: 1.7
+
+  targets:
+    target_1: 215.00
+    target_1_sell_pct: 50
+    target_2: 250.00
+    target_2_sell_pct: 50
+
+  time_stop:
+    days: 45
+    action: "reevaluate if no breakout above $200"
+
+# Scoring & Recommendation
+scoring:
+  catalyst_score: 1.75  # 7 * 0.25
+  environment_score: 0.75  # 5 * 0.15
+  technical_score: 1.00  # 4 * 0.25
+  risk_reward_score: 1.75  # 7 * 0.25
+  sentiment_score: 0.70  # 7 * 0.10
+
+  weighted_total: 5.95  # Out of 10
+
+recommendation: "WATCH"
+
+rationale: |
+  CRM has compelling fundamentals with Agentforce AI momentum (330% ARR growth),
+  strong cash flow, and significant upside to analyst targets ($319 avg vs $188 current).
+  However, poor technicals (trading below all major moving averages, distribution pattern,
+  24 bearish indicators) and sector rotation headwinds (XLK -3% YTD) create unfavorable
+  entry timing. Score of 5.95/10 falls in WATCH zone. Wait for technical confirmation
+  before initiating position.
+
+watchlist_trigger: "Break and close above $200 with above-average volume, OR successful test of $170-175 support with reversal candle pattern"
+
+# Links
+_links:
+  trade_journal: ""
+  post_review: ""
+  ticker_profile: ""
