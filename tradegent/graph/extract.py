@@ -67,9 +67,29 @@ if _field_mappings_path.exists():
         _field_mappings = yaml.safe_load(f)
 
 
+def _get_default_extractor() -> str:
+    """Get default extractor from env var or config.
+
+    Priority: EXTRACT_PROVIDER env var > LLM_PROVIDER env var > config > ollama
+    """
+    # Check env vars directly (dotenv may not be loaded when config is parsed)
+    extractor = os.getenv("EXTRACT_PROVIDER")
+    if extractor:
+        return extractor
+
+    extractor = os.getenv("LLM_PROVIDER")
+    if extractor:
+        return extractor
+
+    # Fall back to config (may have stale env expansion)
+    extractor = _config.get("extraction", {}).get("default_extractor", "ollama")
+    # Strip any trailing } from failed nested expansion
+    return extractor.rstrip("}")
+
+
 def extract_document(
     file_path: str,
-    extractor: str = "ollama",
+    extractor: str | None = None,
     commit: bool = True,
     dry_run: bool = False,
 ) -> ExtractionResult:
@@ -96,6 +116,10 @@ def extract_document(
     Returns:
         ExtractionResult with entities and relations
     """
+    # Use default extractor from config if not specified
+    if extractor is None:
+        extractor = _get_default_extractor()
+
     # Validate file
     if not is_real_document(file_path):
         raise ExtractionError(f"Not a real document (template?): {file_path}")
@@ -212,11 +236,15 @@ def extract_text(
     doc_type: str,
     doc_id: str,
     source_url: str | None = None,
-    extractor: str = "ollama",
+    extractor: str | None = None,
 ) -> ExtractionResult:
     """Extract from raw text (for external content)."""
+    # Use default extractor from config if not specified
+    if extractor is None:
+        extractor = _get_default_extractor()
+
     text_hash = hashlib.sha256(text.encode()).hexdigest()[:16]
-    timeout = int(_config.get("extraction", {}).get("timeout_seconds", 30))
+    timeout = int(_config.get("extraction", {}).get("timeout_seconds", 60))
 
     result = ExtractionResult(
         source_doc_id=doc_id,
