@@ -10,11 +10,11 @@ Analyze **${input:ticker}** for a non-earnings trading opportunity using the 7-p
 ## Context
 
 Load the full skill definition and output template:
-- #file:../../trading/skills/stock-analysis/SKILL.md
-- #file:../../trading/skills/stock-analysis/template.yaml
+- #file:../../tradegent_knowledge/skills/stock-analysis/SKILL.md
+- #file:../../tradegent_knowledge/skills/stock-analysis/template.yaml
 
 Check for existing ticker knowledge:
-- #file:../../trading/knowledge/analysis/ticker-profiles/
+- #file:../../tradegent_knowledge/knowledge/analysis/ticker-profiles/
 
 ## When to Use
 
@@ -26,7 +26,7 @@ Check for existing ticker knowledge:
 
 ## Workflow
 
-1. **Read skill definition** from `trading/skills/stock-analysis/SKILL.md`
+1. **Read skill definition** from `tradegent_knowledge/skills/stock-analysis/SKILL.md`
 2. **Gather inputs**:
    - Ticker symbol: `${input:ticker}`
    - Catalyst or reason for analysis
@@ -54,8 +54,8 @@ Check for existing ticker knowledge:
    - 6.5–7.4: BUY or SELL
    - 5.5–6.4: WATCH
    - < 5.5: AVOID
-6. **Generate output** using `trading/skills/stock-analysis/template.yaml`
-7. **Save** to `trading/knowledge/analysis/stock/{TICKER}_{YYYYMMDDTHHMM}.yaml`
+6. **Generate output** using `tradegent_knowledge/skills/stock-analysis/template.yaml`
+7. **Save** to `tradegent_knowledge/knowledge/analysis/stock/{TICKER}_{YYYYMMDDTHHMM}.yaml`
 
 ## Chaining
 
@@ -66,4 +66,4 @@ After completion:
 
 ## Output
 
-Save the completed analysis to `trading/knowledge/analysis/stock/` using the naming convention `{TICKER}_{YYYYMMDDTHHMM}.yaml`.
+Save the completed analysis to `tradegent_knowledge/knowledge/analysis/stock/` using the naming convention `{TICKER}_{YYYYMMDDTHHMM}.yaml`.

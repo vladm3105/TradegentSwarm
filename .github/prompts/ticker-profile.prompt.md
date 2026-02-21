@@ -10,11 +10,11 @@ Create or update the ticker profile for **${input:ticker}**.
 ## Context
 
 Load the full skill definition and output template:
-- #file:../../trading/skills/ticker-profile/SKILL.md
-- #file:../../trading/skills/ticker-profile/template.yaml
+- #file:../../tradegent_knowledge/skills/ticker-profile/SKILL.md
+- #file:../../tradegent_knowledge/skills/ticker-profile/template.yaml
 
 Check for existing profile:
-- #file:../../trading/knowledge/analysis/ticker-profiles/
+- #file:../../tradegent_knowledge/knowledge/analysis/ticker-profiles/
 
 ## When to Use
 
@@ -26,8 +26,8 @@ Check for existing profile:
 
 ## Workflow
 
-1. **Read skill definition** from `trading/skills/ticker-profile/SKILL.md`
-2. **Check existing profile** in `trading/knowledge/analysis/ticker-profiles/`
+1. **Read skill definition** from `tradegent_knowledge/skills/ticker-profile/SKILL.md`
+2. **Check existing profile** in `tradegent_knowledge/knowledge/analysis/ticker-profiles/`
 3. **Gather or update**:
    - Company Basics (sector, market cap, business model)
    - Earnings Patterns (8 quarters: beats, reactions, guidance)
@@ -35,8 +35,8 @@ Check for existing profile:
    - Your Edge (patterns you've observed, reliable signals)
    - Trading History (your trades, win rate, lessons)
    - Key Dates (earnings schedule, dividends, conferences)
-4. **Generate output** using `trading/skills/ticker-profile/template.yaml`
-5. **Save** to `trading/knowledge/analysis/ticker-profiles/{TICKER}_{YYYYMMDDTHHMM}.yaml`
+4. **Generate output** using `tradegent_knowledge/skills/ticker-profile/template.yaml`
+5. **Save** to `tradegent_knowledge/knowledge/analysis/ticker-profiles/{TICKER}_{YYYYMMDDTHHMM}.yaml`
 
 ## Profile Maintenance
 
@@ -59,4 +59,4 @@ Quarterly refresh:
 
 ## Output
 
-Save to `trading/knowledge/analysis/ticker-profiles/` using the naming convention `{TICKER}_{YYYYMMDDTHHMM}.yaml`.
+Save to `tradegent_knowledge/knowledge/analysis/ticker-profiles/` using the naming convention `{TICKER}_{YYYYMMDDTHHMM}.yaml`.

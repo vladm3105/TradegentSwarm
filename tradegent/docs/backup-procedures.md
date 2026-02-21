@@ -102,7 +102,7 @@ cd /opt/data/tradegent_swarm
 
 # Ensure all changes committed
 git status
-git add trading/knowledge/
+git add tradegent_knowledge/knowledge/
 GIT_SSH_COMMAND="LD_LIBRARY_PATH= /usr/bin/ssh" git push
 
 # Create tagged backup point
@@ -116,7 +116,7 @@ GIT_SSH_COMMAND="LD_LIBRARY_PATH= /usr/bin/ssh" git push --tags
 mkdir -p /opt/data/tradegent_swarm/backups/knowledge
 
 tar cvzf /opt/data/tradegent_swarm/backups/knowledge/knowledge_$(date +%Y%m%d).tar.gz \
-    /opt/data/tradegent_swarm/trading/knowledge/
+    /opt/data/tradegent_swarm/tradegent_knowledge/knowledge/
 ```
 
 ## Automated Backup Script
@@ -146,7 +146,7 @@ docker exec nexus-postgres pg_dump -U lightrag -Fc lightrag > "$BACKUP_ROOT/post
 
 # Knowledge files
 echo "Backing up knowledge files..."
-tar czf "$BACKUP_ROOT/knowledge/knowledge_$DATE.tar.gz" -C /opt/data/tradegent_swarm trading/knowledge/
+tar czf "$BACKUP_ROOT/knowledge/knowledge_$DATE.tar.gz" -C /opt/data/tradegent_swarm tradegent_knowledge/knowledge/
 
 # Cleanup old backups (keep 7 days)
 find "$BACKUP_ROOT" -type f -mtime +7 -delete
@@ -204,7 +204,7 @@ docker exec nexus-postgres psql -U lightrag -d lightrag_restore \
 ```bash
 # From git
 cd /opt/data/tradegent_swarm
-git checkout backup-YYYYMMDD -- trading/knowledge/
+git checkout backup-YYYYMMDD -- tradegent_knowledge/knowledge/
 
 # From archive
 tar xvzf /opt/data/tradegent_swarm/backups/knowledge/knowledge_YYYYMMDD.tar.gz \

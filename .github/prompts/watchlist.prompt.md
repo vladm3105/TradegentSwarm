@@ -12,11 +12,11 @@ Use "review all" to check all watchlist entries against current conditions.
 ## Context
 
 Load the full skill definition and output template:
-- #file:../../trading/skills/watchlist/SKILL.md
-- #file:../../trading/skills/watchlist/template.yaml
+- #file:../../tradegent_knowledge/skills/watchlist/SKILL.md
+- #file:../../tradegent_knowledge/skills/watchlist/template.yaml
 
 Check current watchlist:
-- #file:../../trading/knowledge/watchlist/
+- #file:../../tradegent_knowledge/knowledge/watchlist/
 
 ## When to Use
 
@@ -27,7 +27,7 @@ Check current watchlist:
 
 ## Workflow
 
-1. **Read skill definition** from `trading/skills/watchlist/SKILL.md`
+1. **Read skill definition** from `tradegent_knowledge/skills/watchlist/SKILL.md`
 2. **Determine action**:
    - **add**: Create new watchlist entry
    - **review**: Check all entries against current prices
@@ -43,8 +43,8 @@ Check current watchlist:
    - Did invalidation occur? → Remove
    - News affecting thesis? → Update or remove
    - Stale (>30 days)? → Remove
-5. **Generate output** using `trading/skills/watchlist/template.yaml`
-6. **Save** to `trading/knowledge/watchlist/{TICKER}_{YYYYMMDDTHHMM}.yaml`
+5. **Generate output** using `tradegent_knowledge/skills/watchlist/template.yaml`
+6. **Save** to `tradegent_knowledge/knowledge/watchlist/{TICKER}_{YYYYMMDDTHHMM}.yaml`
 
 ## Entry Trigger Types
 
@@ -69,4 +69,4 @@ Check current watchlist:
 
 ## Output
 
-Save to `trading/knowledge/watchlist/` using `{TICKER}_{YYYYMMDDTHHMM}.yaml`.
+Save to `tradegent_knowledge/knowledge/watchlist/` using `{TICKER}_{YYYYMMDDTHHMM}.yaml`.

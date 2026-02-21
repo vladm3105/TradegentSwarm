@@ -597,7 +597,7 @@ python -m pytest -v --tb=short
 
 ### Testing Skill Templates
 
-Skill templates (`trading/skills/*/template.yaml`) should be validated for:
+Skill templates (`tradegent_knowledge/skills/*/template.yaml`) should be validated for:
 
 1. **YAML Syntax** - Valid YAML structure
 2. **Required Sections** - All v2.3 sections present
@@ -617,12 +617,12 @@ python scripts/validate_templates.py --skill stock-analysis
 ### Template Test Fixtures
 
 ```python
-# trading/skills/tests/conftest.py
+# tradegent_knowledge/skills/tests/conftest.py
 
 @pytest.fixture
 def stock_analysis_template():
     """Load stock-analysis template for testing."""
-    template_path = Path("trading/skills/stock-analysis/template.yaml")
+    template_path = Path("tradegent_knowledge/skills/stock-analysis/template.yaml")
     with open(template_path) as f:
         return yaml.safe_load(f)
 
@@ -775,14 +775,14 @@ class TestFieldMappings:
 
 ```bash
 # All skills tests
-python -m pytest trading/skills/tests/ -v
+python -m pytest tradegent_knowledge/skills/tests/ -v
 
 # Template validation only
-python -m pytest trading/skills/tests/test_templates.py -v
+python -m pytest tradegent_knowledge/skills/tests/test_templates.py -v
 
 # Migration tests
-python -m pytest trading/skills/tests/test_migration.py -v
+python -m pytest tradegent_knowledge/skills/tests/test_migration.py -v
 
 # Field mapping tests
-python -m pytest trading/skills/tests/test_field_mappings.py -v
+python -m pytest tradegent_knowledge/skills/tests/test_field_mappings.py -v
 ```

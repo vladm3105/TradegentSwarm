@@ -10,14 +10,14 @@ Review the closed trade for **${input:ticker}**. Be honest in grading — learni
 ## Context
 
 Load the full skill definition and output template:
-- #file:../../trading/skills/post-trade-review/SKILL.md
-- #file:../../trading/skills/post-trade-review/template.yaml
+- #file:../../tradegent_knowledge/skills/post-trade-review/SKILL.md
+- #file:../../tradegent_knowledge/skills/post-trade-review/template.yaml
 
 Find the closed trade:
-- #file:../../trading/knowledge/trades/
+- #file:../../tradegent_knowledge/knowledge/trades/
 
 Check existing ticker profile:
-- #file:../../trading/knowledge/analysis/ticker-profiles/
+- #file:../../tradegent_knowledge/knowledge/analysis/ticker-profiles/
 
 ## When to Use
 
@@ -27,8 +27,8 @@ Check existing ticker profile:
 
 ## Workflow
 
-1. **Read skill definition** from `trading/skills/post-trade-review/SKILL.md`
-2. **Find closed trade** in `trading/knowledge/trades/`
+1. **Read skill definition** from `tradegent_knowledge/skills/post-trade-review/SKILL.md`
+2. **Find closed trade** in `tradegent_knowledge/knowledge/trades/`
 3. **Execute review framework**:
    - Step 1: Document Facts (trade details, original thesis)
    - Step 2: Execution Analysis
@@ -46,8 +46,8 @@ Check existing ticker profile:
      - Recency, Confirmation, Overconfidence, Loss Aversion, Anchoring
    - Step 6: Grade the Trade (overall A–F)
    - Step 7: Extract Lessons (actionable improvements)
-4. **Generate output** using `trading/skills/post-trade-review/template.yaml`
-5. **Save** to `trading/knowledge/reviews/{TICKER}_{YYYYMMDDTHHMM}_review.yaml`
+4. **Generate output** using `tradegent_knowledge/skills/post-trade-review/template.yaml`
+5. **Save** to `tradegent_knowledge/knowledge/reviews/{TICKER}_{YYYYMMDDTHHMM}_review.yaml`
 
 ## Grading Components
 
@@ -67,16 +67,16 @@ For each significant lesson:
 - **Action**: What to do differently
 - **Applies to**: All trades / Earnings / Technical / This ticker
 
-New patterns → save to `trading/knowledge/learnings/patterns/`
-New rules → save to `trading/knowledge/learnings/rules/`
+New patterns → save to `tradegent_knowledge/knowledge/learnings/patterns/`
+New rules → save to `tradegent_knowledge/knowledge/learnings/rules/`
 
 ## Chaining
 
 - Automatically triggered by **trade-journal** exit
 - Updates **ticker-profile** with trade history and lessons
-- Adds patterns/rules to `trading/knowledge/learnings/`
+- Adds patterns/rules to `tradegent_knowledge/knowledge/learnings/`
 - Informs future **earnings-analysis** and **stock-analysis**
 
 ## Output
 
-Save to `trading/knowledge/reviews/` using `{TICKER}_{YYYYMMDDTHHMM}_review.yaml`.
+Save to `tradegent_knowledge/knowledge/reviews/` using `{TICKER}_{YYYYMMDDTHHMM}_review.yaml`.

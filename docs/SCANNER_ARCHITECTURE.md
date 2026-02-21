@@ -2,7 +2,7 @@
 
 > **Status**: Active
 > **Last updated**: 2026-02-21
-> **Location**: `trading/knowledge/scanners/`
+> **Location**: `tradegent_knowledge/knowledge/scanners/`
 > **Skills Version**: v2.3 (stock-analysis, earnings-analysis), v2.1 (other skills)
 > **Companion**: [TRADING_RAG_ARCHITECTURE.md](TRADING_RAG_ARCHITECTURE.md), [TRADING_GRAPH_ARCHITECTURE.md](TRADING_GRAPH_ARCHITECTURE.md)
 
@@ -509,11 +509,11 @@ After generating output, results are indexed:
 ```yaml
 # Extract entities for Graph
 Tool: graph_extract
-Input: {"file_path": "trading/knowledge/scans/earnings-momentum_20250220T0945.yaml"}
+Input: {"file_path": "tradegent_knowledge/knowledge/scans/earnings-momentum_20250220T0945.yaml"}
 
 # Embed for RAG search
 Tool: rag_embed
-Input: {"file_path": "trading/knowledge/scans/earnings-momentum_20250220T0945.yaml"}
+Input: {"file_path": "tradegent_knowledge/knowledge/scans/earnings-momentum_20250220T0945.yaml"}
 ```
 
 ---
@@ -554,5 +554,5 @@ Scanner configurations encode trading edge. Security considerations:
 
 - [TRADING_RAG_ARCHITECTURE.md](TRADING_RAG_ARCHITECTURE.md) — Semantic search system
 - [TRADING_GRAPH_ARCHITECTURE.md](TRADING_GRAPH_ARCHITECTURE.md) — Knowledge graph system
-- [trading/knowledge/scanners/README.md](../trading/knowledge/scanners/README.md) — Scanner folder documentation
+- [tradegent_knowledge/knowledge/scanners/README.md](../tradegent_knowledge/knowledge/scanners/README.md) — Scanner folder documentation
 - [.claude/skills/scan.md](../.claude/skills/scan.md) — Scan skill definition

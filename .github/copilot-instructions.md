@@ -42,7 +42,7 @@ Example: `NVDA_20250120T0900.yaml`
 
 ### Trading Skills
 
-Skills live in `trading/skills/{skill-name}/` with:
+Skills live in `tradegent_knowledge/skills/{skill-name}/` with:
 - `SKILL.md` — step-by-step workflow instructions
 - `template.yaml` — output template structure
 
@@ -64,7 +64,7 @@ scan → earnings-analysis → watchlist → trade-journal → post-trade-review
 
 ### Scanner System
 
-Scanners in `trading/knowledge/scanners/` define systematic opportunity-finding rules:
+Scanners in `tradegent_knowledge/knowledge/scanners/` define systematic opportunity-finding rules:
 
 | Type | Folder | Examples |
 |------|--------|----------|
@@ -78,7 +78,7 @@ Scanners in `trading/knowledge/scanners/` define systematic opportunity-finding 
 
 ### Watchlist Management
 
-Watchlist entries in `trading/knowledge/watchlist/` track potential trades waiting for triggers.
+Watchlist entries in `tradegent_knowledge/knowledge/watchlist/` track potential trades waiting for triggers.
 
 **Lifecycle**: `active` → `triggered` | `invalidated` | `expired`
 

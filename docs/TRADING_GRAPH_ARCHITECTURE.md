@@ -605,7 +605,7 @@ from trader.graph.layer import TradingGraph
 
 # Option 1: Extract from YAML file
 result = extract_document(
-    file_path="trading/knowledge/analysis/earnings/NVDA_20260219T0900.yaml",
+    file_path="tradegent_knowledge/knowledge/analysis/earnings/NVDA_20260219T0900.yaml",
     extractor="ollama",  # or "claude" (requires API key)
     commit=True          # False to preview without committing
 )
@@ -639,7 +639,7 @@ For external systems (CI/CD, monitoring tools, other services):
 
 POST /api/graph/extract
 {
-    "file_path": "trading/knowledge/analysis/earnings/NVDA_20260219T0900.yaml",
+    "file_path": "tradegent_knowledge/knowledge/analysis/earnings/NVDA_20260219T0900.yaml",
     "extractor": "ollama",
     "commit": true
 }
@@ -928,7 +928,7 @@ Once Phase 1 is validated, the following can be removed:
 |------|--------|
 | `nexus-lightrag` container | Stop and remove from docker-compose.yml |
 | LightRAG env vars in docker-compose | Remove `LLM_BINDING`, `EMBEDDING_BINDING`, etc. |
-| `trading/workflows/.lightrag/` | Delete directory |
+| `tradegent_knowledge/workflows/.lightrag/` | Delete directory |
 | LightRAG sync scripts | Delete if present |
 
 ---

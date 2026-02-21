@@ -336,13 +336,13 @@ screenshot_b64 = response.json()["screenshot"]
 
 **Note:** Use `LD_LIBRARY_PATH= /usr/bin/curl` to avoid Anaconda libcurl conflict.
 
-### Trading Knowledge (`trading/knowledge/`)
+### Trading Knowledge (`tradegent_knowledge/knowledge/`)
 
 Structured YAML repository of trading data: analyses, trade journals, strategies, scanner configs, and learnings. All files follow the `{TICKER}_{YYYYMMDDTHHMM}.yaml` naming convention.
 
-See [trading/knowledge/README.md](trading/knowledge/README.md) for details.
+See [tradegent_knowledge/knowledge/README.md](tradegent_knowledge/knowledge/README.md) for details.
 
-### Scanner System (`trading/knowledge/scanners/`)
+### Scanner System (`tradegent_knowledge/knowledge/scanners/`)
 
 YAML-based scanner configurations that encode systematic opportunity-finding rules. Scanners combine IB market data with web search, apply quality filters, score candidates, and route to analysis skills.
 
@@ -357,15 +357,15 @@ YAML-based scanner configurations that encode systematic opportunity-finding rul
 - 5.5-7.4: Add to watchlist
 - < 5.5: Skip
 
-See [docs/SCANNER_ARCHITECTURE.md](docs/SCANNER_ARCHITECTURE.md) for full architecture and [trading/knowledge/scanners/README.md](trading/knowledge/scanners/README.md) for scanner index.
+See [docs/SCANNER_ARCHITECTURE.md](docs/SCANNER_ARCHITECTURE.md) for full architecture and [tradegent_knowledge/knowledge/scanners/README.md](tradegent_knowledge/knowledge/scanners/README.md) for scanner index.
 
-### Trading Skills (`trading/skills/`)
+### Trading Skills (`tradegent_knowledge/skills/`)
 
 Agent-agnostic skill definitions with step-by-step frameworks and YAML templates. Works with any LLM — each skill is self-contained and single-purpose.
 
-See [trading/skills/README.md](trading/skills/README.md) for the full skill index.
+See [tradegent_knowledge/skills/README.md](tradegent_knowledge/skills/README.md) for the full skill index.
 
-### Trading Workflows (`trading/workflows/`)
+### Trading Workflows (`tradegent_knowledge/workflows/`)
 
 GitHub Actions CI/CD for validating documents against JSON schemas. Includes schemas for all document types.
 

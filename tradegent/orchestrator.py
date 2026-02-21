@@ -740,7 +740,7 @@ def _phase2_dual_ingest(filepath: Path) -> dict:
     Phase 2: Index to BOTH Graph (Neo4j) AND RAG (pgvector).
 
     This is the fix for the current kb_ingest_analysis() which only calls RAG.
-    Handles both YAML files (from trading/knowledge/) and Markdown files (from analyses/).
+    Handles both YAML files (from tradegent_knowledge/knowledge/) and Markdown files (from analyses/).
     """
     results = {"graph": None, "rag": None, "doc_id": None, "errors": []}
 

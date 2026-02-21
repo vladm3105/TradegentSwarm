@@ -326,7 +326,7 @@ The RAG module is exposed via MCP server at `mcp_server.py`. **Use MCP tools as 
 ```yaml
 # Embed a document
 Tool: rag_embed
-Input: {"file_path": "trading/knowledge/analysis/earnings/NVDA_20250120T0900.yaml"}
+Input: {"file_path": "tradegent_knowledge/knowledge/analysis/earnings/NVDA_20250120T0900.yaml"}
 
 # Search for context
 Tool: rag_search

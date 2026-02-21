@@ -147,7 +147,7 @@ Shows: enabled stocks, upcoming earnings, active schedules, and daily run counts
 
 3. **Re-embed all documents:**
    ```bash
-   python orchestrator.py rag embed --dir trading/knowledge --force
+   python orchestrator.py rag embed --dir tradegent_knowledge/knowledge --force
    ```
 
 ### Embedding Provider Errors
@@ -196,12 +196,12 @@ Shows: enabled stocks, upcoming earnings, active schedules, and daily run counts
 
 2. **Verify document exists:**
    ```bash
-   ls trading/knowledge/analysis/earnings/NVDA*.yaml
+   ls tradegent_knowledge/knowledge/analysis/earnings/NVDA*.yaml
    ```
 
 3. **Re-embed specific document:**
    ```bash
-   python orchestrator.py rag embed trading/knowledge/analysis/earnings/NVDA_20250120T0900.yaml --force
+   python orchestrator.py rag embed tradegent_knowledge/knowledge/analysis/earnings/NVDA_20250120T0900.yaml --force
    ```
 
 ---
@@ -449,7 +449,7 @@ git pushs  # Use this instead
 1. **Process documents in batches:**
    ```bash
    # Instead of --dir, process files individually
-   for f in trading/knowledge/analysis/earnings/*.yaml; do
+   for f in tradegent_knowledge/knowledge/analysis/earnings/*.yaml; do
      python orchestrator.py rag embed "$f"
    done
    ```

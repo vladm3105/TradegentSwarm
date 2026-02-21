@@ -58,10 +58,10 @@ fi
 # Knowledge Files Backup
 echo ""
 echo "--- Knowledge Files Backup ---"
-KNOWLEDGE_DIR="${PROJECT_ROOT}/trading/knowledge"
+KNOWLEDGE_DIR="${PROJECT_ROOT}/tradegent_knowledge/knowledge"
 if [ -d "$KNOWLEDGE_DIR" ]; then
     tar czf "$BACKUP_ROOT/knowledge/knowledge_$DATE.tar.gz" \
-        -C "$PROJECT_ROOT" trading/knowledge/
+        -C "$PROJECT_ROOT" tradegent_knowledge/knowledge/
     echo "Knowledge archive: $BACKUP_ROOT/knowledge/knowledge_$DATE.tar.gz"
 else
     echo "Knowledge directory not found: $KNOWLEDGE_DIR"

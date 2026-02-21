@@ -2419,12 +2419,12 @@ rag_sub.add_parser('validate', help='Check for orphaned chunks')
 
 ### 6.1 Post-Execution Hooks
 
-Update skill templates in `trading/skills/*/SKILL.md`:
+Update skill templates in `tradegent_knowledge/skills/*/SKILL.md`:
 
 ```markdown
 ## Post-Execution: Knowledge Base Integration
 
-After saving the analysis file to `trading/knowledge/`:
+After saving the analysis file to `tradegent_knowledge/knowledge/`:
 
 1. **Graph Extraction** (entities and relationships):
    ```bash
@@ -2480,7 +2480,7 @@ Add file watcher to service.py:
 ```python
 def watch_knowledge_files(self):
     """
-    Watch for new YAML files in trading/knowledge/.
+    Watch for new YAML files in tradegent_knowledge/knowledge/.
     Auto-extract and embed when files appear.
     """
     # Check for new files since last tick
@@ -2790,7 +2790,7 @@ After validation:
 # - mcp__lightrag__*
 
 # 4. Delete lightrag directories
-# rm -rf trading/workflows/.lightrag/
+# rm -rf tradegent_knowledge/workflows/.lightrag/
 ```
 
 ### 8.5 Backup Strategy

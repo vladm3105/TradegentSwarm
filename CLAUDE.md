@@ -20,7 +20,7 @@ tradegent/
 │   └── graph/               # Graph module (Neo4j, extraction)
 │       └── mcp_server.py    # MCP server (primary interface)
 │
-└── trading/                 # Trading Knowledge System
+└── tradegent_knowledge/     # Trading Knowledge System (separate private repo)
     ├── skills/              # Agent skill definitions (SKILL.md + template.yaml)
     ├── knowledge/           # Trading data & analyses (YAML documents)
     ├── examples/            # Sample configs and analyses for reference
@@ -101,17 +101,17 @@ Input: {"symbol": "NVDA", "duration": "3 M", "bar_size": "1 day"}
 
 **Step 3: Execute Skill Workflow** (read SKILL.md, follow phases)
 
-**Step 4: Save Output** (to `trading/knowledge/`)
+**Step 4: Save Output** (to `tradegent_knowledge/knowledge/`)
 
 **Step 5: Post-Save Hooks**
 ```yaml
 # Index in Graph
 Tool: graph_extract
-Input: {"file_path": "trading/knowledge/analysis/..."}
+Input: {"file_path": "tradegent_knowledge/knowledge/analysis/..."}
 
 # Embed for search
 Tool: rag_embed
-Input: {"file_path": "trading/knowledge/analysis/..."}
+Input: {"file_path": "tradegent_knowledge/knowledge/analysis/..."}
 
 # Push to remote
 Tool: mcp__github-vl__push_files
@@ -165,10 +165,10 @@ Example: `NVDA_20250120T0900.yaml`
 
 When a skill is invoked (auto or manual):
 
-1. Read the `SKILL.md` file from `trading/skills/{skill-name}/`
+1. Read the `SKILL.md` file from `tradegent_knowledge/skills/{skill-name}/`
 2. Follow the workflow steps exactly
 3. Use the `template.yaml` structure for output
-4. Save output to corresponding `trading/knowledge/` folder
+4. Save output to corresponding `tradegent_knowledge/knowledge/` folder
 5. Check for chaining actions (WATCH → watchlist, exit → review)
 
 ## Scanner System
@@ -226,7 +226,7 @@ See `docs/SCANNER_ARCHITECTURE.md` for detailed scoring criteria and routing log
 
 ```yaml
 # Load scanner config
-Read: trading/knowledge/scanners/daily/earnings-momentum.yaml
+Read: tradegent_knowledge/knowledge/scanners/daily/earnings-momentum.yaml
 
 # Execute IB scanner
 Tool: mcp__ib-mcp__run_scanner
@@ -254,7 +254,7 @@ Input: {"query": "NVDA earnings preview analyst"}
 | `options-flow` | Sentiment | Unusual options activity |
 | `unusual-volume` | Momentum | Volume spikes, news |
 
-Scanner configs are in `trading/knowledge/scanners/` — treat as sensitive (they encode your edge).
+Scanner configs are in `tradegent_knowledge/knowledge/scanners/` — treat as sensitive (they encode your edge).
 
 ## Watchlist Management
 
@@ -329,7 +329,7 @@ IF entry_trigger MET:
   → Archive watchlist entry
 ```
 
-See `trading/knowledge/watchlist/README.md` for full documentation.
+See `tradegent_knowledge/knowledge/watchlist/README.md` for full documentation.
 
 ## Tradegent Platform
 
@@ -467,7 +467,7 @@ Use the `github-vl` MCP server for pushing skill outputs directly to GitHub. Thi
 
 ### Auto-Commit Skill Outputs
 
-When skills save to `trading/knowledge/`, use:
+When skills save to `tradegent_knowledge/knowledge/`, use:
 
 ```yaml
 Tool: mcp__github-vl__push_files
@@ -476,7 +476,7 @@ Parameters:
   repo: TradegentSwarm
   branch: main
   files:
-    - path: trading/knowledge/{output_path}
+    - path: tradegent_knowledge/knowledge/{output_path}
       content: [generated content]
   message: "Add {skill_name} for {TICKER}"
 ```
@@ -525,7 +525,7 @@ export EMBED_PROVIDER=openai OPENAI_API_KEY=<key>
 ```yaml
 # Embed a document
 Tool: rag_embed
-Input: {"file_path": "trading/knowledge/analysis/earnings/NVDA_20250120T0900.yaml"}
+Input: {"file_path": "tradegent_knowledge/knowledge/analysis/earnings/NVDA_20250120T0900.yaml"}
 
 # Search for context
 Tool: rag_search
@@ -578,7 +578,7 @@ export EXTRACT_PROVIDER=openai OPENAI_API_KEY=<key>
 ```yaml
 # Extract from document
 Tool: graph_extract
-Input: {"file_path": "trading/knowledge/analysis/earnings/NVDA_20250120T0900.yaml"}
+Input: {"file_path": "tradegent_knowledge/knowledge/analysis/earnings/NVDA_20250120T0900.yaml"}
 
 # Get ticker context
 Tool: graph_context
@@ -646,14 +646,14 @@ If MCP servers are not configured, use Python directly:
 # RAG Embedding
 cd tradegent && python -c "
 from rag.embed import embed_document
-result = embed_document('trading/knowledge/analysis/stock/MSFT_20260221T1145.yaml')
+result = embed_document('tradegent_knowledge/knowledge/analysis/stock/MSFT_20260221T1145.yaml')
 print(f'Embedded: {result.doc_id}, Chunks: {result.chunks_created}')
 "
 
 # Graph Extraction
 cd tradegent && python -c "
 from graph.extract import extract_document
-result = extract_document('trading/knowledge/analysis/stock/MSFT_20260221T1145.yaml')
+result = extract_document('tradegent_knowledge/knowledge/analysis/stock/MSFT_20260221T1145.yaml')
 print(f'Extracted: {result.doc_id}, Entities: {result.entities_extracted}')
 "
 ```

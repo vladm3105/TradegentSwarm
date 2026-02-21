@@ -234,14 +234,14 @@ Comprehensive testing checklist for Trading Knowledge Base migration validation.
 
 - [ ] Index sample earnings analysis
   ```bash
-  python orchestrator.py rag embed trading/knowledge/analysis/earnings/NVDA_*.yaml
-  python orchestrator.py graph index trading/knowledge/analysis/earnings/NVDA_*.yaml
+  python orchestrator.py rag embed tradegent_knowledge/knowledge/analysis/earnings/NVDA_*.yaml
+  python orchestrator.py graph index tradegent_knowledge/knowledge/analysis/earnings/NVDA_*.yaml
   ```
 
 - [ ] Index sample trade journal
   ```bash
-  python orchestrator.py rag embed trading/knowledge/trades/*.yaml
-  python orchestrator.py graph index trading/knowledge/trades/*.yaml
+  python orchestrator.py rag embed tradegent_knowledge/knowledge/trades/*.yaml
+  python orchestrator.py graph index tradegent_knowledge/knowledge/trades/*.yaml
   ```
 
 - [ ] Verify chunks created
@@ -298,7 +298,7 @@ Comprehensive testing checklist for Trading Knowledge Base migration validation.
 
 - [ ] Batch embedding > 10 docs/minute
   ```bash
-  time python orchestrator.py rag embed trading/knowledge/analysis/earnings/*.yaml
+  time python orchestrator.py rag embed tradegent_knowledge/knowledge/analysis/earnings/*.yaml
   ```
 
 ## Rollback Tests

@@ -636,7 +636,7 @@ from trader.rag.embedding_client import EmbeddingClient
 
 # Option 1: Embed a YAML file
 result = embed_document(
-    file_path="trading/knowledge/analysis/earnings/NVDA_20260219T0900.yaml",
+    file_path="tradegent_knowledge/knowledge/analysis/earnings/NVDA_20260219T0900.yaml",
     force=False  # Skip if file_hash unchanged
 )
 print(f"Embedded {result.chunk_count} chunks")
@@ -681,7 +681,7 @@ For external systems (CI/CD, monitoring tools, other services):
 
 POST /api/rag/embed
 {
-    "file_path": "trading/knowledge/analysis/earnings/NVDA_20260219T0900.yaml",
+    "file_path": "tradegent_knowledge/knowledge/analysis/earnings/NVDA_20260219T0900.yaml",
     "force": false
 }
 # Returns: {"doc_id": "EA-NVDA-Q4-2025", "chunks": 8, "status": "embedded"}
@@ -915,7 +915,7 @@ After both the graph system (Phase 1) and RAG system (Phase 1) are validated:
 |------|--------|
 | `nexus-lightrag` container | Stop and remove from docker-compose.yml |
 | LightRAG env vars in docker-compose | Remove `LLM_BINDING`, `EMBEDDING_BINDING`, etc. |
-| `trading/workflows/.lightrag/` | Delete directory |
+| `tradegent_knowledge/workflows/.lightrag/` | Delete directory |
 | Settings: `lightrag_url`, `lightrag_ingest_enabled`, `lightrag_query_enabled` | Remove from nexus.settings |
 | `allowed_tools_analysis` setting | Remove `mcp__lightrag__*` |
 

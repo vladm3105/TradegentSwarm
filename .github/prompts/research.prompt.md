@@ -10,8 +10,8 @@ Research **${input:topic}** using the structured research framework to inform tr
 ## Context
 
 Load the full skill definition and output template:
-- #file:../../trading/skills/research-analysis/SKILL.md
-- #file:../../trading/skills/research-analysis/template.yaml
+- #file:../../tradegent_knowledge/skills/research-analysis/SKILL.md
+- #file:../../tradegent_knowledge/skills/research-analysis/template.yaml
 
 ## When to Use
 
@@ -22,7 +22,7 @@ Load the full skill definition and output template:
 
 ## Workflow
 
-1. **Read skill definition** from `trading/skills/research-analysis/SKILL.md`
+1. **Read skill definition** from `tradegent_knowledge/skills/research-analysis/SKILL.md`
 2. **Execute research framework**:
    - Step 1: Define the Research Question (specific and answerable)
    - Step 2: Gather Evidence
@@ -40,8 +40,8 @@ Load the full skill definition and output template:
      - Validity period (30/90/365 days)
      - Review triggers
      - Falsification criteria
-3. **Generate output** using `trading/skills/research-analysis/template.yaml`
-4. **Save** to `trading/knowledge/analysis/research/{TOPIC}_{YYYYMMDDTHHMM}.yaml`
+3. **Generate output** using `tradegent_knowledge/skills/research-analysis/template.yaml`
+4. **Save** to `tradegent_knowledge/knowledge/analysis/research/{TOPIC}_{YYYYMMDDTHHMM}.yaml`
 
 ## Chaining
 
@@ -52,4 +52,4 @@ After completion:
 
 ## Output
 
-Save the completed research to `trading/knowledge/analysis/research/` using the naming convention `{TOPIC}_{YYYYMMDDTHHMM}.yaml`.
+Save the completed research to `tradegent_knowledge/knowledge/analysis/research/` using the naming convention `{TOPIC}_{YYYYMMDDTHHMM}.yaml`.

@@ -3,7 +3,7 @@
 Migration script: Upgrade skill documents from v1/v2.1 to v2.3
 
 This script adds missing v2.3 fields to existing YAML documents in
-the trading/knowledge/ directory while preserving existing data.
+the tradegent_knowledge/knowledge/ directory while preserving existing data.
 
 Usage:
     python scripts/migrate_skills_v23.py --dry-run  # Preview changes
@@ -591,8 +591,8 @@ def main():
     parser.add_argument(
         '--path', '-p',
         type=Path,
-        default=Path('/opt/data/tradegent_swarm/trading'),
-        help='Base path to trading directory'
+        default=Path('/opt/data/tradegent_swarm/tradegent_knowledge'),
+        help='Base path to tradegent_knowledge directory'
     )
     parser.add_argument(
         '--file', '-f',

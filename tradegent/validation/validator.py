@@ -24,7 +24,7 @@ except ImportError:
 log = logging.getLogger(__name__)
 
 # Schema directory - relative to project root
-SCHEMA_DIR = Path(__file__).parent.parent.parent / "trading" / "schemas"
+SCHEMA_DIR = Path(__file__).parent.parent.parent / "tradegent_knowledge" / "schemas"
 
 # Map document paths to schema files
 SCHEMA_MAP = {
@@ -70,7 +70,7 @@ class DocumentValidator:
 
         Args:
             schema_dir: Directory containing JSON schemas.
-                       Defaults to trading/schemas/
+                       Defaults to tradegent_knowledge/schemas/
         """
         self.schema_dir = schema_dir or SCHEMA_DIR
         self._schema_cache: dict[str, dict] = {}
@@ -239,7 +239,7 @@ def get_schema_for_path(file_path: str) -> str | None:
     Looks at the directory structure to map to appropriate schema.
     Checks from most specific (nearest to file) to least specific (root).
     Supports paths like:
-    - trading/knowledge/analysis/earnings/NVDA_20250120.yaml -> earnings-analysis.json
+    - tradegent_knowledge/knowledge/analysis/earnings/NVDA_20250120.yaml -> earnings-analysis.json
     - knowledge/trades/TRD-2025-001.yaml -> trade-journal.json
     - earnings/AAPL_Q1_2025.yaml -> earnings-analysis.json
 

@@ -291,7 +291,7 @@ The graph module is exposed via MCP server at `mcp_server.py`. **Use MCP tools a
 ```yaml
 # Extract from document
 Tool: graph_extract
-Input: {"file_path": "trading/knowledge/analysis/earnings/NVDA_20250120T0900.yaml"}
+Input: {"file_path": "tradegent_knowledge/knowledge/analysis/earnings/NVDA_20250120T0900.yaml"}
 
 # Get ticker context
 Tool: graph_context

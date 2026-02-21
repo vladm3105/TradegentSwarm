@@ -10,12 +10,12 @@ Run market scanning: **${input:scanner}** (scanner name, "daily", "weekly", or "
 ## Context
 
 Load the full skill definition:
-- #file:../../trading/skills/market-scanning/SKILL.md
+- #file:../../tradegent_knowledge/skills/market-scanning/SKILL.md
 
 Load scanner configurations:
-- #file:../../trading/knowledge/scanners/daily/
-- #file:../../trading/knowledge/scanners/intraday/
-- #file:../../trading/knowledge/scanners/weekly/
+- #file:../../tradegent_knowledge/knowledge/scanners/daily/
+- #file:../../tradegent_knowledge/knowledge/scanners/intraday/
+- #file:../../tradegent_knowledge/knowledge/scanners/weekly/
 
 ## When to Use
 
@@ -25,7 +25,7 @@ Load scanner configurations:
 
 ## Available Scanners
 
-### Daily (`trading/knowledge/scanners/daily/`)
+### Daily (`tradegent_knowledge/knowledge/scanners/daily/`)
 | Scanner | Time | Purpose |
 |---------|------|---------|
 | market-regime | 09:35 | Classify market environment |
@@ -36,13 +36,13 @@ Load scanner configurations:
 | sector-rotation | 16:15 | Sector flows |
 | oversold-bounce | 15:50 | Mean reversion |
 
-### Intraday (`trading/knowledge/scanners/intraday/`)
+### Intraday (`tradegent_knowledge/knowledge/scanners/intraday/`)
 | Scanner | Purpose |
 |---------|---------|
 | options-flow | Unusual options activity |
 | unusual-volume | Volume spikes |
 
-### Weekly (`trading/knowledge/scanners/weekly/`)
+### Weekly (`tradegent_knowledge/knowledge/scanners/weekly/`)
 | Scanner | Time | Purpose |
 |---------|------|---------|
 | earnings-calendar | Sun 07:00 | Week ahead earnings |
@@ -50,8 +50,8 @@ Load scanner configurations:
 
 ## Workflow
 
-1. **Read skill definition** from `trading/skills/market-scanning/SKILL.md`
-2. **Load scanner config** from `trading/knowledge/scanners/{daily|intraday|weekly}/`
+1. **Read skill definition** from `tradegent_knowledge/skills/market-scanning/SKILL.md`
+2. **Load scanner config** from `tradegent_knowledge/knowledge/scanners/{daily|intraday|weekly}/`
 3. **Execute scanner**:
    - Gather data using specified sources
    - Apply quality filters (liquidity, exclusions)

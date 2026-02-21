@@ -10,11 +10,11 @@ Document a trade for **${input:ticker}** — action: **${input:action}** (entry 
 ## Context
 
 Load the full skill definition and output template:
-- #file:../../trading/skills/trade-journal/SKILL.md
-- #file:../../trading/skills/trade-journal/template.yaml
+- #file:../../tradegent_knowledge/skills/trade-journal/SKILL.md
+- #file:../../tradegent_knowledge/skills/trade-journal/template.yaml
 
 Check for existing trades:
-- #file:../../trading/knowledge/trades/
+- #file:../../tradegent_knowledge/knowledge/trades/
 
 ## When to Use
 
@@ -24,7 +24,7 @@ Check for existing trades:
 
 ## Workflow
 
-1. **Read skill definition** from `trading/skills/trade-journal/SKILL.md`
+1. **Read skill definition** from `tradegent_knowledge/skills/trade-journal/SKILL.md`
 2. **Determine action type**:
    - **entry**: Record new position
    - **exit**: Close position, calculate P&L
@@ -39,8 +39,8 @@ Check for existing trades:
    - Calculate: Gross P&L, Net P&L, Return %
    - Classify outcome (big win / small win / breakeven / small loss / big loss)
    - **Trigger post-trade-review**
-5. **Generate output** using `trading/skills/trade-journal/template.yaml`
-6. **Save** to `trading/knowledge/trades/{TICKER}_{YYYYMMDDTHHMM}.yaml`
+5. **Generate output** using `tradegent_knowledge/skills/trade-journal/template.yaml`
+6. **Save** to `tradegent_knowledge/knowledge/trades/{TICKER}_{YYYYMMDDTHHMM}.yaml`
 
 ## Position Sizing Verification
 
@@ -61,4 +61,4 @@ Before entry, verify:
 
 ## Output
 
-Save to `trading/knowledge/trades/` using `{TICKER}_{YYYYMMDDTHHMM}.yaml`. Use actual fill prices, not intended prices.
+Save to `tradegent_knowledge/knowledge/trades/` using `{TICKER}_{YYYYMMDDTHHMM}.yaml`. Use actual fill prices, not intended prices.
