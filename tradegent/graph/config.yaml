@@ -14,7 +14,7 @@ extraction:
   fallback_chain:
     - ollama
     - openrouter
-  timeout_seconds: "${EXTRACT_TIMEOUT_SECONDS:-30}"
+  timeout_seconds: "${EXTRACT_TIMEOUT_SECONDS:-60}"
 
   # Confidence thresholds
   commit_threshold: "${EXTRACT_COMMIT_THRESHOLD:-0.7}"

@@ -209,7 +209,8 @@ def get_bias_warnings(ticker: str) -> list[dict]:
         except ImportError:
             from graph.layer import TradingGraph
         with TradingGraph() as graph:
-            if graph.health_check():
+            # Skip queries on empty graph to avoid label warnings
+            if graph.health_check() and graph.is_populated():
                 # Get biases detected in trades for this ticker
                 bias_history = graph.run_cypher(
                     """
@@ -253,7 +254,8 @@ def get_strategy_recommendations(ticker: str) -> list[dict]:
         except ImportError:
             from graph.layer import TradingGraph
         with TradingGraph() as graph:
-            if graph.health_check():
+            # Skip queries on empty graph to avoid label warnings
+            if graph.health_check() and graph.is_populated():
                 strategies = graph.run_cypher(
                     """
                     MATCH (s:Strategy)-[r:WORKS_FOR]->(tk:Ticker {symbol: $symbol})
