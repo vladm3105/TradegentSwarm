@@ -38,20 +38,26 @@ Use this skill for non-earnings trading opportunities: technical breakouts, valu
 
 ## Workflow
 
-### Step 1: Get Historical Context (RAG + Graph)
+### Step 1: Get Historical Context (RAG v2.0 + Graph)
 
-Before starting analysis, retrieve relevant context:
+Before starting analysis, retrieve relevant context using adaptive retrieval:
 
 ```yaml
+# Primary: Adaptive hybrid context (auto-routes based on query type)
 Tool: rag_hybrid_context
 Input: {"ticker": "$TICKER", "query": "stock analysis technical patterns catalyst", "analysis_type": "stock-analysis"}
+
+# Alternative: Reranked search for specific queries (higher relevance)
+Tool: rag_search_rerank
+Input: {"query": "$TICKER competitive position market share", "ticker": "$TICKER", "top_k": 5}
 ```
 
 This returns:
-- Past analyses for this ticker
+- Past analyses for this ticker (with cross-encoder reranking for relevance)
 - Known technical patterns
 - Previous trade outcomes
 - Sector peer data
+- Query is auto-classified (retrieval/relationship/comparison/trend) for optimal routing
 
 ### Step 2: Get Real-Time Market Data (IB MCP)
 
@@ -98,7 +104,7 @@ Input: {"url": "...", "wait_for_selector": "article"}
 
 ### Step 5: Read Skill Definition
 
-Load `trading/skills/stock-analysis/SKILL.md` and follow the 7-phase framework:
+Load `tradegent_knowledge/skills/stock-analysis/SKILL.md` and follow the 7-phase framework:
 
 1. **Phase 1: Catalyst Identification** (no catalyst = no trade)
 2. **Phase 2: Market Environment** (regime, sector, volatility)
@@ -127,34 +133,34 @@ TOTAL SCORE:                ___/10
 
 ### Step 7: Generate Output
 
-Use `trading/skills/stock-analysis/template.yaml` structure.
+Use `tradegent_knowledge/skills/stock-analysis/template.yaml` structure.
 
 ### Step 8: Save Analysis
 
-Save to `trading/knowledge/analysis/stock/{TICKER}_{YYYYMMDDTHHMM}.yaml`
+Save to `tradegent_knowledge/knowledge/analysis/stock/{TICKER}_{YYYYMMDDTHHMM}.yaml`
 
 ### Step 9: Index in Knowledge Base (Post-Save Hooks)
 
 ```yaml
 # Extract entities to Graph
 Tool: graph_extract
-Input: {"file_path": "trading/knowledge/analysis/stock/{TICKER}_{YYYYMMDDTHHMM}.yaml"}
+Input: {"file_path": "tradegent_knowledge/knowledge/analysis/stock/{TICKER}_{YYYYMMDDTHHMM}.yaml"}
 
 # Embed for semantic search
 Tool: rag_embed
-Input: {"file_path": "trading/knowledge/analysis/stock/{TICKER}_{YYYYMMDDTHHMM}.yaml"}
+Input: {"file_path": "tradegent_knowledge/knowledge/analysis/stock/{TICKER}_{YYYYMMDDTHHMM}.yaml"}
 ```
 
-### Step 10: Push to Remote
+### Step 10: Push to Remote (Private Knowledge Repo)
 
 ```yaml
 Tool: mcp__github-vl__push_files
 Parameters:
   owner: vladm3105
-  repo: TradegentSwarm
+  repo: tradegent-knowledge    # Private knowledge repository
   branch: main
   files:
-    - path: trading/knowledge/analysis/stock/{TICKER}_{YYYYMMDDTHHMM}.yaml
+    - path: knowledge/analysis/stock/{TICKER}_{YYYYMMDDTHHMM}.yaml
       content: [generated analysis content]
   message: "Add stock analysis for {TICKER}"
 ```
@@ -174,7 +180,8 @@ After completion:
 
 | Tool | Purpose |
 |------|---------|
-| `rag_hybrid_context` | Get historical context |
+| `rag_hybrid_context` | Get historical context (v2.0: adaptive routing) |
+| `rag_search_rerank` | Higher relevance search (v2.0: cross-encoder) |
 | `mcp__ib-mcp__get_stock_price` | Current price |
 | `mcp__ib-mcp__get_historical_data` | Price history |
 | `mcp__ib-mcp__get_fundamental_data` | Company fundamentals |
@@ -183,7 +190,7 @@ After completion:
 | `mcp__brave-search__brave_web_search` | Research |
 | `graph_extract` | Index entities |
 | `rag_embed` | Embed for search |
-| `mcp__github-vl__push_files` | Push to remote |
+| `mcp__github-vl__push_files` | Push to private knowledge repo |
 
 ## Execution
 

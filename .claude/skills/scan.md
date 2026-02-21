@@ -37,7 +37,7 @@ Use this skill to systematically identify trading opportunities using scanner co
 
 ## Available Scanners
 
-### Daily Scanners (`trading/knowledge/scanners/daily/`)
+### Daily Scanners (`tradegent_knowledge/knowledge/scanners/daily/`)
 | Scanner | Time | Purpose |
 |---------|------|---------|
 | market-regime | 09:35 | Classify market environment |
@@ -48,13 +48,13 @@ Use this skill to systematically identify trading opportunities using scanner co
 | sector-rotation | 16:15 | Sector flows |
 | oversold-bounce | 15:50 | Mean reversion |
 
-### Intraday Scanners (`trading/knowledge/scanners/intraday/`)
+### Intraday Scanners (`tradegent_knowledge/knowledge/scanners/intraday/`)
 | Scanner | Purpose |
 |---------|---------|
 | options-flow | Unusual options activity |
 | unusual-volume | Volume spikes |
 
-### Weekly Scanners (`trading/knowledge/scanners/weekly/`)
+### Weekly Scanners (`tradegent_knowledge/knowledge/scanners/weekly/`)
 | Scanner | Time | Purpose |
 |---------|------|---------|
 | earnings-calendar | Sun 07:00 | Week ahead earnings |
@@ -64,17 +64,17 @@ Use this skill to systematically identify trading opportunities using scanner co
 
 ### Step 1: Load Scanner Config
 
-Read scanner configuration from `trading/knowledge/scanners/{daily|intraday|weekly}/`
+Read scanner configuration from `tradegent_knowledge/knowledge/scanners/{daily|intraday|weekly}/`
 
-### Step 2: Get Market Context (RAG + Graph)
+### Step 2: Get Market Context (RAG v2.0 + Graph)
 
 ```yaml
-# Get current market regime
-Tool: rag_search
+# Get current market regime (v2.0: reranked for relevance)
+Tool: rag_search_rerank
 Input: {"query": "market regime volatility sector rotation", "top_k": 5}
 
 # Get recent scan results for comparison
-Tool: rag_search
+Tool: rag_search_rerank
 Input: {"query": "scanner results opportunities", "top_k": 10}
 ```
 
@@ -158,24 +158,24 @@ If saving scan results:
 
 ```yaml
 Tool: graph_extract
-Input: {"file_path": "trading/knowledge/scans/{SCANNER}_{YYYYMMDDTHHMM}.yaml"}
+Input: {"file_path": "tradegent_knowledge/knowledge/scans/{SCANNER}_{YYYYMMDDTHHMM}.yaml"}
 
 Tool: rag_embed
-Input: {"file_path": "trading/knowledge/scans/{SCANNER}_{YYYYMMDDTHHMM}.yaml"}
+Input: {"file_path": "tradegent_knowledge/knowledge/scans/{SCANNER}_{YYYYMMDDTHHMM}.yaml"}
 ```
 
-### Step 10: Push Watchlist Candidates to Remote
+### Step 10: Push Watchlist Candidates to Remote (Private Knowledge Repo)
 
 ```yaml
 Tool: mcp__github-vl__push_files
 Parameters:
   owner: vladm3105
-  repo: TradegentSwarm
+  repo: tradegent-knowledge    # Private knowledge repository
   branch: main
   files:
-    - path: trading/knowledge/watchlist/{TICKER1}_{YYYYMMDDTHHMM}.yaml
+    - path: knowledge/watchlist/{TICKER1}_{YYYYMMDDTHHMM}.yaml
       content: [watchlist entry content]
-    - path: trading/knowledge/watchlist/{TICKER2}_{YYYYMMDDTHHMM}.yaml
+    - path: knowledge/watchlist/{TICKER2}_{YYYYMMDDTHHMM}.yaml
       content: [watchlist entry content]
   message: "Scanner results: {scanner_name} - {count} candidates"
 ```
@@ -219,7 +219,7 @@ CLOSE (15:30-16:15):
 
 | Tool | Purpose |
 |------|---------|
-| `rag_search` | Market context |
+| `rag_search_rerank` | Market context (v2.0: cross-encoder) |
 | `mcp__ib-mcp__run_scanner` | Execute IB scanner |
 | `mcp__ib-mcp__get_scanner_params` | Scanner options |
 | `mcp__ib-mcp__get_quotes_batch` | Candidate prices |
@@ -227,7 +227,7 @@ CLOSE (15:30-16:15):
 | `mcp__brave-search__brave_web_search` | Catalyst research |
 | `graph_extract` | Index results |
 | `rag_embed` | Embed for search |
-| `mcp__github-vl__push_files` | Push to remote |
+| `mcp__github-vl__push_files` | Push to private knowledge repo |
 
 ## Execution
 

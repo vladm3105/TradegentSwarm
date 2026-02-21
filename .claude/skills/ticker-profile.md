@@ -37,12 +37,12 @@ Use this skill to maintain persistent knowledge about frequently traded stocks. 
 
 ## Workflow
 
-### Step 1: Check Existing Profile (RAG + Graph)
+### Step 1: Check Existing Profile (RAG v2.0 + Graph)
 
 ```yaml
-# Search for existing profile
-Tool: rag_search
-Input: {"query": "$TICKER profile", "ticker": "$TICKER", "top_k": 5}
+# Search for existing profile (v2.0: reranked for relevance)
+Tool: rag_search_rerank
+Input: {"query": "$TICKER profile patterns history", "ticker": "$TICKER", "top_k": 5}
 
 # Get all graph relationships for ticker
 Tool: graph_context
@@ -94,7 +94,7 @@ Input: {"url": "https://seekingalpha.com/symbol/$TICKER", "wait_for_selector": "
 
 ### Step 4: Read Skill Definition
 
-Load `trading/skills/ticker-profile/SKILL.md` and gather/update:
+Load `tradegent_knowledge/skills/ticker-profile/SKILL.md` and gather/update:
 
 - **Company Basics** (sector, market cap, business model)
 - **Earnings Patterns** (8 quarters: beats, reactions, guidance)
@@ -105,34 +105,34 @@ Load `trading/skills/ticker-profile/SKILL.md` and gather/update:
 
 ### Step 5: Generate Output
 
-Use `trading/skills/ticker-profile/template.yaml` structure.
+Use `tradegent_knowledge/skills/ticker-profile/template.yaml` structure.
 
 ### Step 6: Save Profile
 
-Save to `trading/knowledge/analysis/ticker-profiles/{TICKER}_{YYYYMMDDTHHMM}.yaml`
+Save to `tradegent_knowledge/knowledge/analysis/ticker-profiles/{TICKER}_{YYYYMMDDTHHMM}.yaml`
 
 ### Step 7: Index in Knowledge Base (Post-Save Hooks)
 
 ```yaml
 # Extract entities to Graph
 Tool: graph_extract
-Input: {"file_path": "trading/knowledge/analysis/ticker-profiles/{TICKER}_{YYYYMMDDTHHMM}.yaml"}
+Input: {"file_path": "tradegent_knowledge/knowledge/analysis/ticker-profiles/{TICKER}_{YYYYMMDDTHHMM}.yaml"}
 
 # Embed for semantic search
 Tool: rag_embed
-Input: {"file_path": "trading/knowledge/analysis/ticker-profiles/{TICKER}_{YYYYMMDDTHHMM}.yaml"}
+Input: {"file_path": "tradegent_knowledge/knowledge/analysis/ticker-profiles/{TICKER}_{YYYYMMDDTHHMM}.yaml"}
 ```
 
-### Step 8: Push to Remote
+### Step 8: Push to Remote (Private Knowledge Repo)
 
 ```yaml
 Tool: mcp__github-vl__push_files
 Parameters:
   owner: vladm3105
-  repo: TradegentSwarm
+  repo: tradegent-knowledge    # Private knowledge repository
   branch: main
   files:
-    - path: trading/knowledge/analysis/ticker-profiles/{TICKER}_{YYYYMMDDTHHMM}.yaml
+    - path: knowledge/analysis/ticker-profiles/{TICKER}_{YYYYMMDDTHHMM}.yaml
       content: [generated profile content]
   message: "Update ticker profile for {TICKER}"
 ```
@@ -164,7 +164,7 @@ Quarterly refresh:
 
 | Tool | Purpose |
 |------|---------|
-| `rag_search` | Find existing profile |
+| `rag_search_rerank` | Find existing profile (v2.0: cross-encoder) |
 | `graph_context` | All ticker relationships |
 | `graph_risks` | Known risk factors |
 | `graph_peers` | Sector peers |
@@ -176,7 +176,7 @@ Quarterly refresh:
 | `mcp__brave-search__brave_web_search` | Company research |
 | `graph_extract` | Index entities |
 | `rag_embed` | Embed for search |
-| `mcp__github-vl__push_files` | Push to remote |
+| `mcp__github-vl__push_files` | Push to private knowledge repo |
 
 ## Execution
 

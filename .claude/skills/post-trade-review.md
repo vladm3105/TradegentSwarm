@@ -36,15 +36,15 @@ Use this skill to analyze completed trades and extract lessons. Closes the learn
 
 ## Workflow
 
-### Step 1: Find Closed Trade (RAG + Graph)
+### Step 1: Find Closed Trade (RAG v2.0 + Graph)
 
 ```yaml
-# Find the trade journal entry
-Tool: rag_search
+# Find the trade journal entry (v2.0: reranked for higher relevance)
+Tool: rag_search_rerank
 Input: {"query": "$TICKER trade entry exit", "ticker": "$TICKER", "top_k": 10}
 
 # Get original analysis that triggered trade
-Tool: rag_search
+Tool: rag_search_rerank
 Input: {"query": "$TICKER analysis recommendation", "ticker": "$TICKER", "top_k": 5}
 
 # Get ticker context
@@ -70,7 +70,7 @@ Input: {"symbol": "$TICKER", "duration": "1 M", "bar_size": "1 day"}
 
 ### Step 3: Read Skill Definition
 
-Load `trading/skills/post-trade-review/SKILL.md` and execute the review framework:
+Load `tradegent_knowledge/skills/post-trade-review/SKILL.md` and execute the review framework:
 
 1. **Step 1: Document Facts** (trade details, original thesis)
 2. **Step 2: Execution Analysis**
@@ -123,49 +123,49 @@ RULE TO ADD:
 
 ### Step 6: Generate Output
 
-Use `trading/skills/post-trade-review/template.yaml` structure.
+Use `tradegent_knowledge/skills/post-trade-review/template.yaml` structure.
 
 ### Step 7: Save Review
 
-Save to `trading/knowledge/reviews/{TICKER}_{YYYYMMDDTHHMM}_review.yaml`
+Save to `tradegent_knowledge/knowledge/reviews/{TICKER}_{YYYYMMDDTHHMM}_review.yaml`
 
 Optionally save learnings:
-- `trading/knowledge/learnings/patterns/{pattern_file}.yaml`
-- `trading/knowledge/learnings/rules/{rule_file}.yaml`
+- `tradegent_knowledge/knowledge/learnings/patterns/{pattern_file}.yaml`
+- `tradegent_knowledge/knowledge/learnings/rules/{rule_file}.yaml`
 
 ### Step 8: Index in Knowledge Base (Post-Save Hooks)
 
 ```yaml
 # Extract entities to Graph (captures learnings, biases, patterns)
 Tool: graph_extract
-Input: {"file_path": "trading/knowledge/reviews/{TICKER}_{YYYYMMDDTHHMM}_review.yaml"}
+Input: {"file_path": "tradegent_knowledge/knowledge/reviews/{TICKER}_{YYYYMMDDTHHMM}_review.yaml"}
 
 # Embed for semantic search
 Tool: rag_embed
-Input: {"file_path": "trading/knowledge/reviews/{TICKER}_{YYYYMMDDTHHMM}_review.yaml"}
+Input: {"file_path": "tradegent_knowledge/knowledge/reviews/{TICKER}_{YYYYMMDDTHHMM}_review.yaml"}
 
 # If patterns extracted
 Tool: graph_extract
-Input: {"file_path": "trading/knowledge/learnings/patterns/{pattern_file}.yaml"}
+Input: {"file_path": "tradegent_knowledge/knowledge/learnings/patterns/{pattern_file}.yaml"}
 
 Tool: rag_embed
-Input: {"file_path": "trading/knowledge/learnings/patterns/{pattern_file}.yaml"}
+Input: {"file_path": "tradegent_knowledge/knowledge/learnings/patterns/{pattern_file}.yaml"}
 ```
 
-### Step 9: Push to Remote
+### Step 9: Push to Remote (Private Knowledge Repo)
 
 ```yaml
 Tool: mcp__github-vl__push_files
 Parameters:
   owner: vladm3105
-  repo: TradegentSwarm
+  repo: tradegent-knowledge    # Private knowledge repository
   branch: main
   files:
-    - path: trading/knowledge/reviews/{TICKER}_{YYYYMMDDTHHMM}_review.yaml
+    - path: knowledge/reviews/{TICKER}_{YYYYMMDDTHHMM}_review.yaml
       content: [generated review content]
-    - path: trading/knowledge/learnings/patterns/{pattern_file}.yaml
+    - path: knowledge/learnings/patterns/{pattern_file}.yaml
       content: [pattern content if applicable]
-    - path: trading/knowledge/learnings/rules/{rule_file}.yaml
+    - path: knowledge/learnings/rules/{rule_file}.yaml
       content: [rule content if applicable]
   message: "Add post-trade review for {TICKER}"
 ```
@@ -174,7 +174,7 @@ Parameters:
 
 - Automatically triggered by **trade-journal** exit
 - Updates **ticker-profile** with trade history and lessons
-- Adds patterns/rules to `trading/knowledge/learnings/`
+- Adds patterns/rules to `tradegent_knowledge/knowledge/learnings/`
 - Informs future **earnings-analysis** and **stock-analysis**
 
 ## Arguments
@@ -185,14 +185,14 @@ Parameters:
 
 | Tool | Purpose |
 |------|---------|
-| `rag_search` | Find trade journal and analysis |
+| `rag_search_rerank` | Find trade journal/analysis (v2.0: cross-encoder) |
 | `graph_context` | Ticker relationships |
 | `graph_biases` | Historical bias patterns |
 | `mcp__ib-mcp__get_stock_price` | Current price (post-exit) |
 | `mcp__ib-mcp__get_historical_data` | Price action during trade |
 | `graph_extract` | Index learnings |
 | `rag_embed` | Embed for search |
-| `mcp__github-vl__push_files` | Push to remote |
+| `mcp__github-vl__push_files` | Push to private knowledge repo |
 
 ## Execution
 

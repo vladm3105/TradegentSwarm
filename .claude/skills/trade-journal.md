@@ -40,11 +40,11 @@ Use this skill to document executed trades with entry/exit details, rationale, a
 
 ## Workflow
 
-### Step 1: Get Context (RAG + Graph)
+### Step 1: Get Context (RAG v2.0 + Graph)
 
 ```yaml
-# Find the analysis that triggered this trade
-Tool: rag_search
+# Find the analysis that triggered this trade (v2.0: reranked for relevance)
+Tool: rag_search_rerank
 Input: {"query": "$TICKER analysis recommendation", "ticker": "$TICKER", "top_k": 5}
 
 # Get ticker context
@@ -84,7 +84,7 @@ Input: {}
 
 ### Step 4: Read Skill Definition
 
-Load `trading/skills/trade-journal/SKILL.md`.
+Load `tradegent_knowledge/skills/trade-journal/SKILL.md`.
 
 **For entry**, record:
 - Entry details (actual fill price, date, size, order type)
@@ -112,34 +112,34 @@ Before entry, verify:
 
 ### Step 6: Generate Output
 
-Use `trading/skills/trade-journal/template.yaml` structure.
+Use `tradegent_knowledge/skills/trade-journal/template.yaml` structure.
 
 ### Step 7: Save Trade Journal
 
-Save to `trading/knowledge/trades/{TICKER}_{YYYYMMDDTHHMM}.yaml`
+Save to `tradegent_knowledge/knowledge/trades/{TICKER}_{YYYYMMDDTHHMM}.yaml`
 
 ### Step 8: Index in Knowledge Base (Post-Save Hooks)
 
 ```yaml
 # Extract entities to Graph (captures trade, strategy, biases)
 Tool: graph_extract
-Input: {"file_path": "trading/knowledge/trades/{TICKER}_{YYYYMMDDTHHMM}.yaml"}
+Input: {"file_path": "tradegent_knowledge/knowledge/trades/{TICKER}_{YYYYMMDDTHHMM}.yaml"}
 
 # Embed for semantic search
 Tool: rag_embed
-Input: {"file_path": "trading/knowledge/trades/{TICKER}_{YYYYMMDDTHHMM}.yaml"}
+Input: {"file_path": "tradegent_knowledge/knowledge/trades/{TICKER}_{YYYYMMDDTHHMM}.yaml"}
 ```
 
-### Step 9: Push to Remote
+### Step 9: Push to Remote (Private Knowledge Repo)
 
 ```yaml
 Tool: mcp__github-vl__push_files
 Parameters:
   owner: vladm3105
-  repo: TradegentSwarm
+  repo: tradegent-knowledge    # Private knowledge repository
   branch: main
   files:
-    - path: trading/knowledge/trades/{TICKER}_{YYYYMMDDTHHMM}.yaml
+    - path: knowledge/trades/{TICKER}_{YYYYMMDDTHHMM}.yaml
       content: [generated trade journal content]
   message: "Add trade journal: {TICKER} {entry|exit|update}"
 ```
@@ -159,7 +159,7 @@ Parameters:
 
 | Tool | Purpose |
 |------|---------|
-| `rag_search` | Find triggering analysis |
+| `rag_search_rerank` | Find triggering analysis (v2.0: cross-encoder) |
 | `graph_context` | Ticker relationships |
 | `graph_biases` | Document active biases |
 | `mcp__ib-mcp__get_stock_price` | Current price |
@@ -168,7 +168,7 @@ Parameters:
 | `mcp__ib-mcp__get_pnl` | P&L calculation |
 | `graph_extract` | Index entities |
 | `rag_embed` | Embed for search |
-| `mcp__github-vl__push_files` | Push to remote |
+| `mcp__github-vl__push_files` | Push to private knowledge repo |
 
 ## Execution
 

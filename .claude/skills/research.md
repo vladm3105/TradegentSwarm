@@ -37,10 +37,11 @@ Use this skill for macro, sector, and thematic research that informs trading dec
 
 ## Workflow
 
-### Step 1: Get Existing Research Context (RAG + Graph)
+### Step 1: Get Existing Research Context (RAG v2.0 + Graph)
 
 ```yaml
-Tool: rag_search
+# Search for related research (v2.0: reranked for relevance)
+Tool: rag_search_rerank
 Input: {"query": "$TOPIC macro sector thematic", "top_k": 10}
 
 # Get related entities from graph
@@ -80,7 +81,7 @@ Input: {"symbols": ["TICKER1", "TICKER2", "TICKER3"]}
 
 ### Step 4: Read Skill Definition
 
-Load `trading/skills/research-analysis/SKILL.md` and execute the research framework:
+Load `tradegent_knowledge/skills/research-analysis/SKILL.md` and execute the research framework:
 
 1. **Step 1: Define the Research Question** (specific and answerable)
 2. **Step 2: Gather Evidence**
@@ -101,34 +102,34 @@ Load `trading/skills/research-analysis/SKILL.md` and execute the research framew
 
 ### Step 5: Generate Output
 
-Use `trading/skills/research-analysis/template.yaml` structure.
+Use `tradegent_knowledge/skills/research-analysis/template.yaml` structure.
 
 ### Step 6: Save Research
 
-Save to `trading/knowledge/analysis/research/{TOPIC}_{YYYYMMDDTHHMM}.yaml`
+Save to `tradegent_knowledge/knowledge/analysis/research/{TOPIC}_{YYYYMMDDTHHMM}.yaml`
 
 ### Step 7: Index in Knowledge Base (Post-Save Hooks)
 
 ```yaml
 # Extract entities to Graph
 Tool: graph_extract
-Input: {"file_path": "trading/knowledge/analysis/research/{TOPIC}_{YYYYMMDDTHHMM}.yaml"}
+Input: {"file_path": "tradegent_knowledge/knowledge/analysis/research/{TOPIC}_{YYYYMMDDTHHMM}.yaml"}
 
 # Embed for semantic search
 Tool: rag_embed
-Input: {"file_path": "trading/knowledge/analysis/research/{TOPIC}_{YYYYMMDDTHHMM}.yaml"}
+Input: {"file_path": "tradegent_knowledge/knowledge/analysis/research/{TOPIC}_{YYYYMMDDTHHMM}.yaml"}
 ```
 
-### Step 8: Push to Remote
+### Step 8: Push to Remote (Private Knowledge Repo)
 
 ```yaml
 Tool: mcp__github-vl__push_files
 Parameters:
   owner: vladm3105
-  repo: TradegentSwarm
+  repo: tradegent-knowledge    # Private knowledge repository
   branch: main
   files:
-    - path: trading/knowledge/analysis/research/{TOPIC}_{YYYYMMDDTHHMM}.yaml
+    - path: knowledge/analysis/research/{TOPIC}_{YYYYMMDDTHHMM}.yaml
       content: [generated research content]
   message: "Add research: {TOPIC}"
 ```
@@ -148,7 +149,7 @@ After completion:
 
 | Tool | Purpose |
 |------|---------|
-| `rag_search` | Find existing research |
+| `rag_search_rerank` | Find existing research (v2.0: cross-encoder) |
 | `graph_query` | Find related entities |
 | `mcp__brave-search__brave_web_search` | Web research |
 | `fetch_protected_article` | Paywalled content |
@@ -156,7 +157,7 @@ After completion:
 | `mcp__ib-mcp__get_quotes_batch` | Multiple stock prices |
 | `graph_extract` | Index entities |
 | `rag_embed` | Embed for search |
-| `mcp__github-vl__push_files` | Push to remote |
+| `mcp__github-vl__push_files` | Push to private knowledge repo |
 
 ## Execution
 

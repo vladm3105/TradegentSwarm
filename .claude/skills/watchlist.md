@@ -39,11 +39,11 @@ Use this skill to track potential trades waiting for trigger conditions. Auto-in
 
 ## Workflow
 
-### Step 1: Get Context (RAG + Graph)
+### Step 1: Get Context (RAG v2.0 + Graph)
 
 ```yaml
-# Check for existing watchlist entries
-Tool: rag_search
+# Check for existing watchlist entries (v2.0: reranked for relevance)
+Tool: rag_search_rerank
 Input: {"query": "$TICKER watchlist trigger", "ticker": "$TICKER", "top_k": 5}
 
 # Get ticker context
@@ -75,7 +75,7 @@ Input: {"symbol": "$TICKER", "include_greeks": false}
 
 ### Step 4: Read Skill Definition
 
-Load `trading/skills/watchlist/SKILL.md`.
+Load `tradegent_knowledge/skills/watchlist/SKILL.md`.
 
 **For adding**, specify:
 - Entry trigger (specific, measurable)
@@ -111,34 +111,34 @@ COMBINED TRIGGERS:
 
 ### Step 6: Generate Output
 
-Use `trading/skills/watchlist/template.yaml` structure.
+Use `tradegent_knowledge/skills/watchlist/template.yaml` structure.
 
 ### Step 7: Save Watchlist Entry
 
-Save to `trading/knowledge/watchlist/{TICKER}_{YYYYMMDDTHHMM}.yaml`
+Save to `tradegent_knowledge/knowledge/watchlist/{TICKER}_{YYYYMMDDTHHMM}.yaml`
 
 ### Step 8: Index in Knowledge Base (Post-Save Hooks)
 
 ```yaml
 # Extract entities to Graph
 Tool: graph_extract
-Input: {"file_path": "trading/knowledge/watchlist/{TICKER}_{YYYYMMDDTHHMM}.yaml"}
+Input: {"file_path": "tradegent_knowledge/knowledge/watchlist/{TICKER}_{YYYYMMDDTHHMM}.yaml"}
 
 # Embed for semantic search
 Tool: rag_embed
-Input: {"file_path": "trading/knowledge/watchlist/{TICKER}_{YYYYMMDDTHHMM}.yaml"}
+Input: {"file_path": "tradegent_knowledge/knowledge/watchlist/{TICKER}_{YYYYMMDDTHHMM}.yaml"}
 ```
 
-### Step 9: Push to Remote
+### Step 9: Push to Remote (Private Knowledge Repo)
 
 ```yaml
 Tool: mcp__github-vl__push_files
 Parameters:
   owner: vladm3105
-  repo: TradegentSwarm
+  repo: tradegent-knowledge    # Private knowledge repository
   branch: main
   files:
-    - path: trading/knowledge/watchlist/{TICKER}_{YYYYMMDDTHHMM}.yaml
+    - path: knowledge/watchlist/{TICKER}_{YYYYMMDDTHHMM}.yaml
       content: [generated watchlist content]
   message: "Update watchlist: {TICKER} {add|update|remove}"
 ```
@@ -173,14 +173,14 @@ WEEKLY:
 
 | Tool | Purpose |
 |------|---------|
-| `rag_search` | Find existing entries |
+| `rag_search_rerank` | Find existing entries (v2.0: cross-encoder) |
 | `graph_context` | Ticker relationships |
 | `mcp__ib-mcp__get_stock_price` | Current price |
 | `mcp__ib-mcp__get_historical_data` | Support/resistance levels |
 | `mcp__ib-mcp__get_option_chain` | Options sentiment |
 | `graph_extract` | Index entities |
 | `rag_embed` | Embed for search |
-| `mcp__github-vl__push_files` | Push to remote |
+| `mcp__github-vl__push_files` | Push to private knowledge repo |
 
 ## Execution
 

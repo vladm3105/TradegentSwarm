@@ -36,20 +36,26 @@ Use this skill when analyzing stocks 3-10 days before earnings announcements. Au
 
 ## Workflow
 
-### Step 1: Get Historical Context (RAG + Graph)
+### Step 1: Get Historical Context (RAG v2.0 + Graph)
 
-Before starting analysis, retrieve relevant context from the knowledge base:
+Before starting analysis, retrieve relevant context using adaptive retrieval:
 
 ```yaml
+# Primary: Adaptive hybrid context (auto-routes based on query type)
 Tool: rag_hybrid_context
 Input: {"ticker": "$TICKER", "query": "earnings analysis historical patterns", "analysis_type": "earnings-analysis"}
+
+# Alternative: Reranked search for specific earnings patterns (higher relevance)
+Tool: rag_search_rerank
+Input: {"query": "$TICKER earnings surprise reaction IV crush", "ticker": "$TICKER", "top_k": 5}
 ```
 
 This returns:
-- Past earnings analyses for this ticker
+- Past earnings analyses for this ticker (with cross-encoder reranking)
 - Historical beat/miss patterns
 - Known biases from previous trades
 - Peer comparison data
+- Query auto-classified for optimal retrieval strategy
 
 ### Step 2: Get Real-Time Market Data (IB MCP)
 
@@ -82,7 +88,7 @@ Input: {"url": "https://seekingalpha.com/...", "wait_for_selector": "article"}
 
 ### Step 4: Read Skill Definition
 
-Load `trading/skills/earnings-analysis/SKILL.md` and follow the 8-phase framework:
+Load `tradegent_knowledge/skills/earnings-analysis/SKILL.md` and follow the 8-phase framework:
 
 1. **Phase 1: Preparation** - Historical earnings data (8 quarters)
 2. **Phase 2: Customer Demand Signals** (50% weight - critical)
@@ -95,11 +101,11 @@ Load `trading/skills/earnings-analysis/SKILL.md` and follow the 8-phase framewor
 
 ### Step 5: Generate Output
 
-Use `trading/skills/earnings-analysis/template.yaml` structure.
+Use `tradegent_knowledge/skills/earnings-analysis/template.yaml` structure.
 
 ### Step 6: Save Analysis
 
-Save to `trading/knowledge/analysis/earnings/{TICKER}_{YYYYMMDDTHHMM}.yaml`
+Save to `tradegent_knowledge/knowledge/analysis/earnings/{TICKER}_{YYYYMMDDTHHMM}.yaml`
 
 ### Step 7: Index in Knowledge Base (Post-Save Hooks)
 
@@ -108,23 +114,23 @@ After saving, extract entities and embed for future retrieval:
 ```yaml
 # Extract entities to Graph (Neo4j)
 Tool: graph_extract
-Input: {"file_path": "trading/knowledge/analysis/earnings/{TICKER}_{YYYYMMDDTHHMM}.yaml"}
+Input: {"file_path": "tradegent_knowledge/knowledge/analysis/earnings/{TICKER}_{YYYYMMDDTHHMM}.yaml"}
 
 # Embed for semantic search (pgvector)
 Tool: rag_embed
-Input: {"file_path": "trading/knowledge/analysis/earnings/{TICKER}_{YYYYMMDDTHHMM}.yaml"}
+Input: {"file_path": "tradegent_knowledge/knowledge/analysis/earnings/{TICKER}_{YYYYMMDDTHHMM}.yaml"}
 ```
 
-### Step 8: Push to Remote
+### Step 8: Push to Remote (Private Knowledge Repo)
 
 ```yaml
 Tool: mcp__github-vl__push_files
 Parameters:
   owner: vladm3105
-  repo: TradegentSwarm
+  repo: tradegent-knowledge    # Private knowledge repository
   branch: main
   files:
-    - path: trading/knowledge/analysis/earnings/{TICKER}_{YYYYMMDDTHHMM}.yaml
+    - path: knowledge/analysis/earnings/{TICKER}_{YYYYMMDDTHHMM}.yaml
       content: [generated analysis content]
   message: "Add earnings analysis for {TICKER}"
 ```
@@ -144,15 +150,16 @@ After completion:
 
 | Tool | Purpose |
 |------|---------|
-| `rag_hybrid_context` | Get historical context before analysis |
+| `rag_hybrid_context` | Get historical context (v2.0: adaptive routing) |
+| `rag_search_rerank` | Higher relevance search (v2.0: cross-encoder) |
 | `mcp__ib-mcp__get_stock_price` | Current price and volume |
 | `mcp__ib-mcp__get_historical_data` | Price history for technicals |
 | `mcp__ib-mcp__get_option_chain` | Options IV and implied move |
 | `mcp__brave-search__brave_web_search` | Search for analyst reports |
 | `fetch_protected_article` | Scrape paywalled content |
 | `graph_extract` | Index entities after save |
-| `rag_embed` | Embed for semantic search |
-| `mcp__github-vl__push_files` | Push to remote repository |
+| `rag_embed` | Embed for search |
+| `mcp__github-vl__push_files` | Push to private knowledge repo |
 
 ## Execution
 
