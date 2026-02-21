@@ -127,13 +127,18 @@ Market data and trading via Interactive Brokers:
 
 **Documentation**: External repository
 
-### RAG MCP Server (`tradegent/rag/`)
+### RAG MCP Server (`tradegent/rag/`) — v2.0
 
-Semantic search and document embedding:
+Semantic search and document embedding with advanced retrieval:
 
-- OpenAI embeddings (text-embedding-3-large)
-- Hybrid search (vector + BM25)
-- Document chunking and indexing
+- OpenAI embeddings (text-embedding-3-large, 1536 dims)
+- Hybrid search (vector + BM25) with Reciprocal Rank Fusion
+- Optimized chunking (768 tokens, 150 overlap)
+- Cross-encoder reranking for higher relevance
+- Query expansion for improved recall
+- Adaptive retrieval routing based on query classification
+- RAGAS evaluation metrics
+- 12 MCP tools (6 core + 6 v2.0)
 
 **Documentation**: [TRADING_RAG_ARCHITECTURE.md](TRADING_RAG_ARCHITECTURE.md)
 

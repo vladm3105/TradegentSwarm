@@ -1,6 +1,7 @@
 """Semantic search with optional metadata filters."""
 
 import logging
+import time
 from datetime import date
 
 import psycopg
@@ -11,6 +12,9 @@ from .models import RAGStats, SearchResult
 from .schema import get_database_url
 
 log = logging.getLogger(__name__)
+
+# Feature flags (loaded from config or environment)
+_METRICS_ENABLED = True
 
 
 def semantic_search(
@@ -46,6 +50,8 @@ def semantic_search(
     Returns:
         List of SearchResult objects
     """
+    start_time = time.time()
+
     # Get query embedding
     try:
         query_embedding = get_embedding(query)
@@ -84,6 +90,22 @@ def semantic_search(
                 similarity=similarity,
             )
         )
+
+    # Record metrics
+    if _METRICS_ENABLED:
+        try:
+            from .metrics import record_search
+
+            latency_ms = int((time.time() - start_time) * 1000)
+            record_search(
+                query=query,
+                strategy="vector",
+                results=results,
+                latency_ms=latency_ms,
+                ticker=ticker,
+            )
+        except Exception as e:
+            log.debug(f"Failed to record metrics: {e}")
 
     return results
 
@@ -124,6 +146,8 @@ def hybrid_search(
     Returns:
         List of SearchResult objects sorted by hybrid score
     """
+    start_time = time.time()
+
     # Get query embedding for vector search
     try:
         query_embedding = get_embedding(query)
@@ -181,6 +205,22 @@ def hybrid_search(
                 similarity=hybrid_score,  # Using hybrid score as similarity
             )
         )
+
+    # Record metrics
+    if _METRICS_ENABLED:
+        try:
+            from .metrics import record_search
+
+            latency_ms = int((time.time() - start_time) * 1000)
+            record_search(
+                query=query,
+                strategy="hybrid",
+                results=results,
+                latency_ms=latency_ms,
+                ticker=ticker,
+            )
+        except Exception as e:
+            log.debug(f"Failed to record metrics: {e}")
 
     return results
 
@@ -514,3 +554,173 @@ def _build_search_query(
     params.append(top_k)
 
     return sql, params
+
+
+# =============================================================================
+# Advanced Search Functions (Phases 3, 6)
+# =============================================================================
+
+
+def search_with_rerank(
+    query: str,
+    ticker: str | None = None,
+    doc_type: str | None = None,
+    top_k: int = 5,
+    retrieval_k: int = 50,
+    use_hybrid: bool = True,
+) -> list[SearchResult]:
+    """
+    Two-stage retrieve-then-rerank search.
+
+    Stage 1: Fast retrieval (vector or hybrid, top retrieval_k)
+    Stage 2: Accurate reranking (cross-encoder, top top_k)
+
+    Args:
+        query: Search query text
+        ticker: Filter by ticker symbol
+        doc_type: Filter by document type
+        top_k: Final results to return after reranking
+        retrieval_k: Candidates to retrieve for reranking
+        use_hybrid: Use hybrid search for retrieval (vs pure vector)
+
+    Returns:
+        List of SearchResult objects reranked by cross-encoder
+    """
+    start_time = time.time()
+
+    # Stage 1: Fast retrieval
+    if use_hybrid:
+        candidates = hybrid_search(
+            query=query,
+            ticker=ticker,
+            doc_type=doc_type,
+            top_k=retrieval_k,
+        )
+    else:
+        candidates = semantic_search(
+            query=query,
+            ticker=ticker,
+            doc_type=doc_type,
+            top_k=retrieval_k,
+        )
+
+    # Stage 2: Rerank
+    try:
+        from .rerank import get_reranker
+
+        reranker = get_reranker()
+        results = reranker.rerank(query, candidates, top_k=top_k)
+        reranked = True
+    except ImportError:
+        log.debug("Reranker not available, returning raw results")
+        results = candidates[:top_k]
+        reranked = False
+
+    # Record metrics
+    if _METRICS_ENABLED:
+        try:
+            from .metrics import record_search
+
+            latency_ms = int((time.time() - start_time) * 1000)
+            record_search(
+                query=query,
+                strategy="rerank",
+                results=results,
+                latency_ms=latency_ms,
+                ticker=ticker,
+                reranked=reranked,
+            )
+        except Exception as e:
+            log.debug(f"Failed to record metrics: {e}")
+
+    return results
+
+
+def search_with_expansion(
+    query: str,
+    ticker: str | None = None,
+    doc_type: str | None = None,
+    top_k: int = 5,
+    n_expansions: int = 3,
+    use_rerank: bool = True,
+) -> list[SearchResult]:
+    """
+    Search with query expansion for improved recall.
+
+    1. Expand query into semantic variations using LLM
+    2. Search with each variation
+    3. Merge and deduplicate results
+    4. Optionally rerank final results
+
+    Args:
+        query: Original search query
+        ticker: Filter by ticker symbol
+        doc_type: Filter by document type
+        top_k: Final results to return
+        n_expansions: Number of query variations to generate
+        use_rerank: Apply cross-encoder reranking to final results
+
+    Returns:
+        List of SearchResult objects
+    """
+    start_time = time.time()
+
+    # Try to expand query
+    try:
+        from .query_expander import expand_query
+
+        expanded = expand_query(query, n=n_expansions)
+        all_queries = expanded.all_queries
+        expanded_count = len(expanded.variations)
+    except ImportError:
+        log.debug("Query expander not available, using original query only")
+        all_queries = [query]
+        expanded_count = 0
+
+    # Search with all query variations
+    all_results = []
+    seen_ids = set()
+
+    for q in all_queries:
+        results = semantic_search(q, ticker=ticker, doc_type=doc_type, top_k=top_k)
+        for r in results:
+            if r.doc_id not in seen_ids:
+                all_results.append(r)
+                seen_ids.add(r.doc_id)
+
+    # Sort by similarity
+    all_results.sort(key=lambda r: r.similarity, reverse=True)
+
+    # Optionally rerank
+    reranked = False
+    if use_rerank and len(all_results) > top_k:
+        try:
+            from .rerank import get_reranker
+
+            reranker = get_reranker()
+            all_results = reranker.rerank(query, all_results, top_k=top_k)
+            reranked = True
+        except ImportError:
+            pass
+
+    final_results = all_results[:top_k]
+
+    # Record metrics
+    if _METRICS_ENABLED:
+        try:
+            from .metrics import record_search
+
+            latency_ms = int((time.time() - start_time) * 1000)
+            record_search(
+                query=query,
+                strategy="expansion",
+                results=final_results,
+                latency_ms=latency_ms,
+                ticker=ticker,
+                reranked=reranked,
+                expanded_queries=expanded_count,
+            )
+        except Exception as e:
+            log.debug(f"Failed to record metrics: {e}")
+
+    return final_results

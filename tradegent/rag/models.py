@@ -68,11 +68,12 @@ class SearchResult:
     doc_date: date | None
     section_label: str
     content: str
-    similarity: float  # 0.0 - 1.0 (cosine similarity)
+    similarity: float  # 0.0 - 1.0 (cosine similarity or hybrid score)
+    rerank_score: float | None = None  # Cross-encoder score (if reranked)
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""
-        return {
+        result = {
             "doc_id": self.doc_id,
             "file_path": self.file_path,
             "doc_type": self.doc_type,
@@ -82,6 +83,9 @@ class SearchResult:
             "content": self.content,
             "similarity": round(self.similarity, 4),
         }
+        if self.rerank_score is not None:
+            result["rerank_score"] = round(self.rerank_score, 4)
+        return result
 
 
 @dataclass

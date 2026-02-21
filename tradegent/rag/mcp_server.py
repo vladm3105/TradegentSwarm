@@ -109,6 +109,88 @@ TOOLS = [
             "required": [],
         },
     ),
+    # ==========================================================================
+    # Phase 2+ Tools: Reranking, Query Expansion, Classification, Evaluation
+    # ==========================================================================
+    Tool(
+        name="rag_search_rerank",
+        description="Search with cross-encoder reranking for higher relevance",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query"},
+                "ticker": {"type": "string", "description": "Filter by ticker"},
+                "doc_type": {"type": "string", "description": "Filter by document type"},
+                "top_k": {"type": "integer", "default": 5, "description": "Results to return"},
+            },
+            "required": ["query"],
+        },
+    ),
+    Tool(
+        name="rag_search_expanded",
+        description="Search with query expansion for improved recall",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query"},
+                "ticker": {"type": "string", "description": "Filter by ticker"},
+                "top_k": {"type": "integer", "default": 5, "description": "Results to return"},
+                "n_expansions": {"type": "integer", "default": 3, "description": "Query variations"},
+            },
+            "required": ["query"],
+        },
+    ),
+    Tool(
+        name="rag_classify_query",
+        description="Classify query to determine optimal retrieval strategy",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Query to classify"},
+            },
+            "required": ["query"],
+        },
+    ),
+    Tool(
+        name="rag_expand_query",
+        description="Generate semantic variations of a query",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Query to expand"},
+                "n": {"type": "integer", "default": 3, "description": "Number of variations"},
+            },
+            "required": ["query"],
+        },
+    ),
+    Tool(
+        name="rag_evaluate",
+        description="Evaluate RAG response quality using RAGAS metrics",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "User's question"},
+                "contexts": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Retrieved context chunks",
+                },
+                "answer": {"type": "string", "description": "Generated answer"},
+                "ground_truth": {"type": "string", "description": "Optional ground truth"},
+            },
+            "required": ["query", "contexts", "answer"],
+        },
+    ),
+    Tool(
+        name="rag_metrics_summary",
+        description="Get RAG search metrics summary for recent operations",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "days": {"type": "integer", "default": 7, "description": "Days to summarize"},
+            },
+        },
+    ),
 ]
 
 
@@ -169,16 +251,99 @@ async def _execute_tool(name: str, args: dict) -> dict:
         return {"results": [r.to_dict() for r in results]}
 
     elif name == "rag_hybrid_context":
-        result = get_hybrid_context(
-            ticker=args["ticker"],
-            query=args["query"],
-            analysis_type=args.get("analysis_type"),
-        )
+        # Use adaptive retrieval if enabled
+        try:
+            from .hybrid import ADAPTIVE_RETRIEVAL_ENABLED, get_hybrid_context_adaptive
+
+            if ADAPTIVE_RETRIEVAL_ENABLED:
+                result = get_hybrid_context_adaptive(
+                    ticker=args["ticker"],
+                    query=args["query"],
+                    analysis_type=args.get("analysis_type"),
+                )
+            else:
+                result = get_hybrid_context(
+                    ticker=args["ticker"],
+                    query=args["query"],
+                    analysis_type=args.get("analysis_type"),
+                )
+        except ImportError:
+            result = get_hybrid_context(
+                ticker=args["ticker"],
+                query=args["query"],
+                analysis_type=args.get("analysis_type"),
+            )
         return result.to_dict()
 
     elif name == "rag_status":
         stats = get_rag_stats()
         return stats.to_dict()
+
+    # ==========================================================================
+    # Phase 2+ Tools: Reranking, Query Expansion, Classification, Evaluation
+    # ==========================================================================
+
+    elif name == "rag_search_rerank":
+        from .search import search_with_rerank
+
+        results = search_with_rerank(
+            query=args["query"],
+            ticker=args.get("ticker"),
+            doc_type=args.get("doc_type"),
+            top_k=args.get("top_k", 5),
+        )
+        return {"results": [r.to_dict() for r in results]}
+
+    elif name == "rag_search_expanded":
+        from .search import search_with_expansion
+
+        results = search_with_expansion(
+            query=args["query"],
+            ticker=args.get("ticker"),
+            top_k=args.get("top_k", 5),
+            n_expansions=args.get("n_expansions", 3),
+        )
+        return {"results": [r.to_dict() for r in results]}
+
+    elif name == "rag_classify_query":
+        from .query_classifier import classify_query
+
+        analysis = classify_query(args["query"])
+        return analysis.to_dict()
+
+    elif name == "rag_expand_query":
+        from .query_expander import expand_query
+
+        expanded = expand_query(args["query"], n=args.get("n", 3))
+        return expanded.to_dict()
+
+    elif name == "rag_evaluate":
+        from .evaluation import evaluate_rag
+
+        result = evaluate_rag(
+            query=args["query"],
+            contexts=args["contexts"],
+            answer=args["answer"],
+            ground_truth=args.get("ground_truth"),
+        )
+        if result:
+            return result.to_dict()
+        return {"error": "RAGAS not available. Install with: pip install ragas datasets"}
+
+    elif name == "rag_metrics_summary":
+        from .metrics import get_metrics_collector
+
+        summary = get_metrics_collector().get_summary(days=args.get("days", 7))
+        return {
+            "total_searches": summary.total_searches,
+            "avg_latency_ms": round(summary.avg_latency_ms, 1),
+            "avg_results": round(summary.avg_results, 1),
+            "avg_top_similarity": round(summary.avg_top_similarity, 3),
+            "strategy_distribution": summary.strategy_distribution,
+            "query_type_distribution": summary.query_type_distribution,
+            "rerank_rate": round(summary.rerank_rate, 2),
+            "period_days": summary.period_days,
+        }
 
     else:
         raise ValueError(f"Unknown tool: {name}")

@@ -1,214 +1,255 @@
-# Trading RAG Module
+# Trading RAG Module v2.0
 
-Retrieval-Augmented Generation (RAG) system for trading knowledge. Embeds documents into PostgreSQL with pgvector for semantic search, then uses retrieved context to generate LLM answers.
+Retrieval-Augmented Generation (RAG) system for trading knowledge. Embeds documents into PostgreSQL with pgvector for semantic search, with advanced features including cross-encoder reranking, query expansion, adaptive retrieval routing, and RAGAS evaluation.
+
+## What's New in v2.0
+
+| Feature | Description | Impact |
+|---------|-------------|--------|
+| **Optimized Chunking** | 768 tokens, 150 overlap (vs 1500/50) | 15-25% accuracy gain |
+| **Cross-Encoder Reranking** | Two-stage retrieve-then-rerank | Higher relevance |
+| **Query Expansion** | LLM-based semantic variations | Improved recall |
+| **Adaptive Retrieval** | Query classification for routing | Optimal strategy per query |
+| **RAGAS Evaluation** | Quality metrics for RAG responses | Measurable improvements |
+| **Semantic Chunking** | Embedding-based document splitting | Coherent chunks |
+| **Metrics Infrastructure** | Search logging and analysis | Before/after comparison |
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        RAG Pipeline                             │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  Document Input                                                 │
-│       │                                                         │
-│       ▼                                                         │
-│  ┌─────────┐    ┌──────────┐    ┌──────────┐    ┌───────────┐  │
-│  │  Parse  │───▶│  Chunk   │───▶│  Embed   │───▶│   Store   │  │
-│  │  YAML   │    │  Text    │    │ (Ollama) │    │ (pgvector)│  │
-│  └─────────┘    └──────────┘    └──────────┘    └───────────┘  │
-│                                                                 │
-│  Query Input                                                    │
-│       │                                                         │
-│       ▼                                                         │
-│  ┌─────────┐    ┌──────────┐    ┌──────────┐    ┌───────────┐  │
-│  │  Embed  │───▶│  Search  │───▶│ Retrieve │───▶│  Generate │  │
-│  │  Query  │    │ (vector) │    │ Context  │    │   (LLM)   │  │
-│  └─────────┘    └──────────┘    └──────────┘    └───────────┘  │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         RAG Pipeline v2.0                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  Document Input                                                             │
+│       │                                                                     │
+│       ▼                                                                     │
+│  ┌─────────┐    ┌──────────────┐    ┌──────────┐    ┌───────────┐          │
+│  │  Parse  │───▶│    Chunk     │───▶│  Embed   │───▶│   Store   │          │
+│  │  YAML   │    │ (768 tokens) │    │ (OpenAI) │    │ (pgvector)│          │
+│  └─────────┘    └──────────────┘    └──────────┘    └───────────┘          │
+│                        │                                                    │
+│                        ▼                                                    │
+│                 ┌──────────────┐                                            │
+│                 │   Semantic   │  (experimental)                            │
+│                 │   Chunking   │                                            │
+│                 └──────────────┘                                            │
+│                                                                             │
+│  Query Input                                                                │
+│       │                                                                     │
+│       ▼                                                                     │
+│  ┌──────────┐    ┌──────────────┐    ┌──────────────┐                      │
+│  │ Classify │───▶│   Expand     │───▶│    Route     │                      │
+│  │  Query   │    │   Query      │    │  (adaptive)  │                      │
+│  └──────────┘    └──────────────┘    └──────────────┘                      │
+│       │                                    │                                │
+│       │     ┌──────────────────────────────┤                                │
+│       │     │              │               │                                │
+│       ▼     ▼              ▼               ▼                                │
+│  ┌─────────────┐   ┌────────────┐   ┌────────────┐                         │
+│  │   Vector    │   │   Hybrid   │   │   Graph    │                         │
+│  │   Search    │   │   Search   │   │   Search   │                         │
+│  └─────────────┘   └────────────┘   └────────────┘                         │
+│            │              │               │                                 │
+│            └──────────────┴───────────────┘                                 │
+│                           │                                                 │
+│                           ▼                                                 │
+│                    ┌──────────────┐    ┌──────────────┐                     │
+│                    │   Rerank     │───▶│   Return     │                     │
+│                    │ (CrossEnc)   │    │   Context    │                     │
+│                    └──────────────┘    └──────────────┘                     │
+│                                               │                             │
+│                                               ▼                             │
+│                                        ┌──────────────┐                     │
+│                                        │   RAGAS      │                     │
+│                                        │   Evaluate   │                     │
+│                                        └──────────────┘                     │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Quick Start
 
 ```python
-from rag.embed import embed_text, embed_document
-from rag.search import semantic_search
+from rag.embed import embed_document
+from rag.search import semantic_search, search_with_rerank
 
-# Embed text
-result = embed_text(
-    text="Your document content here...",
-    doc_id="doc_001",
-    doc_type="research",
-    ticker="NVDA",
-)
+# Embed a document
+result = embed_document("tradegent_knowledge/knowledge/analysis/stock/NVDA_20250120.yaml")
 print(f"Stored {result.chunk_count} chunks")
 
-# Search
+# Basic search
 results = semantic_search(
-    query="What are the key risks?",
-    ticker="NVDA",  # optional filter
+    query="NVDA competitive advantages",
+    ticker="NVDA",
+    top_k=5,
+)
+
+# Reranked search (higher relevance)
+results = search_with_rerank(
+    query="NVDA competitive advantages",
+    ticker="NVDA",
     top_k=5,
 )
 for r in results:
-    print(f"{r.similarity:.3f}: {r.content[:100]}...")
+    print(f"{r.similarity:.3f} | rerank: {r.rerank_score:.3f} | {r.content[:80]}...")
 ```
 
 ## Components
 
+### Core Modules
+
 | File | Purpose |
 |------|---------|
-| `mcp_server.py` | **MCP server (primary interface)** |
+| `mcp_server.py` | **MCP server (primary interface)** - 12 tools |
 | `embed.py` | Document embedding pipeline |
-| `search.py` | Semantic and hybrid search |
-| `chunk.py` | Text chunking with token limits |
-| `embedding_client.py` | Ollama/OpenRouter embedding client |
+| `search.py` | Semantic, hybrid, reranked search |
+| `chunk.py` | Text chunking with configurable parameters |
+| `embedding_client.py` | Embedding client (OpenAI/Ollama) |
 | `schema.py` | PostgreSQL schema management |
-| `models.py` | Data classes (EmbedResult, SearchResult) |
-| `hybrid.py` | Combined vector + graph context |
-| `config.yaml` | Configuration settings |
-| `.env` | Environment variables (not committed) |
-| `.env.template` | Environment template |
+| `models.py` | Data classes (EmbedResult, SearchResult, HybridContext) |
+| `hybrid.py` | Combined vector + graph context with adaptive routing |
+| `config.yaml` | Configuration settings (v2.0.0) |
+
+### v2.0 Modules
+
+| File | Purpose |
+|------|---------|
+| `metrics.py` | Search metrics collection and analysis |
+| `rerank.py` | Cross-encoder reranking (ms-marco-MiniLM-L-6-v2) |
+| `query_classifier.py` | Rule-based query classification |
+| `query_expander.py` | LLM-based query expansion |
+| `evaluation.py` | RAGAS evaluation framework |
+| `semantic_chunker.py` | Embedding-based semantic chunking |
+| `tokens.py` | Token counting utilities |
 
 ## Configuration
 
-Settings are loaded from `.env` and `config.yaml` with environment variable overrides.
+### config.yaml (v2.0.0)
 
-**Setup:**
-```bash
-cp .env.template .env
-# Edit .env with your database credentials
+```yaml
+# Feature flags
+features:
+  metrics_enabled: true          # Log search metrics
+  element_aware_chunking: true   # Section-aware chunking
+  preserve_tables: true          # Keep tables atomic
+  reranking_enabled: true        # Cross-encoder reranking
+  adaptive_retrieval: true       # Query-based routing
+  query_expansion_enabled: true  # LLM query expansion
+  semantic_chunking: false       # Experimental
+
+# Optimized chunking (research-backed)
+chunking:
+  max_tokens: 768      # Was 1500 (arXiv 2402.05131 recommends 512-1024)
+  min_tokens: 50
+  overlap_tokens: 150  # Was 50 (100-300 optimal)
+
+# Semantic chunking (experimental)
+semantic_chunking:
+  similarity_threshold: 0.8  # Split below this similarity
 ```
 
 ### Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DATABASE_URL` | `postgresql://lightrag:lightrag@localhost:5433/lightrag` | PostgreSQL connection |
+| `DATABASE_URL` | `postgresql://...` | PostgreSQL connection |
 | `RAG_SCHEMA` | `nexus` | Database schema name |
-| `EMBED_PROVIDER` | `ollama` | Embedding provider (ollama, openrouter, openai) |
-| `LLM_PROVIDER` | `ollama` | Fallback if EMBED_PROVIDER not set |
-| `LLM_BASE_URL` | `http://localhost:11434` | Ollama API URL |
-| `LLM_API_KEY` | (none) | API key for OpenRouter/OpenAI |
-| `EMBED_MODEL` | `nomic-embed-text` | Embedding model |
-| `EMBED_DIMENSIONS` | `768` | Vector dimensions |
-| `CHUNK_MAX_TOKENS` | `1500` | Max tokens per chunk |
-| `CHUNK_MIN_TOKENS` | `50` | Min tokens (skip smaller) |
+| `EMBED_PROVIDER` | `openai` | Embedding provider |
+| `OPENAI_API_KEY` | (none) | API key for embeddings |
+| `CHUNK_MAX_TOKENS` | `768` | Max tokens per chunk |
+| `CHUNK_OVERLAP` | `150` | Overlap tokens |
 
-### Embedding Provider Options
+### Embedding Provider
 
-| Provider | Model | Dimensions | Cost | Status |
-|----------|-------|------------|------|--------|
-| `ollama` | nomic-embed-text | 768 | Free (local) | Slower |
-| `openai` | text-embedding-3-large | 1536* | $0.13/1M tokens | ✅ **Recommended** |
-| `openai` | text-embedding-3-small | 768 | $0.02/1M tokens | Budget option |
+| Provider | Model | Dimensions | Cost |
+|----------|-------|------------|------|
+| `openai` | text-embedding-3-large | 1536* | $0.13/1M tokens |
 
-*Uses API-level dimension truncation for pgvector HNSW index compatibility (max 2000 dims)
+*Uses API-level dimension truncation (pgvector HNSW limit: 2000 dims)
 
-**Current config:** `EMBED_PROVIDER=openai` with `text-embedding-3-large` (1536 dimensions)
+**Cost estimate:** ~$2/year for 7,500 documents
 
-**Cost estimate:** ~$2/year for 7,500 documents (3-year projection)
+## MCP Tools (12 total)
 
-**⚠️ WARNING:** Do NOT mix embedding providers! All documents must use the same embedding model for semantic search to work correctly. If switching providers, delete all embeddings and re-embed everything.
+### Core Tools (6)
 
-### Generation Settings (for RAG answer generation)
+| Tool | Description |
+|------|-------------|
+| `rag_embed` | Embed a YAML document |
+| `rag_embed_text` | Embed raw text |
+| `rag_search` | Semantic search |
+| `rag_similar` | Find similar analyses for ticker |
+| `rag_hybrid_context` | Combined vector + graph context (adaptive) |
+| `rag_status` | Get RAG statistics |
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `LLM_MODEL` | `llama3.2` | LLM model for generation |
-| `LLM_TEMPERATURE` | `0.1` | Generation temperature |
-| `LLM_NUM_PREDICT` | `200` | Max tokens to generate |
-| `LLM_MAX_TOKENS` | `200` | Max tokens (cloud LLMs) |
-| `LLM_TOP_P` | `0.9` | Top-p sampling |
-| `LLM_TOP_K` | `40` | Top-k sampling |
+### v2.0 Tools (6)
 
-## Database Schema
+| Tool | Description |
+|------|-------------|
+| `rag_search_rerank` | Search with cross-encoder reranking |
+| `rag_search_expanded` | Search with query expansion |
+| `rag_classify_query` | Classify query type and strategy |
+| `rag_expand_query` | Generate semantic query variations |
+| `rag_evaluate` | Evaluate RAG quality (RAGAS) |
+| `rag_metrics_summary` | Get search metrics summary |
 
-```sql
--- Documents table
-nexus.rag_documents (
-    id SERIAL PRIMARY KEY,
-    doc_id VARCHAR(255) UNIQUE,
-    file_path TEXT,
-    doc_type VARCHAR(50),
-    ticker VARCHAR(10),
-    doc_date DATE,
-    chunk_count INT,
-    embed_model VARCHAR(100),
-    embed_version VARCHAR(20),
-    tags TEXT[]
-)
+### MCP Usage Examples
 
--- Chunks table (with embeddings)
-nexus.rag_chunks (
-    id SERIAL PRIMARY KEY,
-    doc_id INT REFERENCES rag_documents(id),
-    section_path TEXT,
-    section_label VARCHAR(255),
-    chunk_index INT,
-    content TEXT,
-    content_tokens INT,
-    embedding vector(768),  -- pgvector
-    content_tsv tsvector,   -- full-text search
-    ticker VARCHAR(10),
-    doc_type VARCHAR(50),
-    doc_date DATE
-)
-```
+```yaml
+# Standard search
+Tool: rag_search
+Input: {"query": "NVDA earnings catalyst", "ticker": "NVDA", "top_k": 5}
 
-## Embedding Functions
+# Reranked search (higher relevance)
+Tool: rag_search_rerank
+Input: {"query": "semiconductor supply chain risks", "ticker": "NVDA", "top_k": 5}
 
-### embed_document(file_path, force=False)
+# Expanded search (better recall)
+Tool: rag_search_expanded
+Input: {"query": "AI demand drivers", "top_k": 5, "n_expansions": 3}
 
-Embed a YAML document file.
+# Classify query for optimal strategy
+Tool: rag_classify_query
+Input: {"query": "Compare NVDA vs AMD competitive position"}
+# Returns: {query_type: "comparison", suggested_strategy: "vector", tickers: ["NVDA", "AMD"]}
 
-```python
-from rag.embed import embed_document
+# Get hybrid context (uses adaptive routing)
+Tool: rag_hybrid_context
+Input: {"ticker": "NVDA", "query": "earnings analysis"}
 
-result = embed_document("/path/to/analysis.yaml")
-print(f"Doc ID: {result.doc_id}")
-print(f"Chunks: {result.chunk_count}")
-print(f"Duration: {result.duration_ms}ms")
-```
+# Evaluate RAG quality
+Tool: rag_evaluate
+Input: {
+  "query": "What are NVDA risks?",
+  "contexts": ["Context chunk 1...", "Context chunk 2..."],
+  "answer": "Generated answer...",
+  "ground_truth": "Optional reference answer..."
+}
+# Returns: {context_precision: 0.85, faithfulness: 0.92, ...}
 
-### embed_text(text, doc_id, doc_type, ticker=None)
-
-Embed raw text content.
-
-```python
-from rag.embed import embed_text
-
-result = embed_text(
-    text="NVIDIA reported strong Q4 earnings...",
-    doc_id="nvda_q4_2024",
-    doc_type="earnings",
-    ticker="NVDA",
-)
+# Get metrics summary
+Tool: rag_metrics_summary
+Input: {"days": 7}
 ```
 
 ## Search Functions
 
 ### semantic_search(query, ...)
 
-Vector similarity search.
+Basic vector similarity search.
 
 ```python
 from rag.search import semantic_search
 
 results = semantic_search(
     query="semiconductor supply chain risks",
-    ticker="NVDA",           # optional
-    doc_type="research",     # optional
+    ticker="NVDA",           # optional filter
+    doc_type="research",     # optional filter
     top_k=5,
     min_similarity=0.3,
 )
 ```
-
-**Similarity interpretation:**
-- `> 0.8`: Near-identical (dedup candidate)
-- `0.6 - 0.8`: Highly relevant (primary context)
-- `0.4 - 0.6`: Somewhat relevant (supporting)
-- `0.3 - 0.4`: Loosely related
-- `< 0.3`: Irrelevant (excluded)
 
 ### hybrid_search(query, ...)
 
@@ -226,162 +267,313 @@ results = hybrid_search(
 )
 ```
 
-### get_similar_analyses(ticker, analysis_type=None, top_k=3)
+### search_with_rerank(query, ...) [v2.0]
 
-Find similar past analyses for a ticker.
+Two-stage retrieve-then-rerank for higher relevance.
 
 ```python
-from rag.search import get_similar_analyses
+from rag.search import search_with_rerank
 
-results = get_similar_analyses("NVDA", analysis_type="earnings")
+results = search_with_rerank(
+    query="NVDA competitive position vs AMD",
+    ticker="NVDA",
+    top_k=5,           # Final results
+    retrieval_k=50,    # Initial retrieval pool
+    use_hybrid=True,   # Use hybrid search for stage 1
+)
+
+for r in results:
+    print(f"Vector: {r.similarity:.3f} | Rerank: {r.rerank_score:.3f}")
 ```
 
-## Schema Management
+### search_with_expansion(query, ...) [v2.0]
+
+Search with LLM-generated query variations for better recall.
 
 ```python
-from rag.schema import init_schema, verify_schema, health_check
+from rag.search import search_with_expansion
 
-# Initialize tables and indexes
-init_schema()
+results = search_with_expansion(
+    query="AI chip demand",
+    ticker="NVDA",
+    top_k=5,
+    n_expansions=3,  # Generate 3 variations
+)
+# Searches: "AI chip demand", "artificial intelligence semiconductor requirements", ...
+```
 
-# Verify setup
-status = verify_schema()
-print(f"pgvector: {status['pgvector_enabled']}")
-print(f"Tables: {status['tables']}")
+## Query Classification [v2.0]
 
-# Health check
-if health_check():
-    print("Database connected")
+Classifies queries to determine optimal retrieval strategy.
+
+```python
+from rag.query_classifier import classify_query, QueryType
+
+analysis = classify_query("Compare NVDA vs AMD earnings")
+print(f"Type: {analysis.query_type}")           # QueryType.COMPARISON
+print(f"Strategy: {analysis.suggested_strategy}") # "vector"
+print(f"Tickers: {analysis.tickers}")           # ["NVDA", "AMD"]
+print(f"Confidence: {analysis.confidence}")     # 0.9
+```
+
+### Query Types
+
+| Type | Pattern | Strategy |
+|------|---------|----------|
+| `RETRIEVAL` | Standard fact-seeking | vector |
+| `RELATIONSHIP` | "related to", "connected", "impact" | graph |
+| `TREND` | "recent", "last week", time-based | vector + time filter |
+| `COMPARISON` | "vs", "compare", multiple tickers | vector (multi-ticker) |
+| `GLOBAL` | Broad, no specific ticker | hybrid |
+
+## Adaptive Retrieval [v2.0]
+
+`rag_hybrid_context` uses query classification to route to optimal strategy.
+
+```python
+from rag.hybrid import get_hybrid_context_adaptive
+
+context = get_hybrid_context_adaptive(
+    ticker="NVDA",
+    query="How does NVDA relate to AMD?",
+    analysis_type="stock",
+)
+# Uses graph-first retrieval for RELATIONSHIP queries
+```
+
+**Routing Logic:**
+- **RELATIONSHIP** → Graph-first: search primary ticker + graph peers
+- **COMPARISON** → Multi-ticker: search each mentioned ticker
+- **TREND** → Time-filtered: apply date range from query
+- **Default** → Reranked search with hybrid retrieval
+
+## Cross-Encoder Reranking [v2.0]
+
+Two-stage pipeline for higher relevance:
+
+1. **Stage 1**: Fast retrieval (vector or hybrid) - get top 50 candidates
+2. **Stage 2**: Cross-encoder reranking - score all 50, return top 5
+
+```python
+from rag.rerank import get_reranker
+
+reranker = get_reranker()
+# Uses: cross-encoder/ms-marco-MiniLM-L-6-v2
+
+# Rerank candidates
+reranked = reranker.rerank(query, candidates, top_k=5)
+```
+
+**Graceful fallback:** If sentence-transformers unavailable, uses NoOpReranker.
+
+## Query Expansion [v2.0]
+
+LLM-based semantic variations for improved recall.
+
+```python
+from rag.query_expander import expand_query
+
+expanded = expand_query("AI chip demand", n=3)
+print(expanded.original)     # "AI chip demand"
+print(expanded.variations)   # ["artificial intelligence semiconductor requirements", ...]
+print(expanded.all_queries)  # [original + variations]
+```
+
+**Uses:** gpt-4o-mini for fast, cheap expansion (~$0.001 per query)
+
+## RAGAS Evaluation [v2.0]
+
+Measure RAG quality using RAGAS metrics.
+
+```python
+from rag.evaluation import evaluate_rag, is_ragas_available
+
+if is_ragas_available():
+    result = evaluate_rag(
+        query="What are NVDA's main risks?",
+        contexts=["Context 1...", "Context 2..."],
+        answer="Generated answer...",
+        ground_truth="Optional reference...",  # optional
+    )
+    print(f"Context Precision: {result.context_precision}")
+    print(f"Context Recall: {result.context_recall}")
+    print(f"Faithfulness: {result.faithfulness}")
+    print(f"Answer Relevancy: {result.answer_relevancy}")
+    print(f"Overall Score: {result.overall_score}")
+```
+
+**Metrics:**
+| Metric | Description |
+|--------|-------------|
+| `context_precision` | Ranking quality of retrieved context |
+| `context_recall` | Coverage of relevant information |
+| `faithfulness` | Factual accuracy (grounded in context) |
+| `answer_relevancy` | How well answer addresses query |
+
+**Requires:** `pip install ragas datasets`
+
+## Semantic Chunking [v2.0 Experimental]
+
+Embedding-based chunking for semantic coherence.
+
+```python
+from rag.semantic_chunker import semantic_chunk
+
+chunks = semantic_chunk(text)
+for chunk in chunks:
+    print(f"Tokens: {chunk.tokens}, Sentences: {chunk.sentence_count}")
+```
+
+**Algorithm:**
+1. Split text into sentences
+2. Get embeddings for each sentence
+3. Calculate cosine similarity between adjacent sentences
+4. Split where similarity drops below threshold (default: 0.8)
+5. Respect max_tokens constraint
+
+**Enable:** Set `semantic_chunking: true` in config.yaml
+
+## Metrics Infrastructure [v2.0]
+
+Track search performance for before/after comparison.
+
+```python
+from rag.metrics import get_metrics_collector
+
+collector = get_metrics_collector()
+
+# Get summary
+summary = collector.get_summary(days=7)
+print(f"Total searches: {summary.total_searches}")
+print(f"Avg latency: {summary.avg_latency_ms}ms")
+print(f"Avg top similarity: {summary.avg_top_similarity}")
+print(f"Rerank rate: {summary.rerank_rate}")
+print(f"Strategy distribution: {summary.strategy_distribution}")
+```
+
+**Logs to:** `logs/rag_metrics.jsonl`
+
+## Database Schema
+
+```sql
+-- Documents table
+nexus.rag_documents (
+    id SERIAL PRIMARY KEY,
+    doc_id VARCHAR(255) UNIQUE,
+    file_path TEXT,
+    doc_type VARCHAR(50),
+    ticker VARCHAR(10),
+    doc_date DATE,
+    chunk_count INT,
+    embed_model VARCHAR(100),
+    embed_version VARCHAR(20),
+    chunk_version VARCHAR(10),  -- v2.0: track chunk params
+    tags TEXT[]
+)
+
+-- Chunks table (with embeddings)
+nexus.rag_chunks (
+    id SERIAL PRIMARY KEY,
+    doc_id INT REFERENCES rag_documents(id),
+    section_path TEXT,
+    section_label VARCHAR(255),
+    chunk_index INT,
+    content TEXT,
+    content_tokens INT,
+    embedding vector(1536),     -- OpenAI text-embedding-3-large
+    content_tsv tsvector,       -- BM25 full-text search
+    ticker VARCHAR(10),
+    doc_type VARCHAR(50),
+    doc_date DATE
+)
 ```
 
 ## Testing
 
 ```bash
-cd trader
+cd tradegent
 
 # Run RAG tests
 pytest rag/tests/ -v
 
-# Run with coverage
-pytest rag/tests/ --cov=rag --cov-report=term-missing
+# Test reranking
+python -c "
+from rag.search import search_with_rerank
+results = search_with_rerank('NVDA competitive position', ticker='NVDA', top_k=3)
+for r in results:
+    print(f'{r.similarity:.2f} | {r.rerank_score:.2f} | {r.section_label}')
+"
 
-# Integration test (requires PostgreSQL)
-pytest rag/tests/test_integration.py --run-integration
-```
+# Test query classification
+python -c "
+from rag.query_classifier import classify_query
+print(classify_query('What are NVDA risks?'))
+print(classify_query('Compare NVDA vs AMD'))
+print(classify_query('Recent earnings surprises'))
+"
 
-### Full RAG Test
+# Test query expansion
+python -c "
+from rag.query_expander import expand_query
+expanded = expand_query('AI chip demand', n=3)
+print('Original:', expanded.original)
+print('Variations:', expanded.variations)
+"
 
-```bash
-# Ensure .env is configured
-cp tradegent/rag/.env.template tradegent/rag/.env
-# Edit tradegent/rag/.env with your database credentials
-
-# Run full pipeline test (embeds story, searches, generates answers)
-python tmp/test_rag.py
-```
-
-**Expected output:**
-```
-======================================================================
-Full RAG Test: Store → Retrieve → Generate
-======================================================================
-
-[1] Embedding story (~200 tokens)...
-    Stored 1 chunk(s)
-    Document ID: test_story_marcus_chen
-
-[2] RAG Question-Answering
-----------------------------------------------------------------------
-
-Q1: What is Marcus Chen's risk management rule?
-    Retrieved context (similarity: 0.562)
-    Answer: Marcus Chen's risk management rule is the "5-3-2 Rule"...
-
-Q2: Where did Marcus Chen start his trading career?
-    Retrieved context (similarity: 0.727)
-    Answer: Marcus Chen started his trading career at Goldman Sachs in 2008.
-
-Q3: What was Marcus Chen's most profitable trade?
-    Retrieved context (similarity: 0.696)
-    Answer: Marcus Chen's most profitable trade was accumulating NVIDIA shares...
-```
-
-## MCP Server (Primary Interface)
-
-The RAG module is exposed via MCP server at `mcp_server.py`. **Use MCP tools as the primary interface** for all RAG operations.
-
-**Server name:** `trading-rag`
-
-| Tool | Description |
-|------|-------------|
-| `rag_embed` | Embed a YAML document |
-| `rag_embed_text` | Embed raw text |
-| `rag_search` | Semantic search |
-| `rag_similar` | Find similar analyses |
-| `rag_hybrid_context` | Combined vector + graph context |
-| `rag_status` | Get RAG statistics |
-
-### MCP Usage Examples
-
-```yaml
-# Embed a document
-Tool: rag_embed
-Input: {"file_path": "tradegent_knowledge/knowledge/analysis/earnings/NVDA_20250120T0900.yaml"}
-
-# Search for context
-Tool: rag_search
-Input: {"query": "NVDA earnings surprise", "ticker": "NVDA", "top_k": 5}
-
-# Get hybrid context (vector + graph)
-Tool: rag_hybrid_context
-Input: {"ticker": "NVDA", "query": "earnings catalyst analysis"}
-
-# Check RAG status
-Tool: rag_status
-Input: {}
-```
-
-### Running the MCP Server
-
-```bash
-# Direct execution
-python tradegent/rag/mcp_server.py
-
-# Or import and run
-python -c "from rag.mcp_server import server; print(server.name)"
-```
-
-## Index Tuning
-
-The default HNSW index works well for any dataset size:
-
-```sql
--- Current (HNSW - recommended)
-CREATE INDEX idx_rag_chunks_embedding
-    ON nexus.rag_chunks USING hnsw (embedding vector_cosine_ops);
-
--- Alternative: IVFFlat for very large datasets (>100K chunks)
--- Requires reindexing after bulk inserts
-CREATE INDEX idx_rag_chunks_embedding
-    ON nexus.rag_chunks USING ivfflat (embedding vector_cosine_ops)
-    WITH (lists = 100);
+# Test metrics
+python -c "
+from rag.metrics import get_metrics_collector
+summary = get_metrics_collector().get_summary(days=7)
+print(f'Searches: {summary.total_searches}, Avg latency: {summary.avg_latency_ms}ms')
+"
 ```
 
 ## Troubleshooting
 
-**"connection failed: password authentication failed"**
-- Check `tradegent/rag/.env` has correct `DATABASE_URL`
-- Verify password matches `PG_PASS` in `tradegent/.env`
-- Verify PostgreSQL is running: `docker compose ps`
+**"Reranker not available"**
+- Install sentence-transformers: `pip install sentence-transformers`
+- Falls back to NoOpReranker (no reranking)
 
-**"relation nexus.rag_documents does not exist"**
-- Initialize schema: `python -c "from rag.schema import init_schema; init_schema()"`
+**"Query expansion failed"**
+- Check OPENAI_API_KEY is set
+- Verify gpt-4o-mini access
+- Falls back to original query only
 
-**Empty search results**
+**"RAGAS not available"**
+- Install: `pip install ragas datasets`
+- Returns None if unavailable
+
+**"Empty search results"**
 - Verify embeddings stored: `SELECT COUNT(*) FROM nexus.rag_chunks`
-- Check index type (HNSW works better for small datasets)
 - Lower `min_similarity` threshold
+- Try hybrid search with BM25
 
-**Slow embedding**
-- Check Ollama is running: `curl http://localhost:11434/api/tags`
-- Verify model is loaded: `ollama list`
+**"Slow embedding"**
+- Check EMBED_PROVIDER=openai (faster than ollama)
+- Verify API key valid
+
+## Migration from v1.0
+
+1. **Update config.yaml** to v2.0.0 format
+2. **Re-embed documents** with new chunk parameters:
+   ```bash
+   python orchestrator.py rag reembed --version 2.0
+   ```
+3. **Enable features** incrementally via feature flags
+4. **Monitor metrics** to compare before/after
+
+## Feature Flags
+
+All v2.0 features can be toggled via config.yaml or environment:
+
+```bash
+# Disable reranking
+export RAG_RERANKING=false
+
+# Disable adaptive retrieval
+export RAG_ADAPTIVE=false
+
+# Revert to old chunk sizes
+export CHUNK_MAX_TOKENS=1500
+export CHUNK_OVERLAP=50
+```

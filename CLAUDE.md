@@ -103,24 +103,33 @@ Input: {"symbol": "NVDA", "duration": "3 M", "bar_size": "1 day"}
 
 **Step 4: Save Output** (to `tradegent_knowledge/knowledge/`)
 
-**Step 5: Post-Save Hooks**
+**Step 5: Post-Save Indexing** (REQUIRED for all skills)
+
+Every skill MUST complete these steps after saving output:
+
 ```yaml
-# Index in Graph
+# 1. Index in Graph (entity extraction)
 Tool: graph_extract
-Input: {"file_path": "tradegent_knowledge/knowledge/analysis/..."}
+Input: {"file_path": "tradegent_knowledge/knowledge/{output_path}"}
 
-# Embed for search
+# 2. Embed for RAG (semantic search)
 Tool: rag_embed
-Input: {"file_path": "tradegent_knowledge/knowledge/analysis/..."}
+Input: {"file_path": "tradegent_knowledge/knowledge/{output_path}"}
 
-# Push to remote
+# 3. Push to Knowledge Repo (PRIVATE)
 Tool: mcp__github-vl__push_files
 Parameters:
   owner: vladm3105
-  repo: TradegentSwarm
+  repo: tradegent-knowledge   # PRIVATE knowledge repo
   branch: main
-  files: [...]
+  files: [{path: "knowledge/{output_path}", content: ...}]
+  message: "Add {skill_name} for {TICKER}"
 ```
+
+**Why this matters:**
+- Without indexing, documents are invisible to RAG search and Graph queries
+- Pre-analysis context retrieval (Step 1) depends on previous documents being indexed
+- The learning loop requires indexed post-trade reviews and learnings
 
 ### Workflow Chains
 
@@ -490,11 +499,11 @@ Parameters:
 | `mcp__github-vl__get_file_contents` | Read file from repo |
 | `mcp__github-vl__list_commits` | View commit history |
 
-## Trading RAG MCP Server
+## Trading RAG MCP Server (v2.0)
 
-Semantic search and embedding for trading knowledge.
+Semantic search and embedding for trading knowledge with cross-encoder reranking, query expansion, adaptive retrieval, and RAGAS evaluation.
 
-**Server**: `trading-rag` | **Location**: `tradegent/rag/mcp_server.py` | **Transport**: stdio
+**Server**: `trading-rag` | **Location**: `tradegent/rag/mcp_server.py` | **Transport**: stdio | **Version**: 2.0.0
 
 > **Note**: This MCP server must be configured in Claude Code settings to be available. See [MCP Configuration](#mcp-configuration) below.
 
@@ -509,16 +518,27 @@ export PG_USER=lightrag PG_PASS=<password> PG_DB=lightrag PG_HOST=localhost PG_P
 export EMBED_PROVIDER=openai OPENAI_API_KEY=<key>
 ```
 
-### Available Tools
+### Available Tools (12 total)
 
+**Core Tools:**
 | Tool | Purpose |
 |------|----------|
 | `rag_embed` | Embed a YAML document for semantic search |
 | `rag_embed_text` | Embed raw text for semantic search |
 | `rag_search` | Semantic search across embedded documents |
 | `rag_similar` | Find similar past analyses for a ticker |
-| `rag_hybrid_context` | Get combined vector + graph context for analysis |
+| `rag_hybrid_context` | Get combined vector + graph context (adaptive routing) |
 | `rag_status` | Get RAG statistics (document/chunk counts) |
+
+**v2.0 Tools:**
+| Tool | Purpose |
+|------|----------|
+| `rag_search_rerank` | Search with cross-encoder reranking (higher relevance) |
+| `rag_search_expanded` | Search with LLM query expansion (better recall) |
+| `rag_classify_query` | Classify query type and optimal retrieval strategy |
+| `rag_expand_query` | Generate semantic query variations |
+| `rag_evaluate` | Evaluate RAG quality using RAGAS metrics |
+| `rag_metrics_summary` | Get search metrics summary for analysis |
 
 ### Usage Examples
 
@@ -527,17 +547,34 @@ export EMBED_PROVIDER=openai OPENAI_API_KEY=<key>
 Tool: rag_embed
 Input: {"file_path": "tradegent_knowledge/knowledge/analysis/earnings/NVDA_20250120T0900.yaml"}
 
-# Search for context
+# Standard search
 Tool: rag_search
 Input: {"query": "NVDA earnings surprise", "ticker": "NVDA", "top_k": 5}
 
-# Get hybrid context (vector + graph)
+# Reranked search (higher relevance)
+Tool: rag_search_rerank
+Input: {"query": "NVDA competitive position vs AMD", "ticker": "NVDA", "top_k": 5}
+
+# Expanded search (better recall)
+Tool: rag_search_expanded
+Input: {"query": "AI chip demand", "top_k": 5, "n_expansions": 3}
+
+# Classify query for optimal strategy
+Tool: rag_classify_query
+Input: {"query": "Compare NVDA vs AMD earnings"}
+# Returns: {query_type: "comparison", suggested_strategy: "vector", tickers: ["NVDA", "AMD"]}
+
+# Get hybrid context (vector + graph, uses adaptive routing)
 Tool: rag_hybrid_context
 Input: {"ticker": "NVDA", "query": "earnings catalyst analysis"}
 
-# Check RAG status
-Tool: rag_status
-Input: {}
+# Evaluate RAG quality
+Tool: rag_evaluate
+Input: {"query": "What are NVDA risks?", "contexts": ["..."], "answer": "..."}
+
+# Get metrics summary
+Tool: rag_metrics_summary
+Input: {"days": 7}
 ```
 
 ## Trading Graph MCP Server

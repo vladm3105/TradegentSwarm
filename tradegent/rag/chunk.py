@@ -1,6 +1,7 @@
 """YAML section-level chunking for RAG."""
 
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,52 @@ from .tokens import estimate_tokens, split_by_tokens
 
 log = logging.getLogger(__name__)
 
+# =============================================================================
+# Configuration
+# =============================================================================
+
+# Load config
+_config_path = Path(__file__).parent / "config.yaml"
+_config: dict = {}
+if _config_path.exists():
+    with open(_config_path) as f:
+        _config = yaml.safe_load(f) or {}
+
+# Chunking parameters (environment variables override config)
+_chunk_config = _config.get("chunking", {})
+_features = _config.get("features", {})
+
+
+def _get_config_value(key: str, default: Any, env_var: str | None = None) -> Any:
+    """Get config value with environment variable override."""
+    if env_var and os.getenv(env_var):
+        val = os.getenv(env_var)
+        # Try to convert to int/float if numeric
+        try:
+            return int(val)
+        except ValueError:
+            try:
+                return float(val)
+            except ValueError:
+                return val
+    return default
+
+
+# Chunk size parameters (optimized based on arXiv 2402.05131)
+MAX_TOKENS = _get_config_value(
+    "max_tokens", _chunk_config.get("max_tokens", 768), "CHUNK_MAX_TOKENS"
+)
+MIN_TOKENS = _get_config_value(
+    "min_tokens", _chunk_config.get("min_tokens", 50), "CHUNK_MIN_TOKENS"
+)
+OVERLAP_TOKENS = _get_config_value(
+    "overlap_tokens", _chunk_config.get("overlap_tokens", 150), "CHUNK_OVERLAP"
+)
+
+# Feature flags
+PRESERVE_TABLES = _features.get("preserve_tables", True)
+ELEMENT_AWARE = _features.get("element_aware_chunking", True)
+
 # Load section mappings
 _section_mappings_path = Path(__file__).parent / "section_mappings.yaml"
 _section_mappings: dict = {}
@@ -20,6 +67,36 @@ _section_mappings: dict = {}
 if _section_mappings_path.exists():
     with open(_section_mappings_path) as f:
         _section_mappings = yaml.safe_load(f)
+
+
+# =============================================================================
+# Table Detection (for element-aware chunking)
+# =============================================================================
+
+
+def is_table_content(content: str) -> bool:
+    """
+    Detect if content is a table that should be kept atomic.
+
+    Tables are identified by:
+    - Multiple lines with pipe characters (markdown tables)
+    - Lines with consistent column alignment
+    """
+    lines = content.strip().split("\n")
+    if len(lines) < 3:
+        return False
+
+    # Check for pipe-delimited tables (markdown style)
+    pipe_lines = sum(1 for line in lines if "|" in line)
+    if pipe_lines / len(lines) > 0.5:
+        return True
+
+    # Check for aligned columns (YAML table-like structures)
+    colon_lines = sum(1 for line in lines if ": " in line and line.startswith("  "))
+    if colon_lines / len(lines) > 0.7:
+        return True
+
+    return False
 
 
 def prepare_chunk_text(
@@ -47,8 +124,8 @@ def prepare_chunk_text(
 
 def chunk_yaml_document(
     file_path: str,
-    max_tokens: int = 1500,
-    min_tokens: int = 50,
+    max_tokens: int | None = None,
+    min_tokens: int | None = None,
 ) -> list[ChunkResult]:
     """
     Split YAML document into semantic chunks.
@@ -69,6 +146,12 @@ def chunk_yaml_document(
     Returns:
         List of ChunkResult objects
     """
+    # Use config values if not specified
+    if max_tokens is None:
+        max_tokens = MAX_TOKENS
+    if min_tokens is None:
+        min_tokens = MIN_TOKENS
+
     if not Path(file_path).exists():
         raise ChunkingError(f"File not found: {file_path}")
 
@@ -122,6 +205,23 @@ def chunk_yaml_document(
             log.debug(f"Skipping small section {section_path} ({token_count} tokens)")
             continue
 
+        # Table preservation: keep tables atomic (up to 2x max_tokens)
+        if PRESERVE_TABLES and is_table_content(content):
+            if token_count <= max_tokens * 2:
+                log.debug(f"Preserving table in {section_path} ({token_count} tokens)")
+                prepared = prepare_chunk_text(section_label, content, ticker, doc_type)
+                chunks.append(
+                    ChunkResult(
+                        section_path=section_path,
+                        section_label=section_label,
+                        chunk_index=0,
+                        content=content,
+                        content_tokens=token_count,
+                        prepared_text=prepared,
+                    )
+                )
+                continue
+
         # Split large sections
         if token_count > max_tokens:
             sub_chunks = chunk_yaml_section(
@@ -150,7 +250,8 @@ def chunk_yaml_section(
     section_label: str,
     ticker: str | None,
     doc_type: str,
-    max_tokens: int = 1500,
+    max_tokens: int | None = None,
+    overlap: int | None = None,
 ) -> list[ChunkResult]:
     """
     Split a single section into chunks when it exceeds max_tokens.
@@ -158,7 +259,14 @@ def chunk_yaml_section(
     Splitting strategy:
     - Split by paragraphs/lines first
     - Then by token count if still too large
+    - Uses configurable overlap for continuity
     """
+    # Use config values if not specified
+    if max_tokens is None:
+        max_tokens = MAX_TOKENS
+    if overlap is None:
+        overlap = OVERLAP_TOKENS
+
     chunks = []
 
     # Try splitting by paragraphs
@@ -209,8 +317,8 @@ def chunk_yaml_section(
                 )
             )
     else:
-        # Split by token count
-        sub_texts = split_by_tokens(content, max_tokens, overlap=50)
+        # Split by token count with configurable overlap
+        sub_texts = split_by_tokens(content, max_tokens, overlap=overlap)
         for i, sub_text in enumerate(sub_texts):
             tokens = estimate_tokens(sub_text)
             prepared = prepare_chunk_text(section_label, sub_text, ticker, doc_type)

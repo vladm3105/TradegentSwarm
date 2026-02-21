@@ -1,7 +1,8 @@
 # Trading RAG (Retrieval-Augmented Generation) — Architecture Plan
 
-> **Status**: Implemented
+> **Status**: Implemented (v2.0)
 > **Last updated**: 2026-02-21
+> **RAG Version**: 2.0.0
 > **Skills Version**: v2.5 (stock-analysis, earnings-analysis), v2.1 (other skills)
 > **Replaces**: LightRAG vector search component
 > **Companions**: [TRADING_GRAPH_ARCHITECTURE.md](TRADING_GRAPH_ARCHITECTURE.md) (knowledge graph), [SCANNER_ARCHITECTURE.md](SCANNER_ARCHITECTURE.md) (opportunity finding)
@@ -17,13 +18,28 @@ Together with the Neo4j knowledge graph, this forms a **hybrid RAG** system:
 - **Neo4j** — "show me connected knowledge" (structural relationships)
 - **Combined** — rich context for Claude when analyzing new positions
 
+### v2.0 Features
+
+| Feature | Description | Impact |
+|---------|-------------|--------|
+| **Optimized Chunking** | 768 tokens, 150 overlap (vs 1500/50) | 15-25% accuracy gain |
+| **Cross-Encoder Reranking** | Two-stage retrieve-then-rerank | Higher relevance |
+| **Query Expansion** | LLM-based semantic variations | Improved recall |
+| **Adaptive Retrieval** | Query classification for routing | Optimal strategy per query |
+| **RAGAS Evaluation** | Quality metrics for RAG responses | Measurable improvements |
+| **Semantic Chunking** | Embedding-based document splitting | Coherent chunks (experimental) |
+| **Metrics Infrastructure** | Search logging and analysis | Before/after comparison |
+
 ### Design Principles
 
 1. **Section-level chunking** — YAML documents are split by semantic section (thesis, risks, catalysts), not by token count
-2. **Metadata-first filtering** — filter by ticker, doc type, date range *before* vector search (fast + precise)
-3. **Same PostgreSQL instance** — no new infrastructure; pgvector is already available in `nexus-postgres`
-4. **OpenAI embeddings** — `text-embedding-3-large` (1536 dims via API truncation) for best quality at ~$2/year; Ollama fallback available
-5. **Incremental indexing** — embed documents as skills produce them, no batch backfill of templates
+2. **Optimized chunk sizes** — 768 tokens max, 150 token overlap (research-backed: arXiv 2402.05131)
+3. **Metadata-first filtering** — filter by ticker, doc type, date range *before* vector search (fast + precise)
+4. **Same PostgreSQL instance** — no new infrastructure; pgvector is already available in `nexus-postgres`
+5. **OpenAI embeddings** — `text-embedding-3-large` (1536 dims via API truncation) for best quality at ~$2/year; Ollama fallback available
+6. **Two-stage retrieval** — fast vector search followed by cross-encoder reranking for precision
+7. **Adaptive routing** — query classification determines optimal retrieval strategy
+8. **Incremental indexing** — embed documents as skills produce them, no batch backfill of templates
 
 ### Key Decision: Why Not LightRAG?
 
@@ -344,10 +360,10 @@ Each document type has sections worth embedding (skip metadata/structural keys).
 ### 3.3 Subsection Handling
 
 For deep documents (e.g., earnings-analysis with nested `phase2_fundamentals`),
-flatten subsections individually if the parent exceeds 1500 tokens:
+flatten subsections individually if the parent exceeds 768 tokens:
 
 ```python
-def chunk_yaml_section(key: str, value: Any, max_tokens: int = 1500) -> list[dict]:
+def chunk_yaml_section(key: str, value: Any, max_tokens: int = 768) -> list[dict]:
     """Split a YAML section into chunks, respecting token limits."""
     text = yaml_to_text(key, value)
     
@@ -529,6 +545,131 @@ def get_hybrid_context(ticker: str, query: str) -> str:
 | 0.4 – 0.6 | Somewhat relevant | Supporting context |
 | 0.3 – 0.4 | Loosely related | Include if few results |
 | < 0.3 | Irrelevant | Exclude |
+
+### 4.5 v2.0: Cross-Encoder Reranking
+
+Two-stage retrieve-then-rerank for higher relevance:
+
+```python
+from rag.search import search_with_rerank
+
+results = search_with_rerank(
+    query="NVDA competitive position vs AMD",
+    ticker="NVDA",
+    top_k=5,           # Final results to return
+    retrieval_k=50,    # Initial retrieval pool
+    use_hybrid=True,   # Use hybrid search for stage 1
+)
+
+for r in results:
+    print(f"Vector: {r.similarity:.3f} | Rerank: {r.rerank_score:.3f}")
+```
+
+**Model:** `cross-encoder/ms-marco-MiniLM-L-6-v2` (sentence-transformers)
+
+**Graceful fallback:** If sentence-transformers unavailable, returns unranked results.
+
+### 4.6 v2.0: Query Classification
+
+Classifies queries to determine optimal retrieval strategy:
+
+```python
+from rag.query_classifier import classify_query, QueryType
+
+analysis = classify_query("Compare NVDA vs AMD earnings")
+print(f"Type: {analysis.query_type}")           # QueryType.COMPARISON
+print(f"Strategy: {analysis.suggested_strategy}") # "vector"
+print(f"Tickers: {analysis.tickers}")           # ["NVDA", "AMD"]
+```
+
+**Query Types:**
+
+| Type | Pattern | Strategy |
+|------|---------|----------|
+| `RETRIEVAL` | Standard fact-seeking | vector |
+| `RELATIONSHIP` | "related to", "connected", "impact" | graph |
+| `TREND` | "recent", "last week", time-based | vector + time filter |
+| `COMPARISON` | "vs", "compare", multiple tickers | vector (multi-ticker) |
+| `GLOBAL` | Broad, no specific ticker | hybrid |
+
+### 4.7 v2.0: Adaptive Hybrid Context
+
+`get_hybrid_context_adaptive()` uses query classification to route to optimal strategy:
+
+```python
+from rag.hybrid import get_hybrid_context_adaptive
+
+context = get_hybrid_context_adaptive(
+    ticker="NVDA",
+    query="How does NVDA relate to AMD?",
+    analysis_type="stock",
+)
+# Uses graph-first retrieval for RELATIONSHIP queries
+```
+
+**Routing Logic:**
+- **RELATIONSHIP** → Graph-first: search primary ticker + graph peers
+- **COMPARISON** → Multi-ticker: search each mentioned ticker
+- **TREND** → Time-filtered: apply date range from query
+- **Default** → Reranked search with hybrid retrieval
+
+### 4.8 v2.0: Query Expansion
+
+LLM-based semantic variations for improved recall:
+
+```python
+from rag.query_expander import expand_query
+
+expanded = expand_query("AI chip demand", n=3)
+print(expanded.original)     # "AI chip demand"
+print(expanded.variations)   # ["artificial intelligence semiconductor requirements", ...]
+print(expanded.all_queries)  # [original + variations]
+```
+
+**Uses:** gpt-4o-mini for fast, cheap expansion (~$0.001 per query)
+
+### 4.9 v2.0: RAGAS Evaluation
+
+Measure RAG quality using RAGAS metrics:
+
+```python
+from rag.evaluation import evaluate_rag
+
+result = evaluate_rag(
+    query="What are NVDA's main risks?",
+    contexts=["Context 1...", "Context 2..."],
+    answer="Generated answer...",
+    ground_truth="Optional reference...",  # optional
+)
+print(f"Context Precision: {result.context_precision}")
+print(f"Faithfulness: {result.faithfulness}")
+print(f"Overall Score: {result.overall_score}")
+```
+
+**Metrics:**
+| Metric | Description |
+|--------|-------------|
+| `context_precision` | Ranking quality of retrieved context |
+| `context_recall` | Coverage of relevant information |
+| `faithfulness` | Factual accuracy (grounded in context) |
+| `answer_relevancy` | How well answer addresses query |
+
+**Requires:** `pip install ragas datasets`
+
+### 4.10 v2.0: Metrics Infrastructure
+
+Track search performance:
+
+```python
+from rag.metrics import get_metrics_collector
+
+summary = get_metrics_collector().get_summary(days=7)
+print(f"Total searches: {summary.total_searches}")
+print(f"Avg latency: {summary.avg_latency_ms}ms")
+print(f"Rerank rate: {summary.rerank_rate}")
+```
+
+**Logs to:** `logs/rag_metrics.jsonl`
 
 ---
 
@@ -729,26 +870,33 @@ uvicorn trader.rag.webhook:app --host 0.0.0.0 --port 8081
 tradegent/
 ├── rag/
 │   ├── __init__.py           # Package init: RAG_VERSION, EMBED_DIMS, model constants
-│   ├── config.yaml           # Embedding provider config (Ollama, OpenRouter, OpenAI)
+│   ├── config.yaml           # Configuration (v2.0.0) - chunking, features, providers
+│   ├── mcp_server.py         # MCP server (primary interface) - 12 tools
+│   ├── README.md             # Module documentation
+│   │
+│   │── # Core modules
 │   ├── schema.py             # pgvector schema init (CREATE EXTENSION, tables)
 │   ├── embed.py              # Embedding pipeline (chunk → embed → store)
-│   ├── embedding_client.py   # Unified embedding client with fallback chain (section 2.3)
-│   ├── chunk.py              # YAML-aware chunking logic
+│   ├── embedding_client.py   # Unified embedding client with fallback chain
+│   ├── chunk.py              # YAML-aware chunking (768 tokens, 150 overlap)
 │   ├── flatten.py            # YAML-to-text flattening for embedding
-│   ├── search.py             # Semantic search queries + hybrid RAG
-│   ├── webhook.py            # FastAPI HTTP endpoints (section 5.6)
-│   └── ollama.py             # Ollama-specific API client (used by embedding_client)
+│   ├── search.py             # Semantic, hybrid, reranked search
+│   ├── hybrid.py             # Combined vector + graph context (adaptive routing)
+│   ├── models.py             # Data classes (EmbedResult, SearchResult, HybridContext)
+│   ├── tokens.py             # Token counting utilities
+│   │
+│   │── # v2.0 modules
+│   ├── metrics.py            # Search metrics collection and analysis
+│   ├── rerank.py             # Cross-encoder reranking (ms-marco-MiniLM-L-6-v2)
+│   ├── query_classifier.py   # Rule-based query classification
+│   ├── query_expander.py     # LLM-based query expansion
+│   ├── evaluation.py         # RAGAS evaluation framework
+│   └── semantic_chunker.py   # Embedding-based semantic chunking (experimental)
+│
 ├── db/
 │   ├── init.sql              # (existing) Nexus schema
 │   └── rag_schema.sql        # pgvector tables, indexes, constraints
-└── orchestrator.py           # (modify) add `rag` command group
-
-mcp_trading_rag/              # MCP Server (Phase 3)
-├── __init__.py
-├── server.py                 # MCP server entry point
-└── tools/
-    ├── search.py             # rag_search, rag_similar tools
-    └── embed.py              # rag_embed tool
+└── orchestrator.py           # CLI with `rag` command group
 ```
 
 ---
@@ -834,7 +982,7 @@ LIMIT 5;
 | `rag/flatten.py` | YAML-to-text flattener |
 | `rag/chunk.py` | Section-level chunking with subsection handling |
 | `rag/embed.py` | Full pipeline: parse → chunk → embed → store |
-| `rag/__init__.py` | Package init with `RAG_VERSION = "1.0.0"` |
+| `rag/__init__.py` | Package init with `RAG_VERSION = "2.0.0"` |
 | `orchestrator.py` | `rag init`, `rag embed`, `rag status` |
 | **Test** | Embed a synthetic document, verify chunks + embeddings in DB |
 
@@ -855,10 +1003,27 @@ LIMIT 5;
 | Post-execution hooks | Auto-embed after skill saves real analysis |
 | Context injection | Pass hybrid RAG context to Claude skills |
 | `rag list` / `rag show` | Inspect embedded documents |
-| `mcp_trading_rag/` | MCP server wrapping search + embed tools |
-| MCP tools: `rag_search` | Semantic search with filters for Claude skills |
-| MCP tools: `rag_embed` | Trigger embedding from Claude context |
-| MCP tools: `rag_similar` | Find similar analyses for a ticker |
+| `mcp_server.py` | MCP server wrapping all RAG tools |
+
+**Core MCP Tools (6):**
+| Tool | Description |
+|------|-------------|
+| `rag_embed` | Embed a YAML document |
+| `rag_embed_text` | Embed raw text |
+| `rag_search` | Semantic search with filters |
+| `rag_similar` | Find similar analyses for ticker |
+| `rag_hybrid_context` | Combined vector + graph context (adaptive) |
+| `rag_status` | Get RAG statistics |
+
+**v2.0 MCP Tools (6):**
+| Tool | Description |
+|------|-------------|
+| `rag_search_rerank` | Search with cross-encoder reranking |
+| `rag_search_expanded` | Search with query expansion |
+| `rag_classify_query` | Classify query type and strategy |
+| `rag_expand_query` | Generate semantic query variations |
+| `rag_evaluate` | Evaluate RAG quality (RAGAS) |
+| `rag_metrics_summary` | Get search metrics summary |
 
 ### Phase 4 — Production Hardening
 
@@ -1008,10 +1173,28 @@ docker exec nexus-postgres pg_dump -U lightrag lightrag > ~/backups/nexus_pg_$(d
 
 ### 11.4 Schema Versioning
 
-Version tracked in `rag/__init__.py`:
+Version tracked in `rag/config.yaml`:
 
+```yaml
+# config.yaml (v2.0.0)
+version: "2.0.0"
+
+features:
+  metrics_enabled: true
+  reranking_enabled: true
+  adaptive_retrieval: true
+  query_expansion_enabled: true
+  semantic_chunking: false  # experimental
+
+chunking:
+  max_tokens: 768      # Was 1500
+  min_tokens: 50
+  overlap_tokens: 150  # Was 50
+```
+
+**Constants in `rag/__init__.py`:**
 ```python
-RAG_VERSION = "1.0.0"       # Bump on schema/chunking/model changes
+RAG_VERSION = "2.0.0"       # Bump on schema/chunking/model changes
 EMBED_DIMS = 1536           # All providers must match this (pgvector HNSW limit: 2000)
 ```
 
