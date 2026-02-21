@@ -38,3 +38,7 @@ tmp/
 
 # Separate knowledge repo (private)
 tradegent_knowledge/
+
+# Claude Code local config (may contain MCP credentials)
+.claude/
+**/.claude/
