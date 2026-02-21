@@ -43,6 +43,10 @@ Use this skill to analyze completed trades and extract lessons. Closes the learn
 Tool: rag_search_rerank
 Input: {"query": "$TICKER trade entry exit", "ticker": "$TICKER", "top_k": 10}
 
+# Find similar past trades for comparison and learning
+Tool: rag_similar
+Input: {"ticker": "$TICKER", "analysis_type": "trade-journal", "top_k": 3}
+
 # Get original analysis that triggered trade
 Tool: rag_search_rerank
 Input: {"query": "$TICKER analysis recommendation", "ticker": "$TICKER", "top_k": 5}
@@ -186,6 +190,7 @@ Parameters:
 | Tool | Purpose |
 |------|---------|
 | `rag_search_rerank` | Find trade journal/analysis (v2.0: cross-encoder) |
+| `rag_similar` | Find similar past trades for comparison |
 | `graph_context` | Ticker relationships |
 | `graph_biases` | Historical bias patterns |
 | `mcp__ib-mcp__get_stock_price` | Current price (post-exit) |

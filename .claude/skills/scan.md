@@ -76,6 +76,10 @@ Input: {"query": "market regime volatility sector rotation", "top_k": 5}
 # Get recent scan results for comparison
 Tool: rag_search_rerank
 Input: {"query": "scanner results opportunities", "top_k": 10}
+
+# Discover sector relationships for context (optional per-ticker)
+Tool: graph_search
+Input: {"ticker": "$SECTOR_LEADER", "depth": 2}
 ```
 
 ### Step 3: Execute Scanner via IB MCP
@@ -220,6 +224,7 @@ CLOSE (15:30-16:15):
 | Tool | Purpose |
 |------|---------|
 | `rag_search_rerank` | Market context (v2.0: cross-encoder) |
+| `graph_search` | Discover sector relationships |
 | `mcp__ib-mcp__run_scanner` | Execute IB scanner |
 | `mcp__ib-mcp__get_scanner_params` | Scanner options |
 | `mcp__ib-mcp__get_quotes_batch` | Candidate prices |

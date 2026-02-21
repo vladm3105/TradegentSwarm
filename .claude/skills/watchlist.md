@@ -49,6 +49,10 @@ Input: {"query": "$TICKER watchlist trigger", "ticker": "$TICKER", "top_k": 5}
 # Get ticker context
 Tool: graph_context
 Input: {"ticker": "$TICKER"}
+
+# Check known risks before adding to watchlist
+Tool: graph_risks
+Input: {"ticker": "$TICKER"}
 ```
 
 ### Step 2: Get Current Market Data (IB MCP)
@@ -175,6 +179,7 @@ WEEKLY:
 |------|---------|
 | `rag_search_rerank` | Find existing entries (v2.0: cross-encoder) |
 | `graph_context` | Ticker relationships |
+| `graph_risks` | Known risk factors |
 | `mcp__ib-mcp__get_stock_price` | Current price |
 | `mcp__ib-mcp__get_historical_data` | Support/resistance levels |
 | `mcp__ib-mcp__get_option_chain` | Options sentiment |

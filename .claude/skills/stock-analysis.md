@@ -47,14 +47,18 @@ Before starting analysis, retrieve relevant context using adaptive retrieval:
 Tool: rag_hybrid_context
 Input: {"ticker": "$TICKER", "query": "stock analysis technical patterns catalyst", "analysis_type": "stock-analysis"}
 
+# Find similar past analyses for this ticker (direct lookup)
+Tool: rag_similar
+Input: {"ticker": "$TICKER", "analysis_type": "stock-analysis", "top_k": 3}
+
 # Alternative: Reranked search for specific queries (higher relevance)
 Tool: rag_search_rerank
 Input: {"query": "$TICKER competitive position market share", "ticker": "$TICKER", "top_k": 5}
 ```
 
 This returns:
-- Past analyses for this ticker (with cross-encoder reranking for relevance)
-- Known technical patterns
+- Similar past analyses for this ticker (direct similarity matching)
+- Known technical patterns (with cross-encoder reranking for relevance)
 - Previous trade outcomes
 - Sector peer data
 - Query is auto-classified (retrieval/relationship/comparison/trend) for optimal routing
@@ -181,6 +185,7 @@ After completion:
 | Tool | Purpose |
 |------|---------|
 | `rag_hybrid_context` | Get historical context (v2.0: adaptive routing) |
+| `rag_similar` | Find similar past analyses for ticker |
 | `rag_search_rerank` | Higher relevance search (v2.0: cross-encoder) |
 | `mcp__ib-mcp__get_stock_price` | Current price |
 | `mcp__ib-mcp__get_historical_data` | Price history |

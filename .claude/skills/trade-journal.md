@@ -47,6 +47,10 @@ Use this skill to document executed trades with entry/exit details, rationale, a
 Tool: rag_search_rerank
 Input: {"query": "$TICKER analysis recommendation", "ticker": "$TICKER", "top_k": 5}
 
+# Find similar past trades for this ticker (reference for sizing, lessons)
+Tool: rag_similar
+Input: {"ticker": "$TICKER", "analysis_type": "trade-journal", "top_k": 3}
+
 # Get ticker context
 Tool: graph_context
 Input: {"ticker": "$TICKER"}
@@ -160,6 +164,7 @@ Parameters:
 | Tool | Purpose |
 |------|---------|
 | `rag_search_rerank` | Find triggering analysis (v2.0: cross-encoder) |
+| `rag_similar` | Find similar past trades for reference |
 | `graph_context` | Ticker relationships |
 | `graph_biases` | Document active biases |
 | `mcp__ib-mcp__get_stock_price` | Current price |

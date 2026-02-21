@@ -40,13 +40,21 @@ Use this skill for macro, sector, and thematic research that informs trading dec
 ### Step 1: Get Existing Research Context (RAG v2.0 + Graph)
 
 ```yaml
-# Search for related research (v2.0: reranked for relevance)
+# Search with query expansion for broader recall (v2.0: generates variations)
+Tool: rag_search_expanded
+Input: {"query": "$TOPIC macro sector thematic", "top_k": 10, "n_expansions": 3}
+
+# Alternative: Reranked search for specific topics (higher precision)
 Tool: rag_search_rerank
-Input: {"query": "$TOPIC macro sector thematic", "top_k": 10}
+Input: {"query": "$TOPIC investment thesis", "top_k": 5}
 
 # Get related entities from graph
 Tool: graph_query
 Input: {"cypher": "MATCH (n) WHERE n.name CONTAINS $topic OR n.sector CONTAINS $topic RETURN n LIMIT 20", "params": {"topic": "$TOPIC"}}
+
+# Discover broader relationships via graph search
+Tool: graph_search
+Input: {"ticker": "$RELATED_TICKER", "depth": 2}
 ```
 
 ### Step 2: Gather Primary Sources
@@ -149,8 +157,10 @@ After completion:
 
 | Tool | Purpose |
 |------|---------|
-| `rag_search_rerank` | Find existing research (v2.0: cross-encoder) |
+| `rag_search_expanded` | Broader research recall (v2.0: query expansion) |
+| `rag_search_rerank` | Precise topic search (v2.0: cross-encoder) |
 | `graph_query` | Find related entities |
+| `graph_search` | Discover broader relationships |
 | `mcp__brave-search__brave_web_search` | Web research |
 | `fetch_protected_article` | Paywalled content |
 | `mcp__ib-mcp__get_historical_data` | Sector performance |

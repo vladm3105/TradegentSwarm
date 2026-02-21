@@ -40,13 +40,21 @@ Use this skill to maintain persistent knowledge about frequently traded stocks. 
 ### Step 1: Check Existing Profile (RAG v2.0 + Graph)
 
 ```yaml
-# Search for existing profile (v2.0: reranked for relevance)
+# Find existing profiles for this ticker (direct similarity lookup)
+Tool: rag_similar
+Input: {"ticker": "$TICKER", "analysis_type": "ticker-profile", "top_k": 3}
+
+# Search for additional profile context (v2.0: reranked for relevance)
 Tool: rag_search_rerank
 Input: {"query": "$TICKER profile patterns history", "ticker": "$TICKER", "top_k": 5}
 
 # Get all graph relationships for ticker
 Tool: graph_context
 Input: {"ticker": "$TICKER"}
+
+# Discover broader relationships (competitors, supply chain)
+Tool: graph_search
+Input: {"ticker": "$TICKER", "depth": 2}
 
 # Check for known risks
 Tool: graph_risks
@@ -164,8 +172,10 @@ Quarterly refresh:
 
 | Tool | Purpose |
 |------|---------|
-| `rag_search_rerank` | Find existing profile (v2.0: cross-encoder) |
+| `rag_similar` | Find existing profiles for ticker |
+| `rag_search_rerank` | Search profile context (v2.0: cross-encoder) |
 | `graph_context` | All ticker relationships |
+| `graph_search` | Broader relationship discovery |
 | `graph_risks` | Known risk factors |
 | `graph_peers` | Sector peers |
 | `graph_biases` | Trading biases |
