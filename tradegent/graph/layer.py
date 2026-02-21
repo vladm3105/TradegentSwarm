@@ -278,13 +278,16 @@ class TradingGraph:
 
     def find_related(self, symbol: str, depth: int = 2) -> list[dict]:
         """Find all nodes within N hops of a ticker."""
-        query = """
-        MATCH path = (t:Ticker {symbol: $symbol})-[*1..$depth]-(n)
+        # Neo4j doesn't support parameterized relationship depth, so we use string formatting
+        # Limit depth to prevent expensive queries (max 3 hops)
+        safe_depth = min(max(1, depth), 3)
+        query = f"""
+        MATCH path = (t:Ticker {{symbol: $symbol}})-[*1..{safe_depth}]-(n)
         RETURN DISTINCT labels(n) as labels, properties(n) as props
         LIMIT 100
         """
         with self._driver.session(database=self.database) as session:
-            result = session.run(query, symbol=symbol, depth=depth)
+            result = session.run(query, symbol=symbol)
             return [{"labels": r["labels"], "props": r["props"]} for r in result]
 
     def get_sector_peers(self, symbol: str) -> list[dict]:

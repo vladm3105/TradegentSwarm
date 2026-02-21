@@ -108,10 +108,12 @@ class CrossEncoderReranker:
                 reverse=True,
             )
 
-            log.debug(
-                f"Reranked {len(candidates)} candidates, "
-                f"top score: {reranked[0].rerank_score:.3f}"
-            )
+            top_score = reranked[0].rerank_score if reranked else None
+            if top_score is not None:
+                log.debug(
+                    f"Reranked {len(candidates)} candidates, "
+                    f"top score: {top_score:.3f}"
+                )
 
             return reranked[:top_k]
 
