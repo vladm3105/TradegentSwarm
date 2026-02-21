@@ -23,16 +23,27 @@ earnings-analysis:
 
 stock-analysis:
   extract_fields:
-    - "thesis.detailed"
-    - "thesis.edge"
-    - "catalysts[].description"
-    - "catalysts[].expected_impact"
-    - "what_is_priced_in.bull_case"
-    - "what_is_priced_in.bear_case"
-    - "bias_checks[].analysis"
-    - "decision_rationale"
-    - "risks[].risk"
-    - "risks[].mitigation"
+    # Phase 1: Catalyst
+    - "catalyst.description"
+    - "catalyst.type"
+    # Phase 2: Market Environment
+    - "market_environment.regime"
+    - "market_environment.sector"
+    # Phase 3: Technical Analysis
+    - "technical.patterns.pattern_identified"
+    # Phase 4: Fundamentals (skip - mostly numeric)
+    # Phase 5: Sentiment
+    - "sentiment.analyst.recent_changes"
+    # Phase 6: Scenarios
+    - "scenarios.bull_case.description"
+    - "scenarios.bull_case.key_driver"
+    - "scenarios.base_case.description"
+    - "scenarios.base_case.key_driver"
+    - "scenarios.bear_case.description"
+    - "scenarios.bear_case.key_driver"
+    # Summary
+    - "rationale"
+    - "watchlist_trigger"
   skip_fields:
     - "_meta"
     - "_graph"
