@@ -31,6 +31,13 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Optional
 
+from dotenv import load_dotenv
+
+# Load .env file before any database connections
+_env_path = Path(__file__).parent / ".env"
+if _env_path.exists():
+    load_dotenv(_env_path)
+
 from db_layer import IBScanner, NexusDB, Schedule, Stock
 
 # ─── Configuration ───────────────────────────────────────────────────────────
@@ -164,6 +171,26 @@ class Settings:
         return self._get_bool("dry_run_mode", None, True)
 
     @property
+    def four_phase_analysis_enabled(self) -> bool:
+        """Enable 4-phase workflow: fresh → index → retrieve → synthesize."""
+        return self._get_bool("four_phase_analysis_enabled", None, True)
+
+    @property
+    def phase2_timeout(self) -> int:
+        """Timeout for Phase 2 (Graph + RAG ingest) in seconds."""
+        return int(self._get("phase2_timeout_seconds", "PHASE2_TIMEOUT", 120))
+
+    @property
+    def phase3_timeout(self) -> int:
+        """Timeout for Phase 3 (historical retrieval) in seconds."""
+        return int(self._get("phase3_timeout_seconds", "PHASE3_TIMEOUT", 60))
+
+    @property
+    def phase4_timeout(self) -> int:
+        """Timeout for Phase 4 (synthesis) in seconds."""
+        return int(self._get("phase4_timeout_seconds", "PHASE4_TIMEOUT", 30))
+
+    @property
     def scheduler_poll_seconds(self) -> int:
         return int(self._get("scheduler_poll_seconds", None, 60))
 
@@ -215,6 +242,36 @@ class AnalysisResult:
     expected_value: float
     raw_output: str
     parsed_json: dict | None = None
+
+
+@dataclass
+class SynthesisContext:
+    """Historical context for Phase 4 synthesis."""
+    ticker: str
+    past_analyses: list[dict]      # From RAG semantic search (enriched)
+    graph_context: dict            # From TradingGraph.get_ticker_context()
+    bias_warnings: list[dict]      # From get_bias_warnings()
+    strategy_recommendations: list[dict]  # From get_strategy_recommendations()
+    has_history: bool = False      # True if any past analyses found
+    history_count: int = 0         # Number of past analyses
+    has_graph_data: bool = False   # True if graph context populated
+
+    @property
+    def is_first_analysis(self) -> bool:
+        """True if this is the first analysis for this ticker."""
+        return not self.has_history and not self.has_graph_data
+
+
+# Confidence adjustment rules for Phase 4 synthesis
+CONFIDENCE_MODIFIERS = {
+    "no_history": -10,             # No past analyses: reduce 10%
+    "sparse_history": -5,          # Only 1-2 past analyses: reduce 5%
+    "no_graph_context": -5,        # No graph data: reduce 5%
+    "bias_warning_each": -3,       # Per bias warning: reduce 3%
+    "bias_warning_max": -15,       # Max penalty for biases
+    "pattern_confirms": +5,        # Current aligns with history: add 5%
+    "pattern_contradicts": -10,    # Current contradicts history: reduce 10%
+}
 
 
 @dataclass
@@ -607,21 +664,835 @@ def kb_ingest_file(file_path: str) -> dict:
     return results
 
 
+# ─── 4-Phase Workflow Functions ───────────────────────────────────────────────
+
+
+def _run_with_timeout(func, timeout: int, phase_name: str, *args, **kwargs):
+    """
+    Execute a function with timeout. Returns (result, error).
+
+    Args:
+        func: Function to execute
+        timeout: Timeout in seconds
+        phase_name: Name for logging
+        *args, **kwargs: Arguments to pass to func
+
+    Returns:
+        tuple: (result, None) on success, (None, error_message) on failure
+    """
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(func, *args, **kwargs)
+        try:
+            result = future.result(timeout=timeout)
+            return result, None
+        except FuturesTimeoutError:
+            log.error(f"[{phase_name}] Timed out after {timeout}s")
+            return None, f"Timeout after {timeout}s"
+        except Exception as e:
+            log.error(f"[{phase_name}] Failed: {e}")
+            return None, str(e)
+
+
+def _phase1_fresh_analysis(
+    db: "NexusDB",
+    ticker: str,
+    analysis_type: AnalysisType,
+    schedule_id: int | None = None,
+) -> AnalysisResult | None:
+    """
+    Phase 1: Run analysis WITHOUT historical context injection.
+
+    This produces an unbiased analysis that can be compared to history.
+    """
+    timestamp = datetime.now().strftime("%Y%m%dT%H%M")
+    filepath = cfg.analyses_dir / f"{ticker}_{analysis_type.value}_{timestamp}.md"
+    stock = db.get_stock(ticker) if ticker != "PORTFOLIO" else None
+
+    log.info(f"[P1] Fresh analysis for {ticker} (kb_enabled=False)")
+
+    # KEY CHANGE: kb_enabled=False for unbiased analysis
+    prompt = build_analysis_prompt(ticker, analysis_type, stock, kb_enabled=False)
+    output = call_claude_code(prompt, cfg.allowed_tools_analysis, f"ANALYZE-{ticker}")
+
+    if not output:
+        return None
+
+    filepath.write_text(output)
+    parsed = parse_json_block(output)
+
+    return AnalysisResult(
+        ticker=ticker,
+        type=analysis_type,
+        filepath=filepath,
+        gate_passed=parsed.get("gate_passed", False) if parsed else False,
+        recommendation=parsed.get("recommendation", "UNKNOWN") if parsed else "UNKNOWN",
+        confidence=parsed.get("confidence", 0) if parsed else 0,
+        expected_value=parsed.get("expected_value_pct", 0.0) if parsed else 0.0,
+        raw_output=output,
+        parsed_json=parsed,
+    )
+
+
+def _phase2_dual_ingest(filepath: Path) -> dict:
+    """
+    Phase 2: Index to BOTH Graph (Neo4j) AND RAG (pgvector).
+
+    This is the fix for the current kb_ingest_analysis() which only calls RAG.
+    Handles both YAML files (from trading/knowledge/) and Markdown files (from analyses/).
+    """
+    results = {"graph": None, "rag": None, "doc_id": None, "errors": []}
+
+    if not cfg.kb_ingest_enabled:
+        log.debug("[P2] KB ingest disabled, skipping")
+        return results
+
+    log.info(f"[P2] Dual ingest: {filepath.name}")
+
+    # Determine file type and extract info
+    is_markdown = filepath.suffix.lower() in (".md", ".markdown")
+    doc_id = filepath.stem  # e.g., "AAPL_stock_20260220T1754"
+
+    # Extract ticker from filename (assumes TICKER_type_timestamp format)
+    ticker = None
+    parts = doc_id.split("_")
+    if parts:
+        ticker = parts[0].upper()
+
+    # Determine doc_type from filename
+    doc_type = "analysis"
+    if len(parts) >= 2:
+        doc_type = parts[1]  # e.g., "stock" or "earnings"
+
+    if is_markdown:
+        # Read Markdown content for text-based embedding
+        try:
+            content = filepath.read_text()
+        except Exception as e:
+            results["errors"].append(f"Read: {e}")
+            log.warning(f"[P2] Failed to read file: {e}")
+            return results
+
+        # RAG embedding using embed_text for Markdown
+        try:
+            from rag.embed import embed_text
+
+            result = embed_text(
+                text=content,
+                doc_id=doc_id,
+                doc_type=doc_type,
+                ticker=ticker,
+            )
+            results["rag"] = {"chunks": result.chunk_count}
+            results["doc_id"] = result.doc_id
+            log.info(f"[P2] RAG embedded (text): {result.chunk_count} chunks")
+        except ImportError:
+            results["errors"].append("RAG: module not available")
+            log.warning("[P2] RAG module not available")
+        except Exception as e:
+            results["errors"].append(f"RAG: {e}")
+            log.warning(f"[P2] RAG embedding failed: {e}")
+
+        # Graph extraction using extract_text for Markdown
+        try:
+            from graph.extract import extract_text
+
+            result = extract_text(
+                text=content,
+                doc_type=doc_type,
+                doc_id=doc_id,
+            )
+            results["graph"] = {
+                "entities": len(result.entities),
+                "relations": len(result.relations),
+            }
+            log.info(f"[P2] Graph indexed (text): {len(result.entities)} entities, {len(result.relations)} relations")
+        except ImportError:
+            results["errors"].append("Graph: module not available")
+            log.warning("[P2] Graph module not available")
+        except Exception as e:
+            results["errors"].append(f"Graph: {e}")
+            log.warning(f"[P2] Graph extraction failed: {e}")
+    else:
+        # YAML files use document-based functions
+        # RAG embedding (do first to get doc_id)
+        try:
+            from rag.embed import embed_document
+
+            result = embed_document(str(filepath))
+            results["rag"] = {"chunks": result.chunk_count}
+            results["doc_id"] = result.doc_id
+            log.info(f"[P2] RAG embedded: {result.chunk_count} chunks")
+        except ImportError:
+            results["errors"].append("RAG: module not available")
+            log.warning("[P2] RAG module not available")
+        except Exception as e:
+            results["errors"].append(f"RAG: {e}")
+            log.warning(f"[P2] RAG embedding failed: {e}")
+
+        # Graph extraction
+        try:
+            from graph.extract import extract_document
+
+            result = extract_document(str(filepath), commit=True)
+            results["graph"] = {
+                "entities": len(result.entities),
+                "relations": len(result.relations),
+            }
+            log.info(f"[P2] Graph indexed: {len(result.entities)} entities, {len(result.relations)} relations")
+        except ImportError:
+            results["errors"].append("Graph: module not available")
+            log.warning("[P2] Graph module not available")
+        except Exception as e:
+            results["errors"].append(f"Graph: {e}")
+            log.warning(f"[P2] Graph extraction failed: {e}")
+
+    return results
+
+
+def _enrich_past_analyses(vector_results: list, db: "NexusDB") -> list[dict]:
+    """
+    Enrich SearchResult dicts with recommendation/confidence from analysis_results table.
+
+    Args:
+        vector_results: List of SearchResult objects
+        db: Database connection
+
+    Returns:
+        List of enriched dicts with recommendation, confidence, date fields
+    """
+    enriched = []
+    for result in vector_results:
+        base = result.to_dict()
+
+        # Extract date from doc_id (format: TICKER_TYPE_YYYYMMDDTHHMM)
+        try:
+            parts = result.doc_id.rsplit("_", 1)
+            if len(parts) == 2:
+                date_str = parts[1][:8]  # YYYYMMDD
+                base["date"] = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
+        except Exception:
+            base["date"] = base.get("doc_date", "N/A")
+
+        # Try to get recommendation/confidence from analysis_results
+        try:
+            with db.conn.cursor() as cur:
+                # Query by ticker and date pattern
+                cur.execute(
+                    """
+                    SELECT recommendation, confidence
+                    FROM nexus.analysis_results
+                    WHERE ticker = %s
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                    """,
+                    (result.ticker,),
+                )
+                row = cur.fetchone()
+                if row:
+                    base["recommendation"] = row["recommendation"]
+                    base["confidence"] = row["confidence"]
+                else:
+                    base["recommendation"] = "N/A"
+                    base["confidence"] = "N/A"
+        except Exception:
+            base["recommendation"] = "N/A"
+            base["confidence"] = "N/A"
+
+        enriched.append(base)
+
+    return enriched
+
+
+def _phase3_retrieve_history(
+    ticker: str,
+    analysis_type: AnalysisType,
+    current_doc_id: str | None = None,
+    db: "NexusDB | None" = None,
+) -> SynthesisContext:
+    """
+    Phase 3: Retrieve historical context AFTER indexing current analysis.
+
+    This ensures we don't bias the fresh analysis but still have history for synthesis.
+    """
+    log.info(f"[P3] Retrieving history for {ticker} (exclude={current_doc_id})")
+
+    try:
+        from rag.hybrid import get_hybrid_context, get_bias_warnings, get_strategy_recommendations
+
+        hybrid = get_hybrid_context(
+            ticker=ticker,
+            query=f"{analysis_type.value} analysis historical patterns",
+            analysis_type=analysis_type.value,
+            exclude_doc_id=current_doc_id,  # Exclude just-indexed document
+        )
+
+        # Filter out current analysis (belt and suspenders)
+        filtered_results = [
+            r for r in hybrid.vector_results
+            if r.doc_id != current_doc_id
+        ]
+
+        # Enrich with recommendation/confidence from database
+        if db:
+            past_analyses = _enrich_past_analyses(filtered_results, db)
+        else:
+            past_analyses = [r.to_dict() for r in filtered_results]
+
+        # Get bias warnings
+        bias_warnings = get_bias_warnings(ticker)
+
+        # Get strategy recommendations
+        strategy_recs = get_strategy_recommendations(ticker)
+
+        # Determine history availability
+        has_history = len(past_analyses) > 0
+        has_graph = bool(
+            hybrid.graph_context
+            and hybrid.graph_context.get("_status") != "empty"
+            and (hybrid.graph_context.get("peers") or hybrid.graph_context.get("risks"))
+        )
+
+        log.info(f"[P3] Found {len(past_analyses)} past analyses, graph={has_graph}")
+
+        return SynthesisContext(
+            ticker=ticker,
+            past_analyses=past_analyses,
+            graph_context=hybrid.graph_context,
+            bias_warnings=bias_warnings,
+            strategy_recommendations=strategy_recs,
+            has_history=has_history,
+            history_count=len(past_analyses),
+            has_graph_data=has_graph,
+        )
+
+    except ImportError:
+        log.warning("[P3] RAG/Graph modules not available")
+        return SynthesisContext(
+            ticker=ticker,
+            past_analyses=[],
+            graph_context={},
+            bias_warnings=[],
+            strategy_recommendations=[],
+            has_history=False,
+            history_count=0,
+            has_graph_data=False,
+        )
+    except Exception as e:
+        log.warning(f"[P3] Failed to retrieve history: {e}")
+        return SynthesisContext(
+            ticker=ticker,
+            past_analyses=[],
+            graph_context={},
+            bias_warnings=[],
+            strategy_recommendations=[],
+            has_history=False,
+            history_count=0,
+            has_graph_data=False,
+        )
+
+
+def _check_pattern_consistency(current_rec: str, past_analyses: list[dict]) -> str:
+    """
+    Check if current recommendation aligns with historical patterns.
+
+    Returns: "confirms", "contradicts", or "neutral"
+    """
+    from collections import Counter
+
+    if not past_analyses:
+        return "neutral"
+
+    # Get last 3 recommendations
+    recent_recs = [a.get("recommendation", "").upper() for a in past_analyses[:3]]
+    current_upper = (current_rec or "").upper()
+
+    if not recent_recs or not current_upper:
+        return "neutral"
+
+    # Bullish group: BUY, BULLISH, LONG
+    # Bearish group: SELL, BEARISH, SHORT
+    # Neutral group: WAIT, HOLD, NEUTRAL
+    bullish = {"BUY", "BULLISH", "LONG"}
+    bearish = {"SELL", "BEARISH", "SHORT"}
+
+    current_sentiment = (
+        "bullish" if current_upper in bullish else
+        "bearish" if current_upper in bearish else
+        "neutral"
+    )
+
+    # Count historical sentiments
+    hist_sentiments = []
+    for rec in recent_recs:
+        if rec in bullish:
+            hist_sentiments.append("bullish")
+        elif rec in bearish:
+            hist_sentiments.append("bearish")
+        else:
+            hist_sentiments.append("neutral")
+
+    # Majority sentiment from history
+    if not hist_sentiments:
+        return "neutral"
+
+    sentiment_counts = Counter(hist_sentiments)
+    majority_sentiment = sentiment_counts.most_common(1)[0][0]
+
+    if current_sentiment == majority_sentiment:
+        return "confirms"
+    elif current_sentiment != "neutral" and majority_sentiment != "neutral":
+        # Both have direction but different
+        return "contradicts"
+    else:
+        return "neutral"
+
+
+def _calculate_adjusted_confidence(
+    original_confidence: int,
+    current_recommendation: str | None,
+    historical: SynthesisContext,
+) -> tuple[int, dict]:
+    """
+    Calculate adjusted confidence based on historical context.
+
+    Returns:
+        tuple: (adjusted_confidence: int, modifiers_applied: dict)
+    """
+    modifiers = {}
+    adjustment = 0
+
+    # 1. No historical data penalty
+    if historical.is_first_analysis:
+        modifiers["first_analysis"] = CONFIDENCE_MODIFIERS["no_history"]
+        adjustment += CONFIDENCE_MODIFIERS["no_history"]
+    elif historical.history_count <= 2:
+        modifiers["sparse_history"] = CONFIDENCE_MODIFIERS["sparse_history"]
+        adjustment += CONFIDENCE_MODIFIERS["sparse_history"]
+
+    # 2. No graph context penalty
+    if not historical.has_graph_data:
+        modifiers["no_graph"] = CONFIDENCE_MODIFIERS["no_graph_context"]
+        adjustment += CONFIDENCE_MODIFIERS["no_graph_context"]
+
+    # 3. Bias warnings penalty (capped)
+    if historical.bias_warnings:
+        total_occurrences = sum(b.get("occurrences", 1) for b in historical.bias_warnings)
+        bias_penalty = min(
+            total_occurrences * CONFIDENCE_MODIFIERS["bias_warning_each"],
+            CONFIDENCE_MODIFIERS["bias_warning_max"],
+        )
+        modifiers["bias_warnings"] = bias_penalty
+        adjustment += bias_penalty
+
+    # 4. Pattern consistency check (if we have history)
+    if historical.has_history and historical.past_analyses:
+        pattern_result = _check_pattern_consistency(
+            current_recommendation, historical.past_analyses
+        )
+        if pattern_result == "confirms":
+            modifiers["pattern_confirms"] = CONFIDENCE_MODIFIERS["pattern_confirms"]
+            adjustment += CONFIDENCE_MODIFIERS["pattern_confirms"]
+        elif pattern_result == "contradicts":
+            modifiers["pattern_contradicts"] = CONFIDENCE_MODIFIERS["pattern_contradicts"]
+            adjustment += CONFIDENCE_MODIFIERS["pattern_contradicts"]
+
+    # Calculate final confidence (clamp to 0-100)
+    adjusted = max(0, min(100, original_confidence + adjustment))
+
+    return adjusted, modifiers
+
+
+def _get_pattern_description(modifiers: dict, historical: SynthesisContext) -> str:
+    """Generate description of pattern alignment."""
+    if historical.is_first_analysis:
+        return "First analysis - establishing baseline"
+    elif "pattern_confirms" in modifiers:
+        return "Confirms recent historical sentiment"
+    elif "pattern_contradicts" in modifiers:
+        return "Contradicts recent historical sentiment"
+    else:
+        return "No clear pattern from history"
+
+
+def _format_synthesis_section(
+    ticker: str,
+    current: dict,
+    historical: SynthesisContext,
+    original_confidence: int,
+    adjusted_confidence: int,
+    modifiers: dict,
+) -> str:
+    """Generate markdown synthesis section to append to analysis file."""
+    lines = [
+        "",
+        "---",
+        "",
+        "## Historical Comparison (Auto-Generated)",
+        "",
+    ]
+
+    if historical.is_first_analysis:
+        # First analysis case
+        lines.extend([
+            f"*This is the first analysis for {ticker}*",
+            "",
+            "> **Note**: No historical data available. Confidence adjusted accordingly.",
+            "> Future analyses will benefit from comparison with this baseline.",
+            "",
+            "### Knowledge Graph",
+            "",
+        ])
+        if not historical.has_graph_data:
+            lines.append("*No graph context available yet.*")
+        lines.append("")
+    else:
+        # Has historical data
+        lines.append(f"*Synthesized from {historical.history_count} past analyses*")
+        lines.append("")
+
+        # Past recommendations table
+        if historical.past_analyses:
+            lines.extend([
+                "### Past Recommendations",
+                "",
+                "| Date | Recommendation | Confidence |",
+                "|------|----------------|------------|",
+            ])
+            for analysis in historical.past_analyses[:5]:  # Limit to 5
+                date_val = analysis.get("date", "N/A")
+                rec = analysis.get("recommendation", "N/A")
+                conf = analysis.get("confidence", "N/A")
+                conf_str = f"{conf}%" if isinstance(conf, (int, float)) else str(conf)
+                lines.append(f"| {date_val} | {rec} | {conf_str} |")
+            lines.append("")
+
+        # Bias warnings
+        if historical.bias_warnings:
+            lines.extend([
+                "### Bias Warnings",
+                "",
+            ])
+            for bias in historical.bias_warnings:
+                count = bias.get("occurrences", 1)
+                penalty = count * CONFIDENCE_MODIFIERS["bias_warning_each"]
+                bias_name = bias.get("bias", "Unknown")
+                lines.append(f"- **{bias_name}**: {count} occurrences ({penalty}%)")
+            lines.append("")
+
+        # Strategy recommendations
+        if historical.strategy_recommendations:
+            lines.extend([
+                "### Historical Strategy Performance",
+                "",
+            ])
+            for strat in historical.strategy_recommendations[:3]:
+                name = strat.get("strategy", "Unknown")
+                win_rate = strat.get("win_rate", 0)
+                trades = strat.get("trades", 0)
+                lines.append(f"- **{name}**: {win_rate:.0%} win rate ({trades} trades)")
+            lines.append("")
+
+        # Sector peers from graph
+        if historical.graph_context and historical.graph_context.get("peers"):
+            peers = [p.get("peer", "") for p in historical.graph_context["peers"][:6] if p.get("peer")]
+            if peers:
+                lines.extend([
+                    "### Sector Peers",
+                    "",
+                    ", ".join(peers),
+                    "",
+                ])
+
+        # Known risks from graph
+        if historical.graph_context and historical.graph_context.get("risks"):
+            risks = [r.get("risk", "") for r in historical.graph_context["risks"][:4] if r.get("risk")]
+            if risks:
+                lines.extend([
+                    "### Known Risks",
+                    "",
+                    ", ".join(risks),
+                    "",
+                ])
+
+    # Confidence adjustment table (always show)
+    lines.extend([
+        "---",
+        "",
+        "### Confidence Adjustment",
+        "",
+        "| Factor | Adjustment |",
+        "|--------|------------|",
+        f"| Original confidence | {original_confidence}% |",
+    ])
+
+    for factor, adjustment in modifiers.items():
+        sign = "+" if adjustment > 0 else ""
+        factor_display = factor.replace("_", " ").title()
+        lines.append(f"| {factor_display} | {sign}{adjustment}% |")
+
+    lines.append(f"| **Adjusted confidence** | **{adjusted_confidence}%** |")
+    lines.append("")
+
+    # Summary
+    current_rec = current.get("recommendation", "UNKNOWN")
+    pattern_desc = _get_pattern_description(modifiers, historical)
+    lines.extend([
+        f"**Current Analysis**: {current_rec}",
+        f"**Adjusted Confidence**: {adjusted_confidence}% (was {original_confidence}%)",
+        f"**Historical Pattern**: {pattern_desc}",
+    ])
+
+    return "\n".join(lines)
+
+
+def _phase4_synthesize(
+    result: AnalysisResult,
+    historical: SynthesisContext,
+    db: "NexusDB | None" = None,
+    run_id: int | None = None,
+) -> None:
+    """
+    Phase 4: Compare current analysis with historical context, adjust confidence, append synthesis.
+    """
+    current_metrics = result.parsed_json or {}
+    original_confidence = current_metrics.get("confidence", 0)
+    current_recommendation = current_metrics.get("recommendation")
+
+    log.info(f"[P4] Synthesizing {result.ticker}: original confidence={original_confidence}%")
+
+    # Calculate adjusted confidence based on historical context
+    adjusted_confidence, modifiers_applied = _calculate_adjusted_confidence(
+        original_confidence=original_confidence,
+        current_recommendation=current_recommendation,
+        historical=historical,
+    )
+
+    # Update result object with adjusted values
+    result.confidence = adjusted_confidence
+    if result.parsed_json:
+        result.parsed_json["adjusted_confidence"] = adjusted_confidence
+        result.parsed_json["confidence_modifiers"] = modifiers_applied
+
+    # Generate synthesis section
+    synthesis = _format_synthesis_section(
+        ticker=result.ticker,
+        current=current_metrics,
+        historical=historical,
+        original_confidence=original_confidence,
+        adjusted_confidence=adjusted_confidence,
+        modifiers=modifiers_applied,
+    )
+
+    # Append to analysis file
+    existing_content = result.filepath.read_text()
+    result.filepath.write_text(existing_content + synthesis)
+
+    # Update database with adjusted confidence (if run_id exists)
+    if db and run_id:
+        try:
+            _update_analysis_confidence(db, run_id, adjusted_confidence, modifiers_applied)
+        except Exception as e:
+            log.warning(f"[P4] Failed to update DB with adjusted confidence: {e}")
+
+    log.info(
+        f"[P4] Synthesis complete: {result.ticker} confidence {original_confidence}% → {adjusted_confidence}% "
+        f"(modifiers: {list(modifiers_applied.keys())})"
+    )
+
+
+def _update_analysis_confidence(
+    db: "NexusDB",
+    run_id: int,
+    adjusted_confidence: int,
+    modifiers: dict,
+) -> bool:
+    """
+    Update analysis_results with adjusted confidence from Phase 4 synthesis.
+
+    Args:
+        db: Database connection
+        run_id: Analysis run ID
+        adjusted_confidence: Confidence after historical comparison
+        modifiers: Dict of factors that affected confidence
+
+    Returns:
+        True if updated successfully
+    """
+    try:
+        with db.conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE nexus.analysis_results
+                SET adjusted_confidence = %s,
+                    confidence_modifiers = %s
+                WHERE run_id = %s
+                """,
+                (adjusted_confidence, json.dumps(modifiers), run_id),
+            )
+        db.conn.commit()
+        return cur.rowcount > 0
+    except Exception as e:
+        log.warning(f"Failed to update analysis confidence: {e}")
+        return False
+
+
 # ─── Stage 1: Analysis ──────────────────────────────────────────────────────
 
 
 def run_analysis(
     db: NexusDB, ticker: str, analysis_type: AnalysisType, schedule_id: int | None = None
 ) -> AnalysisResult | None:
-    """Stage 1: Generate analysis via Claude Code."""
+    """
+    Stage 1: Generate analysis via Claude Code.
 
+    Uses 4-phase workflow when four_phase_analysis_enabled=True:
+        Phase 1: Fresh analysis (no KB context)
+        Phase 2: Dual ingest (Graph + RAG)
+        Phase 3: Retrieve historical context
+        Phase 4: Synthesize (compare, adjust confidence, append)
+
+    Otherwise uses legacy workflow (KB context before analysis).
+    """
+    if cfg.four_phase_analysis_enabled:
+        return _run_analysis_4phase(db, ticker, analysis_type, schedule_id)
+    else:
+        return _legacy_run_analysis(db, ticker, analysis_type, schedule_id)
+
+
+def _run_analysis_4phase(
+    db: NexusDB, ticker: str, analysis_type: AnalysisType, schedule_id: int | None = None
+) -> AnalysisResult | None:
+    """
+    4-Phase analysis workflow: Fresh → Index → Retrieve → Synthesize
+
+    This workflow produces unbiased analysis then compares with history.
+    """
+    trace_id = f"{ticker}-{datetime.now().strftime('%H%M%S')}"
+    run_id = db.mark_schedule_started(schedule_id) if schedule_id else None
+
+    log.info(f"╔═══ 4-PHASE ANALYSIS ═══ {ticker} ({analysis_type.value}) [{trace_id}]")
+
+    try:
+        # Phase 1: Fresh analysis (no KB context)
+        log.info(f"[{trace_id}] Phase 1: Fresh analysis")
+        result = _phase1_fresh_analysis(db, ticker, analysis_type, schedule_id)
+        if not result:
+            if run_id and schedule_id:
+                db.mark_schedule_completed(
+                    schedule_id, run_id, "failed", error="Phase 1 failed: empty output"
+                )
+            log.error(f"[{trace_id}] Phase 1 failed: empty output")
+            return None
+
+        # Phase 2: Dual ingest (Graph + RAG) WITH TIMEOUT
+        log.info(f"[{trace_id}] Phase 2: Dual ingest")
+        ingest_result, p2_error = _run_with_timeout(
+            _phase2_dual_ingest,
+            cfg.phase2_timeout,
+            f"{trace_id}/P2",
+            result.filepath,
+        )
+        if p2_error:
+            log.warning(f"[{trace_id}] Phase 2 failed: {p2_error}, continuing...")
+            ingest_result = {"doc_id": None, "errors": [p2_error]}
+
+        # Phase 3: Retrieve history WITH TIMEOUT
+        log.info(f"[{trace_id}] Phase 3: Retrieve history")
+        historical_context, p3_error = _run_with_timeout(
+            _phase3_retrieve_history,
+            cfg.phase3_timeout,
+            f"{trace_id}/P3",
+            ticker,
+            analysis_type,
+            ingest_result.get("doc_id") if ingest_result else None,
+            db,
+        )
+        if p3_error:
+            log.warning(f"[{trace_id}] Phase 3 failed: {p3_error}, using empty context")
+            historical_context = SynthesisContext(
+                ticker=ticker,
+                past_analyses=[],
+                graph_context={},
+                bias_warnings=[],
+                strategy_recommendations=[],
+                has_history=False,
+                history_count=0,
+                has_graph_data=False,
+            )
+
+        # Phase 4: Synthesize WITH TIMEOUT
+        log.info(f"[{trace_id}] Phase 4: Synthesize")
+        _, p4_error = _run_with_timeout(
+            _phase4_synthesize,
+            cfg.phase4_timeout,
+            f"{trace_id}/P4",
+            result,
+            historical_context,
+            db,
+            run_id,
+        )
+        if p4_error:
+            log.warning(f"[{trace_id}] Phase 4 failed: {p4_error}, skipping synthesis")
+
+        # Persist to DB
+        if run_id and schedule_id:
+            db.mark_schedule_completed(
+                schedule_id,
+                run_id,
+                "completed",
+                gate_passed=result.gate_passed,
+                recommendation=result.recommendation,
+                confidence=result.confidence,
+                expected_value=result.expected_value,
+                analysis_file=str(result.filepath),
+            )
+
+        if result.parsed_json and ticker not in ("PORTFOLIO", "SCAN"):
+            try:
+                db.save_analysis_result(run_id, ticker, analysis_type.value, result.parsed_json)
+            except Exception as e:
+                log.warning(f"Save analysis result failed: {e}")
+
+        # Increment service counters
+        try:
+            db.increment_service_counter("analyses_total")
+            db.increment_service_counter("today_analyses")
+        except Exception:
+            pass
+
+        log.info(
+            f"╚═══ 4-PHASE COMPLETE ═══ {ticker} | Gate: {'PASS' if result.gate_passed else 'FAIL'} | "
+            f"Rec: {result.recommendation} | Conf: {result.confidence}% [{trace_id}]"
+        )
+        return result
+
+    except Exception as e:
+        log.error(f"[{trace_id}] 4-phase workflow failed: {e}")
+        if run_id and schedule_id:
+            db.mark_schedule_completed(
+                schedule_id, run_id, "failed", error=str(e)
+            )
+        raise
+
+
+def _legacy_run_analysis(
+    db: NexusDB, ticker: str, analysis_type: AnalysisType, schedule_id: int | None = None
+) -> AnalysisResult | None:
+    """
+    Legacy analysis workflow (pre-4-phase).
+
+    Gets KB context BEFORE analysis, then indexes to RAG only.
+    Kept for backward compatibility when four_phase_analysis_enabled=False.
+    """
     timestamp = datetime.now().strftime("%Y%m%dT%H%M")
     filepath = cfg.analyses_dir / f"{ticker}_{analysis_type.value}_{timestamp}.md"
     stock = db.get_stock(ticker) if ticker != "PORTFOLIO" else None
 
     run_id = db.mark_schedule_started(schedule_id) if schedule_id else None
 
-    log.info(f"═══ STAGE 1: ANALYSIS ═══ {ticker} ({analysis_type.value})")
+    log.info(f"═══ STAGE 1: ANALYSIS (legacy) ═══ {ticker} ({analysis_type.value})")
 
     prompt = build_analysis_prompt(ticker, analysis_type, stock, kb_enabled=cfg.kb_query_enabled)
     output = call_claude_code(prompt, cfg.allowed_tools_analysis, f"ANALYZE-{ticker}")

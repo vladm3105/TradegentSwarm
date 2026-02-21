@@ -12,6 +12,7 @@ def get_hybrid_context(
     ticker: str,
     query: str,
     analysis_type: str | None = None,
+    exclude_doc_id: str | None = None,
 ) -> HybridContext:
     """
     Combine vector search + graph context for Claude.
@@ -27,6 +28,7 @@ def get_hybrid_context(
         ticker: Ticker symbol
         query: Search query
         analysis_type: Optional analysis type filter
+        exclude_doc_id: Document ID to exclude (prevents self-retrieval)
 
     Returns:
         HybridContext with combined results
@@ -36,9 +38,14 @@ def get_hybrid_context(
     # Vector search results
     vector_results = []
 
+    # Track excluded doc_id to prevent self-retrieval
+    excluded_ids = {exclude_doc_id} if exclude_doc_id else set()
+
     # 1. Past analyses for this ticker
     ticker_results = get_similar_analyses(ticker, analysis_type, top_k=3)
-    vector_results.extend(ticker_results)
+    for r in ticker_results:
+        if r.doc_id not in excluded_ids:
+            vector_results.append(r)
 
     # 2. Query-based search
     query_results = semantic_search(
@@ -46,8 +53,8 @@ def get_hybrid_context(
         ticker=ticker,
         top_k=3,
     )
-    # Dedupe against ticker results
-    seen_ids = {r.doc_id for r in vector_results}
+    # Dedupe against ticker results and excluded docs
+    seen_ids = {r.doc_id for r in vector_results} | excluded_ids
     for r in query_results:
         if r.doc_id not in seen_ids:
             vector_results.append(r)

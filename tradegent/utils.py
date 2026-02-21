@@ -3,8 +3,8 @@
 import re
 from pathlib import Path
 
-# ISO 8601 date pattern for real document detection
-REAL_DOC_PATTERN = re.compile(r"\d{8}T\d{4}")
+# ISO 8601 date pattern for real document detection (case-insensitive)
+REAL_DOC_PATTERN = re.compile(r"\d{8}[Tt]\d{4}")
 TEMPLATE_NAMES = {"template", "sample", "example", "test"}
 
 

@@ -414,6 +414,7 @@ INSERT INTO nexus.settings (key, value, category, description) VALUES
     ('scanners_enabled',        'true',         'feature_flags', 'Global enable/disable for IB scanners'),
     ('lightrag_query_enabled',  'true',         'feature_flags', 'Include LightRAG context in prompts'),
     ('dry_run_mode',            'true',         'feature_flags', 'Log what would happen without calling Claude Code'),
+    ('four_phase_analysis_enabled', 'true',     'feature_flags', 'Enable 4-phase workflow: fresh analysis → index → retrieve → synthesize'),
 
     -- Paths
     ('analyses_dir',            '"analyses"',   'general',       'Directory for analysis output files'),
