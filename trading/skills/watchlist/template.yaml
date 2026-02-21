@@ -1,5 +1,11 @@
-# Watchlist Template
+# Watchlist Template v2.1
 # Output: knowledge/watchlist/{TICKER}_{YYYYMMDDTHHMM}.yaml
+#
+# CHANGELOG v2.1:
+# - Added thesis_reasoning section with conviction rationale
+# - Added conviction_level with numeric score
+# - Added analysis_quality_check
+# - Added alternative_entries
 #
 # EXPIRATION RULES:
 # - Max 30 days from creation (default ceiling)
@@ -11,9 +17,9 @@
 _meta:
   id: "{TICKER}_{YYYYMMDDTHHMM}"
   type: watchlist
-  version: 1
+  version: 2.1
   created: "{ISO_DATETIME}"
-  expires: "{YYYY-MM-DD}"  # ABSOLUTE: Max 30 days, shorter for events
+  expires: "{YYYY-MM-DD}"
   status: "active|triggered|invalidated|expired"
 
 ticker: "{TICKER}"
@@ -23,33 +29,83 @@ current_price: 0.00
 # Source
 source:
   type: "analysis|scanner"
-  file: ""  # Link to analysis or scanner run
+  file: ""
   original_score: 0.00
+  analysis_date: "{YYYY-MM-DD}"
 
-# Thesis
-thesis: ""  # Brief summary
+# ============================================================
+# THESIS REASONING - NEW v2.1
+# ============================================================
+thesis:
+  summary: ""
+
+  reasoning: |
+    {2-3 paragraphs explaining why this is on watchlist}
+
+  key_catalyst: ""
+  catalyst_timing: "immediate|near_term|longer_term"
+
+  why_not_entering_now: |
+    {Why waiting instead of entering immediately}
+
+# ============================================================
+# CONVICTION LEVEL - NEW v2.1
+# ============================================================
+conviction:
+  level: "high|medium|low"
+  score: 0  # 1-10
+  rationale: ""
+
+  conditions_to_increase:
+    - ""
+
+  conditions_to_decrease:
+    - ""
+
+# ============================================================
+# ANALYSIS QUALITY CHECK - NEW v2.1
+# ============================================================
+analysis_quality:
+  do_nothing_gate_passed: false
+  bear_case_considered: false
+  bias_check_completed: false
+  r_r_ratio: 0.0
+  ev_estimate: 0.00
 
 # Entry Trigger
 entry_trigger:
   type: "price|condition|combined"
   description: ""
-  
+
   price_trigger:
     condition: "above|below|at"
     price: 0.00
-    
+
   additional_conditions:
     - ""
 
+# ============================================================
+# ALTERNATIVE ENTRIES - NEW v2.1
+# ============================================================
+alternative_entries:
+  - trigger: ""
+    price: 0.00
+    rationale: ""
+
+  - trigger: ""
+    price: 0.00
+    rationale: ""
+
 # Invalidation
-# Conditions that break the thesis (remove without triggering)
 invalidation:
   type: "price|condition|time"
   description: ""
 
-  price_level: 0.00           # Price that invalidates thesis
-  time_limit_days: 30         # RELATIVE: Days from creation (max 30)
-                              # Recommended: 5-10 for pullbacks, 7-14 for breakouts
+  price_level: 0.00
+  time_limit_days: 30
+
+  thesis_broken_if:
+    - ""
 
 # Key Levels
 key_levels:
@@ -58,13 +114,13 @@ key_levels:
   resistance:
     - 0.00
   entry_zone: 0.00
+  stop_zone: 0.00
 
 # Upcoming Events
-# Events with impact: "high" can trigger expiration when date passes
 events:
-  - event: ""                 # e.g., "Q4 Earnings", "FDA Decision"
-    date: "{YYYY-MM-DD}"      # Event date
-    impact: "high|medium|low" # high = expires after this date
+  - event: ""
+    date: "{YYYY-MM-DD}"
+    impact: "high|medium|low"
 
 # Monitoring Log
 monitoring_log:
@@ -72,9 +128,16 @@ monitoring_log:
     price: 0.00
     note: ""
     action: "none|updated|removed|triggered"
+    conviction_change: "none|increased|decreased"
 
 # Resolution (fill when no longer active)
 resolution:
   date: "{YYYY-MM-DD}"
   outcome: "triggered|invalidated|expired"
-  final_action: ""  # e.g., "Created trade journal TJ-XXX"
+  final_action: ""
+  lesson_learned: ""
+
+# Links
+_links:
+  analysis: ""
+  trade_journal: ""

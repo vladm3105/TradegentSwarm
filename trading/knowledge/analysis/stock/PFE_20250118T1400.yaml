@@ -1,32 +1,24 @@
 _meta:
   id: SA-PFE-2025-001
   type: stock-analysis
-  version: 1
-  created: "2025-01-18T09:00:00Z"
-  updated: "2025-01-18T09:00:00Z"
+  version: '2.3'
+  created: '2025-01-18T09:00:00Z'
+  updated: '2025-01-18T09:00:00Z'
   status: active
-  skill_version: "stock-analysis-v1.0"
-
+  skill_version: stock-analysis-v1.0
+  migrated_at: '2026-02-21T11:14:27.856618'
+  migrated_from: 1
 ticker: PFE
-analysis_date: "2025-01-18"
-catalyst_type: technical  # Value + technical bounce play
-
-# ═══════════════════════════════════════════════════════════════
-# PHASE 1: CATALYST & THESIS IDENTIFICATION
-# ═══════════════════════════════════════════════════════════════
-
+analysis_date: '2025-01-18'
+catalyst_type: technical
 phase1_catalyst:
-  
   catalyst:
     type: technical
-    name: "Oversold bounce from multi-year lows + 6.5% dividend yield"
-    description: |
-      PFE has declined 60% from 2021 highs as COVID revenue normalized. Now trading at 
-      8x forward earnings with 6.5% dividend yield. Technical RSI at 28 (oversold). 
-      Setup for mean reversion bounce with defined risk.
-    
+    name: Oversold bounce from multi-year lows + 6.5% dividend yield
+    description: "PFE has declined 60% from 2021 highs as COVID revenue normalized. Now trading at \n8x forward earnings with\
+      \ 6.5% dividend yield. Technical RSI at 28 (oversold). \nSetup for mean reversion bounce with defined risk.\n"
   thesis:
-    summary: "Deep value + oversold bounce with 6.5% yield floor"
+    summary: Deep value + oversold bounce with 6.5% yield floor
     detailed: |
       Pfizer presents a contrarian value opportunity:
       1. Trading at decade-low valuation (8x P/E) after 60% decline
@@ -34,196 +26,157 @@ phase1_catalyst:
       3. RSI at 28 signals extreme oversold conditions
       4. Pipeline has $20B+ peak sales potential (Danuglipron, oncology)
       5. Cost-cutting program should improve margins in 2025
-      
   timeframe:
-    expected_duration: "3-6 months"
-    catalyst_date: "Ongoing value realization"
-    
+    expected_duration: 3-6 months
+    catalyst_date: Ongoing value realization
   invalidation:
     thesis_wrong_if:
-      - "Dividend cut announced"
-      - "Major pipeline failure (Danuglipron Phase 3)"
-      - "Breaks below $24 (2012 lows)"
-      - "Credit downgrade"
-
-# ═══════════════════════════════════════════════════════════════
-# PHASE 2: MARKET ENVIRONMENT ASSESSMENT
-# ═══════════════════════════════════════════════════════════════
-
+    - Dividend cut announced
+    - Major pipeline failure (Danuglipron Phase 3)
+    - Breaks below $24 (2012 lows)
+    - Credit downgrade
 phase2_market_environment:
-  
   broader_market:
     spx_trend: uptrend
     spx_distance_from_high_pct: -1.5
     vix_level: 15.2
     vix_percentile: 30
-    market_regime: "Risk-on, rotation into value"
-    
+    market_regime: Risk-on, rotation into value
   sector_performance:
     sector: Healthcare
-    sector_vs_spx_30d_pct: -2.1  # Underperforming
+    sector_vs_spx_30d_pct: -2.1
     subsector: Pharmaceuticals
-    subsector_vs_sector_30d_pct: -3.5  # Lagging
+    subsector_vs_sector_30d_pct: -3.5
     xlv_trend: sideways
-    
   correlation_dynamics:
     pfe_spx_correlation_30d: 0.45
     pfe_xlv_correlation_30d: 0.72
-    implication: "Low correlation to broader market; idiosyncratic drivers"
-    
+    implication: Low correlation to broader market; idiosyncratic drivers
   environment_assessment:
     supports_thesis: neutral
-    headwinds: 
-      - "Healthcare sector rotation away from pharma"
-      - "Rising rates pressure dividend stocks"
-      - "Post-COVID revenue hangover continues"
+    headwinds:
+    - Healthcare sector rotation away from pharma
+    - Rising rates pressure dividend stocks
+    - Post-COVID revenue hangover continues
     tailwinds:
-      - "Value rotation if macro weakens"
-      - "High yield attractive if rates peak"
-      - "Sector may see rotation back"
-    overall: "Neutral market environment; thesis is stock-specific"
-
-# ═══════════════════════════════════════════════════════════════
-# PHASE 3: TECHNICAL ANALYSIS & SETUP QUALITY
-# ═══════════════════════════════════════════════════════════════
-
+    - Value rotation if macro weakens
+    - High yield attractive if rates peak
+    - Sector may see rotation back
+    overall: Neutral market environment; thesis is stock-specific
 phase3_technical:
-  
   price_action:
-    current_price: 26.50
+    current_price: 26.5
     52w_high: 31.54
     52w_low: 24.48
     distance_from_52w_high_pct: -16.0
     distance_from_52w_low_pct: 8.3
-    
   consolidation_pattern:
-    pattern: "Falling wedge / bottoming base"
+    pattern: Falling wedge / bottoming base
     duration_days: 180
-    range_low: 24.50
-    range_high: 31.50
+    range_low: 24.5
+    range_high: 31.5
     range_width_pct: 28.6
-    current_position: "Lower third, near support"
-    
+    current_position: Lower third, near support
   support_resistance:
     key_resistance:
-      - price: 28
-        significance: "50-day MA, recent rejection"
-        tests: 3
-      - price: 30
-        significance: "Psychological, 200-day MA"
-      - price: 32
-        significance: "52-week high area"
+    - price: 28
+      significance: 50-day MA, recent rejection
+      tests: 3
+    - price: 30
+      significance: Psychological, 200-day MA
+    - price: 32
+      significance: 52-week high area
     key_support:
-      - price: 25
-        significance: "2024 low, major support"
-      - price: 24.50
-        significance: "52-week low"
-      - price: 24
-        significance: "2012 support, critical"
-        
+    - price: 25
+      significance: 2024 low, major support
+    - price: 24.5
+      significance: 52-week low
+    - price: 24
+      significance: 2012 support, critical
   volume_analysis:
     avg_volume_50d: 38000000
     recent_volume_vs_avg: 0.95
-    volume_on_down_days_ratio: 1.2  # Slightly more selling pressure
+    volume_on_down_days_ratio: 1.2
     accumulation_distribution: neutral
-    
   technical_indicators:
     rsi_14: 28
-    rsi_interpretation: "Oversold - contrarian bullish"
+    rsi_interpretation: Oversold - contrarian bullish
     macd_signal: bearish
-    macd_interpretation: "Still negative but flattening"
+    macd_interpretation: Still negative but flattening
     moving_averages:
       above_20d: false
       above_50d: false
       above_200d: false
-      ma_alignment: "Bearish (price below all MAs) - but potential reversal setup"
-      
+      ma_alignment: Bearish (price below all MAs) - but potential reversal setup
   multiple_timeframe:
     daily: bearish
     weekly: bearish
     monthly: bearish
-    alignment: "0/3 bullish - CONTRARIAN setup"
-    
+    alignment: 0/3 bullish - CONTRARIAN setup
   setup_quality:
-    score: 6  # Contrarian setups score lower initially
+    score: 6
     scoring_breakdown:
-      pattern_clarity: 7  # Clear falling wedge
-      volume_confirmation: 5  # No accumulation yet
-      ma_alignment: 3  # All bearish
-      timeframe_alignment: 3  # All bearish
-      risk_reward_setup: 9  # Excellent R:R from support
-    notes: "Contrarian value play. Not a momentum setup. Requires patience."
-
-# ═══════════════════════════════════════════════════════════════
-# PHASE 4: FUNDAMENTAL CONTEXT & VALUATION
-# ═══════════════════════════════════════════════════════════════
-
+      pattern_clarity: 7
+      volume_confirmation: 5
+      ma_alignment: 3
+      timeframe_alignment: 3
+      risk_reward_setup: 9
+    notes: Contrarian value play. Not a momentum setup. Requires patience.
 phase4_fundamentals:
-  
   business_overview:
-    description: "Global pharmaceutical company with diversified drug portfolio"
+    description: Global pharmaceutical company with diversified drug portfolio
     key_segments:
-      - name: Primary Care
-        revenue_pct: 35
-        growth_driver: "Eliquis, Prevnar"
-      - name: Specialty Care
-        revenue_pct: 25
-        growth_driver: "Oncology, rare disease"
-      - name: Oncology
-        revenue_pct: 20
-        growth_driver: "Ibrance, Padcev, Adcetris"
-      - name: Hospital
-        revenue_pct: 20
-        growth_driver: "Sterile injectables, biosimilars"
-        
+    - name: Primary Care
+      revenue_pct: 35
+      growth_driver: Eliquis, Prevnar
+    - name: Specialty Care
+      revenue_pct: 25
+      growth_driver: Oncology, rare disease
+    - name: Oncology
+      revenue_pct: 20
+      growth_driver: Ibrance, Padcev, Adcetris
+    - name: Hospital
+      revenue_pct: 20
+      growth_driver: Sterile injectables, biosimilars
   recent_developments:
-    - date: "2025-01-10"
-      event: "Danuglipron (obesity) Phase 2b positive results"
-      impact: bullish
-      priced_in: partially
-    - date: "2024-12-15"
-      event: "Cost reduction program: $4B savings target by 2027"
-      impact: bullish
-      priced_in: partially
-    - date: "2024-11-20"
-      event: "Q3 earnings: beat estimates, maintained guidance"
-      impact: neutral
-      priced_in: yes
-      
+  - date: '2025-01-10'
+    event: Danuglipron (obesity) Phase 2b positive results
+    impact: bullish
+    priced_in: partially
+  - date: '2024-12-15'
+    event: 'Cost reduction program: $4B savings target by 2027'
+    impact: bullish
+    priced_in: partially
+  - date: '2024-11-20'
+    event: 'Q3 earnings: beat estimates, maintained guidance'
+    impact: neutral
+    priced_in: true
   valuation:
     pe_forward: 8.0
-    pe_vs_5yr_avg: very_cheap  # Historical avg ~12
-    pe_vs_sector: discount  # Pharma sector at ~15
+    pe_vs_5yr_avg: very_cheap
+    pe_vs_sector: discount
     dividend_yield: 6.5
     payout_ratio: 52
-    valuation_assessment: "Extremely cheap if dividend is safe"
-    
+    valuation_assessment: Extremely cheap if dividend is safe
   what_is_priced_in:
     priced_in:
-      - "COVID revenue decline to near zero"
-      - "Patent cliffs on Eliquis (2026+)"
-      - "General pharma sector pessimism"
+    - COVID revenue decline to near zero
+    - Patent cliffs on Eliquis (2026+)
+    - General pharma sector pessimism
     not_priced_in:
-      - "Danuglipron obesity drug potential"
-      - "Oncology pipeline success"
-      - "Margin improvement from cost cuts"
-      
+    - Danuglipron obesity drug potential
+    - Oncology pipeline success
+    - Margin improvement from cost cuts
   potential_surprises:
     positive:
-      - "Danuglipron Phase 3 success → $10B+ peak sales"
-      - "Oncology acquisition"
-      - "Better-than-expected Paxlovid tail"
+    - Danuglipron Phase 3 success → $10B+ peak sales
+    - Oncology acquisition
+    - Better-than-expected Paxlovid tail
     negative:
-      - "Dividend cut"
-      - "Major pipeline failure"
-      - "Eliquis generic competition earlier"
-
-# ═══════════════════════════════════════════════════════════════
-# PHASE 5: SENTIMENT & POSITIONING ANALYSIS
-# ═══════════════════════════════════════════════════════════════
-
+    - Dividend cut
+    - Major pipeline failure
+    - Eliquis generic competition earlier
 phase5_sentiment:
-  
   analyst_sentiment:
     buy_pct: 35
     hold_pct: 55
@@ -232,170 +185,135 @@ phase5_sentiment:
     high_target: 42
     low_target: 24
     upside_to_avg_target_pct: 20.8
-    recent_revisions: "2 downgrades, 1 upgrade in past 30 days"
-    
+    recent_revisions: 2 downgrades, 1 upgrade in past 30 days
   institutional_positioning:
     institutional_ownership_pct: 72
     change_last_quarter_pct: -1.2
     direction: distribution
     notable_moves:
-      - "Vanguard increased position slightly"
-      - "Some hedge funds trimmed"
-      
+    - Vanguard increased position slightly
+    - Some hedge funds trimmed
   short_interest:
     short_pct_float: 1.5
     days_to_cover: 1.8
     trend: stable
     squeeze_potential: low
-    
   retail_sentiment:
     social_sentiment: bearish
     google_trends: declining
-    
   positioning_assessment:
     crowded_trade: false
     contrarian_opportunity: true
-    positioning: "Under-owned, out-of-favor = contrarian opportunity"
-    
+    positioning: Under-owned, out-of-favor = contrarian opportunity
   trade_type:
     classification: contrarian_value
-    description: "Buying when others are selling; betting on mean reversion"
-
-# ═══════════════════════════════════════════════════════════════
-# PHASE 6: PROBABILITY-WEIGHTED SCENARIOS
-# ═══════════════════════════════════════════════════════════════
-
+    description: Buying when others are selling; betting on mean reversion
 phase6_scenarios:
-  
   bull_case:
-    name: "Value realization + pipeline catalyst"
+    name: Value realization + pipeline catalyst
     probability: 0.35
     price_target: 35
     upside_pct: 32
-    timeframe: "6 months"
+    timeframe: 6 months
     triggers:
-      - "Danuglipron Phase 3 readout positive"
-      - "Margin improvement visible in Q1/Q2"
-      - "Dividend increase announced"
-      - "Value rotation in market"
-    contribution_to_ev: 11.2  # 0.35 × 32
-    
+    - Danuglipron Phase 3 readout positive
+    - Margin improvement visible in Q1/Q2
+    - Dividend increase announced
+    - Value rotation in market
+    contribution_to_ev: 11.2
   base_case:
-    name: "Modest recovery to fair value"
-    probability: 0.40
+    name: Modest recovery to fair value
+    probability: 0.4
     price_target: 30
     upside_pct: 13
-    timeframe: "6 months"
+    timeframe: 6 months
     triggers:
-      - "Earnings meet expectations"
-      - "Dividend maintained"
-      - "Gradual sentiment improvement"
-    contribution_to_ev: 5.2  # 0.40 × 13
-    
+    - Earnings meet expectations
+    - Dividend maintained
+    - Gradual sentiment improvement
+    contribution_to_ev: 5.2
   bear_case:
-    name: "Value trap continues"
+    name: Value trap continues
     probability: 0.25
     price_target: 22
     downside_pct: -17
-    timeframe: "6 months"
+    timeframe: 6 months
     triggers:
-      - "Pipeline setback"
-      - "Dividend cut speculation"
-      - "Pharma sector further weakness"
-    contribution_to_ev: -4.25  # 0.25 × -17
-    
+    - Pipeline setback
+    - Dividend cut speculation
+    - Pharma sector further weakness
+    contribution_to_ev: -4.25
   expected_value:
-    ev_pct: 12.15  # 11.2 + 5.2 - 4.25 = 12.15
+    ev_pct: 12.15
     probability_sum_check: 1.0
     ev_threshold_per_skill: 8.0
-    ev_assessment: "EV of 12.15% exceeds 8% threshold - TRADE"
-
-# ═══════════════════════════════════════════════════════════════
-# PHASE 7: RISK MANAGEMENT & POSITION FRAMEWORK
-# ═══════════════════════════════════════════════════════════════
-
+    ev_assessment: EV of 12.15% exceeds 8% threshold - TRADE
 phase7_risk_management:
-  
   bias_checks:
     recency_bias:
-      check: "Am I assuming recent decline continues?"
+      check: Am I assuming recent decline continues?
       status: pass
-      analysis: "Recognizing that 60% decline may be overdone. Not extrapolating recent weakness."
-      
+      analysis: Recognizing that 60% decline may be overdone. Not extrapolating recent weakness.
     confirmation_bias:
-      check: "Have I sought contradicting evidence?"
+      check: Have I sought contradicting evidence?
       status: pass
-      analysis: "Bear case documented: value trap, dividend risk, pipeline failures. Understand the risks."
-      
+      analysis: 'Bear case documented: value trap, dividend risk, pipeline failures. Understand the risks.'
     anchoring_bias:
-      check: "Am I fixated on past highs?"
+      check: Am I fixated on past highs?
       status: pass
-      analysis: "Not targeting 2021 highs ($60). Target $30-35 is reasonable valuation."
-      
+      analysis: Not targeting 2021 highs ($60). Target $30-35 is reasonable valuation.
     loss_aversion:
-      check: "Will I follow exit rules?"
+      check: Will I follow exit rules?
       status: noted
-      analysis: "Pre-commitment to exit if breaks $24 (2012 support). No moving stop."
-      
+      analysis: Pre-commitment to exit if breaks $24 (2012 support). No moving stop.
     overconfidence:
-      check: "Am I oversizing a value trap?"
+      check: Am I oversizing a value trap?
       status: pass
-      analysis: "Position size 3% despite strong conviction. Dividend income provides cushion."
-      
+      analysis: Position size 3% despite strong conviction. Dividend income provides cushion.
   entry:
-    trigger: "RSI <30 near $25-26 support"
-    entry_price: 26.50
-    entry_type: "Contrarian value entry at support"
-    wait_for: "Optional: wait for RSI to tick up from <30"
-    
+    trigger: RSI <30 near $25-26 support
+    entry_price: 26.5
+    entry_type: Contrarian value entry at support
+    wait_for: 'Optional: wait for RSI to tick up from <30'
   position_sizing:
     account_risk_per_trade_pct: 2.0
-    stop_distance_pct: 9.4  # ($26.50 - $24) / $26.50
+    stop_distance_pct: 9.4
     position_size_pct: 3.0
-    rationale: "Value play with 6.5% yield cushion; can hold longer-term"
-    
+    rationale: Value play with 6.5% yield cushion; can hold longer-term
   stop_loss:
     price: 24
-    type: "Historical support invalidation"
-    rationale: "2012 lows; if breaks, value trap confirmed"
-    trailing_stop: "Raise to $26 if reaches $30"
-    
+    type: Historical support invalidation
+    rationale: 2012 lows; if breaks, value trap confirmed
+    trailing_stop: Raise to $26 if reaches $30
   profit_targets:
     target_1:
       price: 30
-      action: "Sell 33%"
-      rationale: "200-day MA, 13% gain"
+      action: Sell 33%
+      rationale: 200-day MA, 13% gain
     target_2:
       price: 35
-      action: "Sell 33%"
-      rationale: "Fair value target"
+      action: Sell 33%
+      rationale: Fair value target
     remainder:
-      action: "Hold for dividend + potential upside"
-      trailing_method: "Raise stop to breakeven"
-      
+      action: Hold for dividend + potential upside
+      trailing_method: Raise stop to breakeven
   risk_reward:
-    entry: 26.50
-    stop: 24.00
-    target_1: 30.00
-    target_2: 35.00
+    entry: 26.5
+    stop: 24.0
+    target_1: 30.0
+    target_2: 35.0
     risk_pct: 9.4
     reward_to_t1_pct: 13.2
     reward_to_t2_pct: 32.1
     rr_to_t1: 1.4
     rr_to_t2: 3.4
     blended_rr: 2.4
-
-# ═══════════════════════════════════════════════════════════════
-# TRADE SELECTION GATE
-# ═══════════════════════════════════════════════════════════════
-
 trade_selection:
-  
   pass_criteria_check:
     setup_quality_above_6:
       threshold: 6
       actual: 6
-      status: pass  # Exactly at threshold
+      status: pass
     ev_above_5pct:
       threshold: 5
       actual: 12.15
@@ -403,94 +321,175 @@ trade_selection:
     fewer_than_2_biases:
       detected: 0
       status: pass
-      
   trade_criteria_check:
     setup_quality_7_plus:
       threshold: 7
       actual: 6
-      status: warning  # Below ideal but acceptable for value play
+      status: warning
     ev_above_8pct:
       threshold: 8
       actual: 12.15
       status: pass
     clear_catalyst:
-      status: pass  # Value + dividend + oversold
+      status: pass
     bias_checks_passed:
       status: pass
-      
   final_decision: TRADE
   decision_rationale: |
     Setup quality 6/10 is below ideal 7+ but acceptable for contrarian value play.
     EV of 12.15% significantly exceeds 8% threshold. R:R of 2.4 is good.
     6.5% dividend yield provides income while waiting. Defined risk with $24 stop.
     This is a patient value play, not a momentum trade. Proceed with position.
-
-# ═══════════════════════════════════════════════════════════════
-# RECOMMENDATION
-# ═══════════════════════════════════════════════════════════════
-
 recommendation:
   action: BUY
   ticker: PFE
-  
   entry:
-    trigger: "At current levels near support"
-    price: 26.50
-    order_type: "Limit buy at $26.50"
-    
+    trigger: At current levels near support
+    price: 26.5
+    order_type: Limit buy at $26.50
   position:
     size_pct: 3.0
-    structure: shares  # Shares preferred for dividend collection
-    
+    structure: shares
   exit_plan:
     stop_loss: 24
     target_1: 30
-    target_1_action: "Sell 33%"
+    target_1_action: Sell 33%
     target_2: 35
-    target_2_action: "Sell 33%"
-    remainder: "Hold for dividend, trail stop"
-    
+    target_2_action: Sell 33%
+    remainder: Hold for dividend, trail stop
   risk_metrics:
-    max_loss_pct: 2.8  # 3% position × 9.4% stop distance
+    max_loss_pct: 2.8
     expected_value_pct: 12.15
     risk_reward: 2.4
     annual_dividend_yield: 6.5
-    
-  timeframe: "3-6 months (patient value play)"
-  
+  timeframe: 3-6 months (patient value play)
   monitoring:
-    check_daily: false  # Weekly sufficient for value play
+    check_daily: false
     check_weekly: true
-    key_levels_to_watch: [24, 28, 30]
+    key_levels_to_watch:
+    - 24
+    - 28
+    - 30
     invalidation_events:
-      - "Dividend cut announced"
-      - "Major pipeline failure"
-      - "Close below $24"
-
-# ═══════════════════════════════════════════════════════════════
-# POST-TRADE PROTOCOL
-# ═══════════════════════════════════════════════════════════════
-
+    - Dividend cut announced
+    - Major pipeline failure
+    - Close below $24
 post_trade:
   status: pending
   outcome: null
   review: null
-
-# ═══════════════════════════════════════════════════════════════
-# GRAPH & LINKS
-# ═══════════════════════════════════════════════════════════════
-
 _graph:
   entities:
-    - [ticker, PFE]
-    - [analysis, SA-PFE-2025-001]
-    - [catalyst, contrarian-value]
-    - [sector, Healthcare]
-    - [industry, Pharmaceuticals]
+  - - ticker
+    - PFE
+  - - analysis
+    - SA-PFE-2025-001
+  - - catalyst
+    - contrarian-value
+  - - sector
+    - Healthcare
+  - - industry
+    - Pharmaceuticals
   relations:
-    - [this, analyzes, PFE]
-    - [this, catalyst_type, contrarian-value]
-    - [PFE, in_sector, Healthcare]
-    - [PFE, in_industry, Pharmaceuticals]
-
+  - - this
+    - analyzes
+    - PFE
+  - - this
+    - catalyst_type
+    - contrarian-value
+  - - PFE
+    - in_sector
+    - Healthcare
+  - - PFE
+    - in_industry
+    - Pharmaceuticals
 _links: {}
+data_quality:
+  sources_checked: []
+  data_freshness:
+    price_data: null
+    fundamentals: null
+    news: null
+  concerns: null
+  recommendations: null
+news_age_check:
+  oldest_news_used: null
+  age_days: null
+  acceptable: null
+  concerns: null
+post_mortem:
+  prior_analyses_found: 0
+  analyses_reviewed: []
+  accuracy_summary: null
+  lessons_learned: null
+  adjustments_made: null
+expectations_assessment:
+  bar_level: null
+  reasoning: null
+  what_beats_expectations: null
+  what_disappoints: null
+bear_case_analysis:
+  summary: null
+  strength: null
+  arguments: []
+  strongest_argument: null
+  why_bull_wins: null
+  conditions_where_bear_wins: null
+threat_assessment:
+  structural_threats: []
+  cyclical_risks: []
+  execution_risks: []
+  summary: null
+thesis_reversal:
+  current_thesis_direction: null
+  would_change_thesis: null
+  reversal_triggers: null
+bias_check:
+  biases_detected: []
+  pre_exit_gate:
+    thesis_intact: null
+    catalyst_pending: null
+    exit_reason: null
+    gate_result: null
+  countermeasures_applied: []
+  estimated_cost_total: null
+do_nothing_gate:
+  criteria:
+    ev_positive: null
+    confidence_above_60: null
+    rr_above_2: null
+    edge_exists: null
+  pass: null
+  pass_reasoning: null
+falsification:
+  conditions: []
+  thesis_invalid_if: null
+alert_levels:
+  warning_triggers: null
+  exit_triggers: null
+alternative_strategies: []
+trade_plan:
+  entry_criteria: null
+  entry_price: null
+  position_size_pct: null
+  position_sizing_rationale: null
+  stop_loss: null
+  target_1: null
+  target_2: null
+  exit_criteria: null
+  max_holding_days: null
+summary:
+  thesis_summary: null
+  key_risk: null
+  action: null
+meta_learning:
+  patterns_applied: []
+  rules_tested: []
+  new_learning:
+    learning: null
+    learning_type: null
+    validation_criteria: null
+    creates_learning_file: false
+_indexing:
+  rag_embed_fields: []
+  graph_extract_fields: []

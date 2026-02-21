@@ -1,7 +1,8 @@
 # Trading Knowledge Graph — Architecture Plan
 
 > **Status**: Implemented
-> **Last updated**: 2026-02-20
+> **Last updated**: 2026-02-21
+> **Skills Version**: v2.3 (stock-analysis, earnings-analysis), v2.1 (other skills)
 > **Replaces**: LightRAG (extraction timeouts with local Ollama models)
 > **Companions**: [TRADING_RAG_ARCHITECTURE.md](TRADING_RAG_ARCHITECTURE.md) (semantic search), [SCANNER_ARCHITECTURE.md](SCANNER_ARCHITECTURE.md) (opportunity finding)
 
@@ -267,15 +268,19 @@ processed. Extraction targets by document type:
 
 ### 3.1 Extraction Fields by Doc Type
 
+Fields extracted for knowledge graph are defined in `tradegent/graph/field_mappings.yaml`. Key extraction targets:
+
 | Doc Type | Text Fields to Extract From |
 |----------|-----------------------------|
-| **earnings-analysis** | `customer_demand.customers[].key_quote`, `competitive_context.*`, `steel_man.bear_case`, `recent_developments[].event`, thesis fields |
-| **stock-analysis** | `thesis.detailed`, `catalyst.description`, `what_is_priced_in.*`, `bias_checks.*.analysis`, `decision_rationale` |
-| **research** | `key_finding`, `data_points[].quote`, `data_points[].implication`, `risks[].risk`, `risks[].mitigation` |
-| **ticker-profile** | `company.description`, `what_works[]`, `watch_out_for[].risk`, `notes[].note`, `trading_patterns.*` |
-| **trade-journal** | `thesis.summary`, `thesis.edge`, `what_worked[]`, `what_failed[]`, `lessons[]`, `biases_detected[].impact` |
+| **stock-analysis** (v2.3) | `catalyst.description`, `bear_case_analysis.*` (arguments, why_bull_wins), `bias_check.*` (biases_detected, countermeasures, pre_exit_gate), `do_nothing_gate.*`, `falsification.*`, `threat_assessment.*`, `thesis_reversal.*`, `scenarios.*` (4 scenarios), `alert_levels.*`, `trade_plan.*`, `summary.*`, `meta_learning.*` |
+| **earnings-analysis** (v2.3) | `customer_demand.customers[].key_quote`, `competitive_context.*`, `historical_moves.*`, `news_age_check.*`, `expectations_assessment.*`, `bear_case_analysis.*`, `bias_check.*`, `falsification.*`, `meta_learning.*`, `steel_man.bear_case`, `recent_developments[].event` |
+| **research-analysis** (v2.1) | `thesis.*`, `counter_thesis.*` (steel-manned), `bias_check.*`, `supporting_arguments[]`, `sources[]`, `implications.*` |
+| **watchlist** (v2.1) | `thesis.*` (summary, reasoning, why_not_now), `conviction.*` (level, conditions), `analysis_quality_check.*`, `entry_trigger.*`, `invalidation.*` |
+| **trade-journal** (v2.1) | `pre_trade_checklist.*`, `thesis.*`, `psychological_state.*` (entry/exit), `decision_quality.*`, `loss_aversion_check.*` (pre_exit_gate), `during_trade.real_time_notes[]` |
+| **post-trade-review** (v2.1) | `data_source_effectiveness[]`, `bias_review[]` (with costs), `countermeasures_needed[]`, `rule_validation.*`, `comparison_to_similar_trades[]`, `lessons[]` |
+| **ticker-profile** (v2.1) | `company.*`, `analysis_track_record.*`, `bias_history.*` (costs, countermeasures), `known_risks.*` (structural, cyclical), `learned_patterns[]`, `your_edge.*` |
 | **strategy** | `overview.description`, `edge_source`, `known_weaknesses[].weakness`, `known_weaknesses[].countermeasure` |
-| **learning** | `pattern.description`, `pattern.behavior`, `root_cause.*`, `countermeasure.rule`, `evidence.observations[]` |
+| **learning** (v2.1) | `pattern.*`, `root_cause.*`, `countermeasure.*` (rule, implementation, mantra), `validation.*`, `evidence.observations[]` |
 
 ### 3.2 Processing Approach
 
@@ -578,12 +583,17 @@ After saving the analysis file:
 3. Push extracted entities/relations to Neo4j via graph/layer.py
 ```
 
-Skills that trigger extraction:
-- `earnings-analysis` → Ticker, Company, EarningsEvent, Catalyst, Product
-- `stock-analysis` → Ticker, Catalyst, Sector, Industry, Pattern
-- `research-analysis` → Company, Product, MacroEvent, Risk
-- `trade-journal` → Trade, Bias, Pattern, Strategy
-- `post-trade-review` → Learning, Bias, Strategy updates
+Skills that trigger extraction (v2.3):
+
+| Skill | Entity Types Extracted | Key v2.3 Additions |
+|-------|----------------------|-------------------|
+| `stock-analysis` | Ticker, Catalyst, Sector, Industry, Pattern, Risk, Signal, Strategy | Bear case arguments, bias countermeasures, falsification conditions, threat assessments, meta-learnings |
+| `earnings-analysis` | Ticker, Company, EarningsEvent, Catalyst, Product, Pattern | Historical move patterns, expectations assessment, bear case analysis, bias countermeasures |
+| `research-analysis` | Company, Product, MacroEvent, Risk, Sector | Counter-thesis arguments, bias check notes |
+| `trade-journal` | Trade, Bias, Pattern, Strategy, Signal | Pre-exit gate results, psychological state, decision quality grades |
+| `post-trade-review` | Learning, Bias, Strategy, Pattern | Data source effectiveness, countermeasure rules, rule validation status |
+| `ticker-profile` | Ticker, Company, Sector, Risk, Pattern, Bias, Strategy | Analysis track record, bias history with costs, learned patterns, known risks |
+| `watchlist` | Ticker, Catalyst, Pattern | Conviction conditions, thesis reasoning |
 
 ### 6.3 Python API (Direct Import)
 

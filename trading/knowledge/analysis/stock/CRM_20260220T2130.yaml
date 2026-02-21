@@ -1,200 +1,158 @@
-# Stock Analysis: CRM (Salesforce)
-# Output: knowledge/analysis/stock/CRM_20260220T2130.yaml
-
 _meta:
-  id: "CRM_20260220T2130"
+  id: CRM_20260220T2130
   type: stock-analysis
-  version: 1
-  created: "2026-02-20T21:30:00Z"
-  status: "active"
-
-ticker: "CRM"
+  version: '2.3'
+  created: '2026-02-20T21:30:00Z'
+  status: active
+  migrated_at: '2026-02-21T11:14:27.725737'
+  migrated_from: 1
+ticker: CRM
 current_price: 187.79
-analysis_date: "2026-02-20"
-analysis_type: "momentum"
-
-# Phase 1: Catalyst
+analysis_date: '2026-02-20'
+analysis_type: momentum
 catalyst:
-  type: "momentum"
-  description: "Agentforce AI platform showing explosive growth - ARR +330% YoY, 9,500+ paid deals, combined Agentforce+Data360 ARR at $1.4B. FY26 revenue guidance raised to $41.45-41.55B. Q4 earnings expected late February."
-  specificity: "high"
-  timing: "near_term"
+  type: momentum
+  description: Agentforce AI platform showing explosive growth - ARR +330% YoY, 9,500+ paid deals, combined Agentforce+Data360
+    ARR at $1.4B. FY26 revenue guidance raised to $41.45-41.55B. Q4 earnings expected late February.
+  specificity: high
+  timing: near_term
   catalyst_score: 7
-
-# Phase 2: Market Environment
 market_environment:
-  regime: "bull_pullback"
-  sector: "Technology"
-  sector_trend: "lagging"
-  vix_level: 18.0  # estimated normal range
-  vix_environment: "normal"
+  regime: bull_pullback
+  sector: Technology
+  sector_trend: lagging
+  vix_level: 18.0
+  vix_environment: normal
   environment_score: 5
-
-# Phase 3: Technical Analysis
 technical:
   trend:
-    primary_weekly: "down"
-    intermediate_daily: "down"
-    short_term: "sideways"
-
+    primary_weekly: down
+    intermediate_daily: down
+    short_term: sideways
   moving_averages:
-    vs_20d: "below"
-    vs_50d: "below"
-    vs_200d: "below"
-    alignment: "bearish"
-
+    vs_20d: below
+    vs_50d: below
+    vs_200d: below
+    alignment: bearish
   patterns:
-    pattern_identified: "Distribution / Absorption at $225 pivot"
-    completion_status: "forming"
-    measured_target: 165.00
-
+    pattern_identified: Distribution / Absorption at $225 pivot
+    completion_status: forming
+    measured_target: 165.0
   key_levels:
-    immediate_support: 185.00
-    immediate_resistance: 221.00
-    major_support: 165.00
-    major_resistance: 250.00
-
+    immediate_support: 185.0
+    immediate_resistance: 221.0
+    major_support: 165.0
+    major_resistance: 250.0
   volume:
-    trend: "stable"
-    vs_average: "at"
-
+    trend: stable
+    vs_average: at
   momentum:
     rsi: 51
-    rsi_trend: "flat"
-    relative_strength_vs_spy: "underperforming"
-
+    rsi_trend: flat
+    relative_strength_vs_spy: underperforming
   technical_score: 4
-
-# Phase 4: Fundamentals
 fundamentals:
   valuation:
-    pe_ratio: 23.00
-    pe_vs_peers: "fair"
-    pe_vs_history: "cheap"
+    pe_ratio: 23.0
+    pe_vs_peers: fair
+    pe_vs_history: cheap
     ps_ratio: 4.5
-
   growth:
     revenue_growth_yoy: 9.5
     earnings_growth_yoy: 12.0
-    trajectory: "accelerating"
-
+    trajectory: accelerating
   quality:
     profit_margin: 21.0
     roe: 8.5
-    free_cash_flow: 8800000000.0  # ~$8.8B annual
+    free_cash_flow: 8800000000.0
     debt_to_equity: 0.15
-
   insider_activity:
     recent_buys: 0
     recent_sells: 0
-    net_direction: "neutral"
-
+    net_direction: neutral
   red_flags:
     declining_revenue: false
     rising_debt: false
     insider_selling: false
     accounting_concerns: false
-
   fundamental_score: 8
-
-# Phase 5: Sentiment
 sentiment:
   analyst:
     buy: 29
     hold: 9
     sell: 1
-    avg_target: 319.00
-    recent_changes: "mixed"
-
+    avg_target: 319.0
+    recent_changes: mixed
   short_interest:
     pct_float: 1.5
     days_to_cover: 2.0
-    trend: "stable"
-
+    trend: stable
   options:
     put_call_ratio: 0.85
-    unusual_flow: "none"
-
+    unusual_flow: none
   contrarian_signal: true
   sentiment_score: 7
-
-# Phase 6: Scenarios
 scenarios:
   bull_case:
-    probability: 0.30
-    description: "Q4 earnings beat with Agentforce acceleration, guidance raise, AI narrative shift"
-    target_price: 250.00
+    probability: 0.3
+    description: Q4 earnings beat with Agentforce acceleration, guidance raise, AI narrative shift
+    target_price: 250.0
     return_pct: 33.0
     timeline_days: 45
-    key_driver: "AI monetization inflection recognized by market"
-
+    key_driver: AI monetization inflection recognized by market
   base_case:
     probability: 0.45
-    description: "Q4 inline with guidance, gradual technical recovery, sector rotation stabilizes"
-    target_price: 215.00
+    description: Q4 inline with guidance, gradual technical recovery, sector rotation stabilizes
+    target_price: 215.0
     return_pct: 14.0
     timeline_days: 75
-    key_driver: "Mean reversion as fundamentals acknowledged"
-
+    key_driver: Mean reversion as fundamentals acknowledged
   bear_case:
     probability: 0.25
-    description: "Macro deterioration, tech selloff continues, growth compression"
-    target_price: 165.00
+    description: Macro deterioration, tech selloff continues, growth compression
+    target_price: 165.0
     return_pct: -12.0
     timeline_days: 45
-    key_driver: "Risk-off intensifies, multiple compression"
-
+    key_driver: Risk-off intensifies, multiple compression
   expected_value: 13.2
-
-# Phase 7: Risk Management
 risk_management:
   entry:
-    trigger: "Break above $200 with volume OR bounce at $175 support with reversal"
-    price: 188.00
-    order_type: "limit"
-
+    trigger: Break above $200 with volume OR bounce at $175 support with reversal
+    price: 188.0
+    order_type: limit
   stop_loss:
-    price: 172.00
-    basis: "technical_level"
-    type: "hard"
+    price: 172.0
+    basis: technical_level
+    type: hard
     distance_pct: 8.5
-
   position_size:
     account_risk_pct: 1.5
-    dollar_risk: 16.00  # per share
-    shares: 0  # calculate at entry
-    position_value: 0.00
-    portfolio_pct: 4.0  # reduced from 6% max due to technical weakness
-
+    dollar_risk: 16.0
+    shares: 0
+    position_value: 0.0
+    portfolio_pct: 4.0
   risk_reward:
-    risk_dollars: 16.00
+    risk_dollars: 16.0
     risk_pct: 8.5
-    reward_dollars: 27.00
+    reward_dollars: 27.0
     reward_pct: 14.0
     ratio: 1.7
-
   targets:
-    target_1: 215.00
+    target_1: 215.0
     target_1_sell_pct: 50
-    target_2: 250.00
+    target_2: 250.0
     target_2_sell_pct: 50
-
   time_stop:
     days: 45
-    action: "reevaluate if no breakout above $200"
-
-# Scoring & Recommendation
+    action: reevaluate if no breakout above $200
 scoring:
-  catalyst_score: 1.75  # 7 * 0.25
-  environment_score: 0.75  # 5 * 0.15
-  technical_score: 1.00  # 4 * 0.25
-  risk_reward_score: 1.75  # 7 * 0.25
-  sentiment_score: 0.70  # 7 * 0.10
-
-  weighted_total: 5.95  # Out of 10
-
-recommendation: "WATCH"
-
+  catalyst_score: 1.75
+  environment_score: 0.75
+  technical_score: 1.0
+  risk_reward_score: 1.75
+  sentiment_score: 0.7
+  weighted_total: 5.95
+recommendation: WATCH
 rationale: |
   CRM has compelling fundamentals with Agentforce AI momentum (330% ARR growth),
   strong cash flow, and significant upside to analyst targets ($319 avg vs $188 current).
@@ -202,11 +160,98 @@ rationale: |
   24 bearish indicators) and sector rotation headwinds (XLK -3% YTD) create unfavorable
   entry timing. Score of 5.95/10 falls in WATCH zone. Wait for technical confirmation
   before initiating position.
-
-watchlist_trigger: "Break and close above $200 with above-average volume, OR successful test of $170-175 support with reversal candle pattern"
-
-# Links
+watchlist_trigger: Break and close above $200 with above-average volume, OR successful test of $170-175 support with reversal
+  candle pattern
 _links:
-  trade_journal: ""
-  post_review: ""
-  ticker_profile: ""
+  trade_journal: ''
+  post_review: ''
+  ticker_profile: ''
+data_quality:
+  sources_checked: []
+  data_freshness:
+    price_data: null
+    fundamentals: null
+    news: null
+  concerns: null
+  recommendations: null
+news_age_check:
+  oldest_news_used: null
+  age_days: null
+  acceptable: null
+  concerns: null
+post_mortem:
+  prior_analyses_found: 0
+  analyses_reviewed: []
+  accuracy_summary: null
+  lessons_learned: null
+  adjustments_made: null
+expectations_assessment:
+  bar_level: null
+  reasoning: null
+  what_beats_expectations: null
+  what_disappoints: null
+bear_case_analysis:
+  summary: null
+  strength: null
+  arguments: []
+  strongest_argument: null
+  why_bull_wins: null
+  conditions_where_bear_wins: null
+threat_assessment:
+  structural_threats: []
+  cyclical_risks: []
+  execution_risks: []
+  summary: null
+thesis_reversal:
+  current_thesis_direction: null
+  would_change_thesis: null
+  reversal_triggers: null
+bias_check:
+  biases_detected: []
+  pre_exit_gate:
+    thesis_intact: null
+    catalyst_pending: null
+    exit_reason: null
+    gate_result: null
+  countermeasures_applied: []
+  estimated_cost_total: null
+do_nothing_gate:
+  criteria:
+    ev_positive: null
+    confidence_above_60: null
+    rr_above_2: null
+    edge_exists: null
+  pass: null
+  pass_reasoning: null
+falsification:
+  conditions: []
+  thesis_invalid_if: null
+alert_levels:
+  warning_triggers: null
+  exit_triggers: null
+alternative_strategies: []
+trade_plan:
+  entry_criteria: null
+  entry_price: null
+  position_size_pct: null
+  position_sizing_rationale: null
+  stop_loss: null
+  target_1: null
+  target_2: null
+  exit_criteria: null
+  max_holding_days: null
+summary:
+  thesis_summary: null
+  key_risk: null
+  action: null
+meta_learning:
+  patterns_applied: []
+  rules_tested: []
+  new_learning:
+    learning: null
+    learning_type: null
+    validation_criteria: null
+    creates_learning_file: false
+_indexing:
+  rag_embed_fields: []
+  graph_extract_fields: []

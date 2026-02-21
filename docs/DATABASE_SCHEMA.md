@@ -1,5 +1,8 @@
 # Database Schema Reference
 
+> **Last Updated**: 2026-02-21
+> **PostgreSQL Version**: 17 with pgvector 0.8.1
+
 TradegentSwarm uses PostgreSQL with the `nexus` schema for all platform data. This document provides a complete reference for the database structure.
 
 ## Schema Overview
@@ -13,8 +16,15 @@ nexus schema
 ├── analysis_results    # Structured analysis outputs
 ├── settings            # Hot-reloadable key-value settings
 ├── service_status      # Service health and metrics
-└── audit_log           # Security audit trail
+├── audit_log           # Security audit trail
+│
+├── rag_documents       # RAG: Embedded document registry
+├── rag_chunks          # RAG: Document chunks with embeddings (pgvector)
+└── rag_embed_log       # RAG: Embedding operation audit
 ```
+
+**Extensions:**
+- `vector` (pgvector) - Vector similarity search for RAG embeddings
 
 ## Entity Relationship Diagram
 
@@ -519,6 +529,123 @@ UPDATE nexus.settings
 SET value = 'false'::jsonb
 WHERE key = 'dry_run_mode';
 ```
+
+---
+
+---
+
+## RAG Tables (pgvector)
+
+The RAG subsystem uses pgvector for semantic search across trading documents.
+
+### nexus.rag_documents
+
+**Purpose:** Registry of all embedded documents.
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| `id` | SERIAL | NO | auto | Primary key |
+| `doc_id` | VARCHAR(100) | NO | — | Document ID from _meta.id (unique) |
+| `file_path` | VARCHAR(500) | NO | — | Relative path from project root |
+| `doc_type` | VARCHAR(50) | NO | — | stock-analysis, earnings-analysis, etc. |
+| `ticker` | VARCHAR(10) | YES | — | Primary ticker (NULL for research/macro) |
+| `doc_date` | DATE | YES | — | Analysis/trade date |
+| `quarter` | VARCHAR(20) | YES | — | Q4-FY2025 (for earnings) |
+| `chunk_count` | INTEGER | NO | 0 | Number of chunks |
+| `embed_version` | VARCHAR(20) | NO | '1.0.0' | Chunking/prompt version |
+| `embed_model` | VARCHAR(50) | NO | 'text-embedding-3-large' | Model used |
+| `file_hash` | VARCHAR(64) | YES | — | SHA-256 (detect changes) |
+| `tags` | TEXT[] | YES | — | From _meta or inferred |
+| `created_at` | TIMESTAMPTZ | NO | now() | Record created |
+| `updated_at` | TIMESTAMPTZ | NO | now() | Last modified |
+
+**Indexes:**
+- `idx_rag_docs_type` - On `doc_type`
+- `idx_rag_docs_ticker` - On `ticker`
+- `idx_rag_docs_date` - On `doc_date`
+- `idx_rag_docs_tags` - GIN on `tags`
+
+---
+
+### nexus.rag_chunks
+
+**Purpose:** Document chunks with vector embeddings for semantic search.
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| `id` | BIGSERIAL | NO | auto | Primary key |
+| `doc_id` | INTEGER | NO | — | FK to rag_documents |
+| `section_path` | VARCHAR(200) | NO | — | YAML key path (e.g., `bear_case_analysis`) |
+| `section_label` | VARCHAR(100) | NO | — | Human-readable label |
+| `chunk_index` | SMALLINT | NO | 0 | For split sections |
+| `content` | TEXT | NO | — | Flattened text |
+| `content_tokens` | INTEGER | YES | — | Approximate token count |
+| `embedding` | vector(1536) | NO | — | OpenAI embedding vector |
+| `doc_type` | VARCHAR(50) | NO | — | Denormalized for filtering |
+| `ticker` | VARCHAR(10) | YES | — | Denormalized for filtering |
+| `doc_date` | DATE | YES | — | Denormalized for filtering |
+| `created_at` | TIMESTAMPTZ | NO | now() | Record created |
+
+**Indexes:**
+- `idx_rag_chunks_embedding` - IVFFlat on `embedding vector_cosine_ops` (lists=50)
+- `idx_rag_chunks_doc` - On `doc_id`
+- `idx_rag_chunks_ticker` - On `ticker`
+- `idx_rag_chunks_type` - On `doc_type`
+- `idx_rag_chunks_section` - On `section_label`
+- `idx_rag_chunks_unique` - UNIQUE on `(doc_id, section_path, chunk_index)`
+
+**Vector Index Tuning:**
+
+| Chunk Count | Index Type | Config |
+|-------------|-----------|--------|
+| < 10,000 | IVFFlat | `lists = 50` |
+| 10,000 – 100,000 | IVFFlat | `lists = 100` |
+| > 100,000 | HNSW | `m = 16, ef_construction = 64` |
+
+**Example Query:**
+```sql
+-- Semantic search for NVDA risk sections
+SELECT c.content, c.section_label, c.doc_date,
+       1 - (c.embedding <=> $1::vector) AS similarity
+FROM nexus.rag_chunks c
+WHERE c.ticker = 'NVDA'
+  AND c.section_label ILIKE '%risk%'
+ORDER BY c.embedding <=> $1::vector
+LIMIT 5;
+```
+
+---
+
+### nexus.rag_embed_log
+
+**Purpose:** Audit trail for embedding operations.
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| `id` | BIGSERIAL | NO | auto | Primary key |
+| `doc_id` | INTEGER | YES | — | FK to rag_documents |
+| `file_path` | VARCHAR(500) | YES | — | File processed |
+| `action` | VARCHAR(20) | NO | — | 'embed', 'reembed', 'delete' |
+| `chunks_created` | INTEGER | NO | 0 | Chunks written |
+| `duration_ms` | INTEGER | YES | — | Processing time |
+| `embed_model` | VARCHAR(50) | YES | — | Model used |
+| `embed_version` | VARCHAR(20) | YES | — | Version used |
+| `error_message` | TEXT | YES | — | Error if failed |
+| `created_at` | TIMESTAMPTZ | NO | now() | Operation time |
+
+---
+
+### v2.3 Section Coverage
+
+RAG embeddings cover the following v2.3 skill sections:
+
+| Document Type | Key Embedded Sections |
+|---------------|----------------------|
+| **stock-analysis** | bear_case_analysis, bias_check, do_nothing_gate, falsification, scenarios, trade_plan, summary, meta_learning |
+| **earnings-analysis** | historical_moves, expectations_assessment, bear_case_analysis, bias_check, falsification, meta_learning |
+| **trade-journal** | pre_trade_checklist, psychological_state, decision_quality, loss_aversion_check |
+| **post-trade-review** | data_source_effectiveness, countermeasures_needed, rule_validation |
+| **ticker-profile** | analysis_track_record, bias_history, known_risks, learned_patterns |
 
 ---
 

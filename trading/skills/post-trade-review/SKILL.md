@@ -1,7 +1,7 @@
-# Post-Trade Review Skill
+# Post-Trade Review Skill v2.1
 
 ## Purpose
-Analyze completed trades to extract lessons and improve future performance. Closes the learning loop.
+Analyze completed trades to extract lessons, track data source effectiveness, and improve future performance. Closes the learning loop with validated rules.
 
 ## When to Use
 - After every closed trade (win or loss)
@@ -19,9 +19,23 @@ Analyze completed trades to extract lessons and improve future performance. Clos
 
 ---
 
-## Review Framework
+## Review Framework (9 Steps)
 
-### Step 1: Document Facts
+```
+Step 1: Document Facts              → Trade details
+Step 2: Execution Analysis          → Entry/exit quality
+Step 3: Thesis Accuracy             → What was right/wrong
+Step 4: What Worked / Didn't        → Observations
+Step 5: Data Source Effectiveness   → Which sources predicted well
+Step 6: Bias Check Retrospective    → Bias impact with costs
+Step 7: Grade the Trade             → Overall assessment
+Step 8: Extract Lessons             → Patterns and rules
+Step 9: Create Learnings            → Formalize for framework
+```
+
+---
+
+## Step 1: Document Facts
 
 ```
 TRADE FACTS:
@@ -29,7 +43,7 @@ TRADE FACTS:
 □ Direction
 □ Entry date, price
 □ Exit date, price
-□ Holding period
+□ Holding period (days)
 □ Gross P&L
 □ Net P&L
 □ Return %
@@ -40,9 +54,16 @@ ORIGINAL THESIS:
 □ What was the expected timeframe?
 □ What was the target?
 □ What was the stop?
+□ What was the confidence % from analysis?
+
+LINK FILES:
+□ Trade journal file: ___
+□ Analysis file: ___
 ```
 
-### Step 2: Execution Analysis
+---
+
+## Step 2: Execution Analysis
 
 ```
 ENTRY EXECUTION:
@@ -70,6 +91,7 @@ Exit Reason:
 □ Stop hit
 □ Manual - thesis changed
 □ Manual - time stop
+□ Manual - emotional
 □ Manual - other
 
 Followed Plan: Yes / No
@@ -92,7 +114,9 @@ Appropriate for conviction? Yes / No
 Notes: ___
 ```
 
-### Step 3: Thesis Accuracy
+---
+
+## Step 3: Thesis Accuracy
 
 ```
 COMPONENT ANALYSIS:
@@ -117,13 +141,16 @@ Catalyst:
 - Actual:    ___
 - Correct?   Yes / No / Partially
 
+
 FOR EARNINGS TRADES:
 - Customer demand signal: Bullish / Neutral / Bearish
 - Signal accuracy:        Correct / Wrong
 - Beat/miss prediction:   Correct / Wrong
 ```
 
-### Step 4: What Worked / What Didn't
+---
+
+## Step 4: What Worked / What Didn't
 
 ```
 WHAT WORKED:
@@ -145,7 +172,39 @@ MISSED SIGNALS:
 2. ___
 ```
 
-### Step 5: Bias Check Retrospective
+---
+
+## Step 5: Data Source Effectiveness (NEW v2.1)
+
+```
+*** CRITICAL: Track which sources are predictive ***
+
+FOR EACH DATA SOURCE USED IN ANALYSIS:
+
+| Source | Used For | Expected Weight | Actual Predictive | Adjust? |
+|--------|----------|-----------------|-------------------|---------|
+| | | 0.0-1.0 | High/Medium/Low | +/=/- |
+| | | | | |
+| | | | | |
+
+EXAMPLES:
+| Source | Used For | Expected | Actual | Adjust? |
+|--------|----------|----------|--------|---------|
+| Hyperscaler CapEx | Demand signal | 0.3 | High | + |
+| Analyst estimates | EPS prediction | 0.2 | Low | - |
+| Short interest | Sentiment | 0.1 | Medium | = |
+
+SOURCE EFFECTIVENESS SUMMARY:
+What sources were most predictive for this trade?
+What sources led you astray?
+What adjustments will you make for future analyses of this ticker?
+
+This data feeds into ticker-profile and analysis weights.
+```
+
+---
+
+## Step 6: Bias Check Retrospective
 
 ```
 For each bias, score 1-5 (1 = not present, 5 = strongly affected):
@@ -153,29 +212,57 @@ For each bias, score 1-5 (1 = not present, 5 = strongly affected):
 RECENCY BIAS: ___/5
 - Did recent events skew judgment?
 - Notes: ___
+- Estimated cost: $___
 
 CONFIRMATION BIAS: ___/5
 - Did you ignore contrary evidence?
 - Notes: ___
+- Estimated cost: $___
 
 OVERCONFIDENCE: ___/5
 - Were you too certain?
 - Notes: ___
+- Estimated cost: $___
 
 LOSS AVERSION: ___/5
 - Did fear affect decisions?
+- Premature exit? Y/N
 - Notes: ___
+- Estimated cost: $___
+  (For premature exit: What was move AFTER you exited?)
+
+TIMING CONSERVATISM: ___/5
+- Did you wait too long to enter?
+- Notes: ___
+- Estimated cost: $___
 
 ANCHORING: ___/5
 - Were you stuck on a price?
 - Notes: ___
+- Estimated cost: $___
 
 NEW BIASES IDENTIFIED:
-- Bias: ___
-- How it affected trade: ___
+| Bias | How it affected trade | Estimated cost |
+|------|----------------------|----------------|
+| | | $ |
+
+TOTAL BIAS COST ESTIMATE: $___
+
+
+COUNTERMEASURES NEEDED (v2.1):
+For significant biases (score 4+):
+
+| Bias Type | Rule | Implementation | Checklist Addition | Mantra |
+|-----------|------|----------------|-------------------|--------|
+| | | | | |
+
+Example:
+| loss_aversion | If profitable AND thesis intact AND catalyst pending → Hold 50% | Add pre-exit gate | "Don't exit for fear before catalyst" | "The catalyst justified entry" |
 ```
 
-### Step 6: Grade the Trade
+---
+
+## Step 7: Grade the Trade
 
 ```
 COMPONENT GRADES:
@@ -195,7 +282,9 @@ What Would Make This an A?
 ___
 ```
 
-### Step 7: Extract Lessons
+---
+
+## Step 8: Extract Lessons
 
 ```
 PRIMARY LESSON:
@@ -220,31 +309,110 @@ PATTERN TO ADD:
 
 Pattern: ___
 Description: ___
+Trigger conditions:
+  - ___
+  - ___
 Expected outcome: ___
-→ Add to learnings/patterns/
+Historical accuracy: ___% (from this and similar trades)
+→ Add to pattern library? Y/N
 
 
 RULE TO ADD/MODIFY:
 
 Rule: ___
 Reason: ___
-→ Add to learnings/rules/
+Trigger condition: ___
+Applies to: All / Earnings / Technical / Sector-specific / This ticker
+→ Add to framework? Y/N
+
+VALIDATION STATUS (v2.1):
+- Status: Pending / Validated / Rejected
+- Validation criteria:
+  - ___
+- Occurrences tested: ___
+- Results so far: ___
+```
+
+---
+
+## Step 9: Create Learnings (NEW v2.1)
+
+```
+IF PATTERN OR RULE IS SIGNIFICANT:
+
+CREATES LEARNING?
+Learning type: Bias / Pattern / Rule / None
+Learning file: learnings/{type}/{name}.yaml
+Learning ID: ___
+
+LINK TO KNOWLEDGE BASE:
+□ Update ticker-profile with trade result
+□ Update analysis track record (if applicable)
+□ Create learning file (if applicable)
+□ Link similar reviews for pattern analysis
+
+
+COMPARISON TO SIMILAR TRADES (v2.1):
+
+| Past Trade | Similarity | Outcome | Lesson Applied? |
+|------------|------------|---------|-----------------|
+| | | | Y/N |
+
+Did applying past lessons improve this trade?
+What patterns recur?
 ```
 
 ---
 
 ## Template
 
-See `template.yaml` for the output format.
+See `template.yaml` for the output format (v2.1).
 
 ---
 
 ## Quality Checklist
 
+```
+FACTS:
 □ All facts documented accurately
+□ Trade journal and analysis linked
+
+EXECUTION:
 □ Entry and exit graded honestly
+□ Slippage calculated
+□ Plan adherence noted
+
+ANALYSIS:
 □ Thesis accuracy analyzed component by component
+□ What worked / didn't documented
+
+DATA SOURCES:
+□ Source effectiveness tracked
+□ Adjustments noted for future
+
+BIASES:
 □ Bias check completed with scores
-□ Overall grade assigned with rationale
+□ Cost estimates for significant biases
+□ Countermeasures defined for score 4+
+
+GRADES:
+□ All component grades assigned
+□ Overall grade with rationale
+□ "What would make A" answered
+
+LESSONS:
 □ At least one actionable lesson extracted
-□ Lessons linked to knowledge base
+□ Pattern identified (if applicable)
+□ Rule proposed (if applicable)
+□ Validation criteria defined for rules
+
+KNOWLEDGE BASE:
+□ Ticker profile updated
+□ Learning created (if applicable)
+□ Similar trades compared
+```
+
+---
+
+*Skill Version: 2.1*
+*Updated: 2026-02-21*

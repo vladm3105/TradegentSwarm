@@ -1,13 +1,32 @@
-# Ticker Profile Template
+# Ticker Profile Template v2.1
 # Output: knowledge/analysis/ticker-profiles/{TICKER}_{YYYYMMDDTHHMM}.yaml
+#
+# CHANGELOG v2.1:
+# - Added analysis_track_record section
+# - Added prediction_accuracy metrics
+# - Added bias_history tracking
+# - Added learned_patterns section
+# - Added known_risks section
 
 _meta:
   id: "{TICKER}_{YYYYMMDDTHHMM}"
   type: ticker-profile
-  version: 1
+  version: 2.1
   created: "{ISO_DATETIME}"
   updated: "{ISO_DATETIME}"
   status: "active"
+
+  _indexing:
+    rag_embed_fields:
+      - "edge.understanding"
+      - "learned_patterns[].description"
+      - "known_risks[].description"
+    graph_extract_fields:
+      - "ticker"
+      - "company.sector"
+      - "company.industry"
+      - "learned_patterns[].pattern"
+      - "known_risks[].risk"
 
 ticker: "{TICKER}"
 
@@ -21,11 +40,13 @@ company:
   description: ""
   key_products:
     - ""
+  key_competitors:
+    - ""
 
 # Earnings Patterns
 earnings:
   history:
-    - quarter: "Q1 2024"
+    - quarter: "Q4 2025"
       eps_estimate: 0.00
       eps_actual: 0.00
       surprise_pct: 0.00
@@ -34,7 +55,17 @@ earnings:
       reaction_1d_pct: 0.00
       reaction_5d_pct: 0.00
       guidance: "raised|maintained|lowered|none"
-      
+
+    - quarter: "Q3 2025"
+      eps_estimate: 0.00
+      eps_actual: 0.00
+      surprise_pct: 0.00
+      revenue_estimate_b: 0.00
+      revenue_actual_b: 0.00
+      reaction_1d_pct: 0.00
+      reaction_5d_pct: 0.00
+      guidance: "raised|maintained|lowered|none"
+
   patterns:
     beat_rate: 0.00
     avg_surprise_pct: 0.00
@@ -49,31 +80,85 @@ levels:
   all_time_high_date: "{YYYY-MM-DD}"
   fifty_two_week_high: 0.00
   fifty_two_week_low: 0.00
-  
+
   major_support:
     - price: 0.00
       significance: ""
-      
+      tested_count: 0
+
   major_resistance:
     - price: 0.00
       significance: ""
-      
+      tested_count: 0
+
   last_updated: "{YYYY-MM-DD}"
 
 # Your Edge
 edge:
   understanding: |
-    What you know better than consensus
-    
+    {What you know better than consensus}
+
   reliable_signals:
     - signal: ""
       description: ""
-      
+      historical_accuracy: 0.00
+
   common_mistakes:
     - mistake: ""
       lesson: ""
-      
+      occurrences: 0
+
   notes: ""
+
+# ============================================================
+# ANALYSIS TRACK RECORD - NEW v2.1
+# ============================================================
+analysis_track_record:
+  total_analyses: 0
+  earnings_analyses: 0
+  stock_analyses: 0
+
+  # Prediction accuracy
+  prediction_accuracy:
+    direction_correct: 0
+    direction_total: 0
+    direction_accuracy: 0.00
+
+    magnitude_within_50pct: 0
+    magnitude_total: 0
+    magnitude_accuracy: 0.00
+
+    catalyst_correct: 0
+    catalyst_total: 0
+    catalyst_accuracy: 0.00
+
+  # Beat/miss predictions (earnings only)
+  earnings_predictions:
+    beat_predicted_correct: 0
+    beat_predicted_total: 0
+    miss_predicted_correct: 0
+    miss_predicted_total: 0
+    overall_accuracy: 0.00
+
+  # By recommendation type
+  recommendation_performance:
+    strong_buy_count: 0
+    strong_buy_avg_return: 0.00
+    buy_count: 0
+    buy_avg_return: 0.00
+    watch_converted_count: 0
+    avoid_dodged_count: 0
+
+  # Analysis quality trend
+  recent_analyses:
+    - file: ""
+      date: "{YYYY-MM-DD}"
+      recommendation: ""
+      outcome: ""
+      grade: ""
+
+  track_record_summary: |
+    {Summary of prediction accuracy for this ticker}
 
 # Your Trading History
 trading_history:
@@ -83,19 +168,91 @@ trading_history:
   win_rate: 0.00
   total_pnl: 0.00
   avg_return_pct: 0.00
-  
+  avg_holding_days: 0
+
   trades:
     - date: "{YYYY-MM-DD}"
       direction: "long|short"
       return_pct: 0.00
       outcome: "win|loss"
       note: ""
+      review_file: ""
+
+# ============================================================
+# BIAS HISTORY - NEW v2.1
+# ============================================================
+bias_history:
+  total_bias_cost: 0.00
+
+  common_biases:
+    - bias: ""
+      occurrences: 0
+      total_cost: 0.00
+      countermeasure: ""
+      countermeasure_effective: false
+
+  most_costly_bias: ""
+  most_frequent_bias: ""
+
+  bias_summary: |
+    {Pattern of biases with this ticker}
+
+# ============================================================
+# LEARNED PATTERNS - NEW v2.1
+# ============================================================
+learned_patterns:
+  - pattern: ""
+    description: ""
+    trigger_conditions:
+      - ""
+    expected_outcome: ""
+    occurrences: 0
+    success_rate: 0.00
+    source_trades: []
+
+  - pattern: ""
+    description: ""
+    trigger_conditions:
+      - ""
+    expected_outcome: ""
+    occurrences: 0
+    success_rate: 0.00
+    source_trades: []
+
+# ============================================================
+# KNOWN RISKS - NEW v2.1
+# ============================================================
+known_risks:
+  structural:
+    - risk: ""
+      description: ""
+      severity: "high|medium|low"
+      moat_erosion: false
+
+  cyclical:
+    - risk: ""
+      description: ""
+      cycle_phase: ""
+
+  execution:
+    - risk: ""
+      description: ""
+
+  risk_summary: |
+    {Key risks to monitor}
 
 # Key Dates
 calendar:
-  typical_earnings_months: []  # e.g., [1, 4, 7, 10]
+  typical_earnings_months: []
   next_earnings: "{YYYY-MM-DD}"
   dividend_dates: []
   other_events:
     - event: ""
       date: "{YYYY-MM-DD}"
+
+# Links
+_links:
+  analyses: []
+  trades: []
+  reviews: []
+  learnings: []

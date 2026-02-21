@@ -1,137 +1,135 @@
 _meta:
   id: EA-NVDA-Q4-2024
   type: earnings-analysis
-  version: 1
-  created: "2025-01-20T14:30:00Z"
-  updated: "2025-01-20T14:30:00Z"
+  version: '2.3'
+  created: '2025-01-20T14:30:00Z'
+  updated: '2025-01-20T14:30:00Z'
   status: pre-earnings
-  skill_version: "earnings-analysis-v2.0"
-
+  skill_version: earnings-analysis-v2.0
+  migrated_at: '2026-02-21T11:14:27.651856'
+  migrated_from: 1
 ticker: NVDA
-earnings_date: "2025-02-26"
+earnings_date: '2025-02-26'
 quarter: Q4-FY2025
-analysis_date: "2025-01-20"
+analysis_date: '2025-01-20'
 days_to_earnings: 37
-
-# ═══════════════════════════════════════════════════════════════
-# PHASE 1: PRE-ANALYSIS PREPARATION
-# ═══════════════════════════════════════════════════════════════
-
 phase1_preparation:
-  current_price: 138.50
+  current_price: 138.5
   current_iv: 75
   implied_move_pct: 8.5
   consensus_eps: 0.85
   consensus_revenue_b: 38.5
   beat_history:
-    last_8_quarters: [1, 1, 1, 1, 1, 1, 1, 1]  # 1=beat, 0=miss
+    last_8_quarters:
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
     streak: 8
     avg_beat_pct: 10.2
   key_metric: data_center_revenue
   key_metric_consensus_b: 32.5
-
-# ═══════════════════════════════════════════════════════════════
-# PHASE 2: FUNDAMENTAL ANALYSIS
-# ═══════════════════════════════════════════════════════════════
-
 phase2_fundamentals:
-  
-  # 2.1 Business Performance
   business_performance:
     revenue_trend_8q:
-      - {quarter: Q4-FY24, revenue_b: 22.1, yoy_pct: 265}
-      - {quarter: Q1-FY25, revenue_b: 26.0, yoy_pct: 262}
-      - {quarter: Q2-FY25, revenue_b: 30.0, yoy_pct: 122}
-      - {quarter: Q3-FY25, revenue_b: 35.1, yoy_pct: 94}
+    - quarter: Q4-FY24
+      revenue_b: 22.1
+      yoy_pct: 265
+    - quarter: Q1-FY25
+      revenue_b: 26.0
+      yoy_pct: 262
+    - quarter: Q2-FY25
+      revenue_b: 30.0
+      yoy_pct: 122
+    - quarter: Q3-FY25
+      revenue_b: 35.1
+      yoy_pct: 94
     margin_trend:
       gross_margin_current: 75.0
       gross_margin_prior_year: 72.5
       trend: expanding
-      inflection_notes: "Pricing power intact; Blackwell transition may cause temporary dip"
+      inflection_notes: Pricing power intact; Blackwell transition may cause temporary dip
     management_guidance_accuracy:
-      last_4_quarters: [beat, beat, beat, beat]
+      last_4_quarters:
+      - beat
+      - beat
+      - beat
+      - beat
       avg_upside_to_guide_pct: 8.5
       credibility: high
-
-  # 2.2 Competitive Context (SCALE-ADJUSTED per skill)
   competitive_context:
-    comparison_note: "Compare ABSOLUTE DOLLARS, not percentages"
+    comparison_note: Compare ABSOLUTE DOLLARS, not percentages
     nvda_growth:
       revenue_b: 35.1
       growth_pct: 94
-      absolute_growth_b: 17.0  # $35.1B × 94% prior = $18.1B prior, growth = $17B
+      absolute_growth_b: 17.0
     amd_growth:
       revenue_b: 6.8
       growth_pct: 18
-      absolute_growth_b: 1.0   # $6.8B × 18% = $1.2B growth
-    scale_advantage: "NVDA adding $17B vs AMD adding $1B - 17x more absolute growth"
-
-  # 2.3 Recent Developments (with age decay per skill)
+      absolute_growth_b: 1.0
+    scale_advantage: NVDA adding $17B vs AMD adding $1B - 17x more absolute growth
   recent_developments:
-    - date: "2025-01-18"
-      age_days: 2
-      weight: full
-      event: "Microsoft announced $80B 2025 capex, +25% YoY"
-      impact: bullish
-    - date: "2025-01-15"
-      age_days: 5
-      weight: half
-      event: "Reports of Blackwell supply constraints easing"
-      impact: bullish
-    - date: "2025-01-10"
-      age_days: 10
-      weight: likely_priced_in
-      event: "CES announcements - new gaming GPUs"
-      impact: neutral
-    - date: "2024-12-20"
-      age_days: 31
-      weight: definitely_priced_in
-      event: "China export restriction concerns"
-      impact: priced_in
-
-  # 2.4 Customer Demand Analysis (50% WEIGHT - YOUR EDGE)
+  - date: '2025-01-18'
+    age_days: 2
+    weight: full
+    event: Microsoft announced $80B 2025 capex, +25% YoY
+    impact: bullish
+  - date: '2025-01-15'
+    age_days: 5
+    weight: half
+    event: Reports of Blackwell supply constraints easing
+    impact: bullish
+  - date: '2025-01-10'
+    age_days: 10
+    weight: likely_priced_in
+    event: CES announcements - new gaming GPUs
+    impact: neutral
+  - date: '2024-12-20'
+    age_days: 31
+    weight: definitely_priced_in
+    event: China export restriction concerns
+    impact: priced_in
   customer_demand:
-    weight: 0.50
-    methodology: "Extracted capex/spending guidance from major customer earnings transcripts"
-    analysis_window: "6-8 weeks before NVDA earnings"
-    
+    weight: 0.5
+    methodology: Extracted capex/spending guidance from major customer earnings transcripts
+    analysis_window: 6-8 weeks before NVDA earnings
     customers:
-      - company: Microsoft
-        earnings_date: "2025-01-28"
-        capex_2025_b: 80
-        capex_2024_b: 64
-        yoy_change_pct: 25
-        ai_allocation_pct: 60
-        key_quote: "Demand for AI infrastructure continues to exceed our available capacity"
-        signal: very_bullish
-        
-      - company: Google
-        earnings_date: "2025-02-04"
-        capex_2025_b: 52
-        capex_2024_b: 43
-        yoy_change_pct: 21
-        ai_allocation_pct: 50
-        key_quote: "We would rather over-invest in AI infrastructure than under-invest"
-        signal: bullish
-        
-      - company: Amazon
-        earnings_date: "2025-02-06"
-        capex_2025_b: 48
-        capex_2024_b: 39
-        yoy_change_pct: 23
-        ai_allocation_pct: 45
-        key_quote: "AWS seeing strong enterprise demand for AI workloads"
-        signal: bullish
-        
-      - company: Meta
-        earnings_date: "2025-02-01"
-        capex_2025_b: 40
-        capex_2024_b: 31
-        yoy_change_pct: 29
-        ai_allocation_pct: 70
-        key_quote: "AI is the priority investment for the foreseeable future"
-        signal: very_bullish
-
+    - company: Microsoft
+      earnings_date: '2025-01-28'
+      capex_2025_b: 80
+      capex_2024_b: 64
+      yoy_change_pct: 25
+      ai_allocation_pct: 60
+      key_quote: Demand for AI infrastructure continues to exceed our available capacity
+      signal: very_bullish
+    - company: Google
+      earnings_date: '2025-02-04'
+      capex_2025_b: 52
+      capex_2024_b: 43
+      yoy_change_pct: 21
+      ai_allocation_pct: 50
+      key_quote: We would rather over-invest in AI infrastructure than under-invest
+      signal: bullish
+    - company: Amazon
+      earnings_date: '2025-02-06'
+      capex_2025_b: 48
+      capex_2024_b: 39
+      yoy_change_pct: 23
+      ai_allocation_pct: 45
+      key_quote: AWS seeing strong enterprise demand for AI workloads
+      signal: bullish
+    - company: Meta
+      earnings_date: '2025-02-01'
+      capex_2025_b: 40
+      capex_2024_b: 31
+      yoy_change_pct: 29
+      ai_allocation_pct: 70
+      key_quote: AI is the priority investment for the foreseeable future
+      signal: very_bullish
     aggregate:
       total_2025_capex_b: 220
       total_2024_capex_b: 177
@@ -139,351 +137,328 @@ phase2_fundamentals:
       all_raising_guidance: true
       signal: very_bullish
       confidence: 0.85
-
-# ═══════════════════════════════════════════════════════════════
-# PHASE 3: TECHNICAL ANALYSIS (FOR TIMING ONLY - 5% weight)
-# ═══════════════════════════════════════════════════════════════
-
 phase3_technical:
   weight: 0.05
-  purpose: "Entry TIMING only, not directional prediction"
-  
+  purpose: Entry TIMING only, not directional prediction
   support_levels:
-    - price: 135
-      significance: "50-day MA, minor support"
-      distance_pct: -2.5
-    - price: 125
-      significance: "200-day MA, major support"
-      distance_pct: -9.7
-      
+  - price: 135
+    significance: 50-day MA, minor support
+    distance_pct: -2.5
+  - price: 125
+    significance: 200-day MA, major support
+    distance_pct: -9.7
   resistance_levels:
-    - price: 150
-      significance: "Psychological level"
-    - price: 152
-      significance: "All-time high"
-      
+  - price: 150
+    significance: Psychological level
+  - price: 152
+    significance: All-time high
   indicators:
     bullish_count: 6
     bearish_count: 3
-    alignment_pct: 67  # Not >80%, so not a strong signal
-    
+    alignment_pct: 67
   recent_price_action:
     decline_from_high_pct: 8.2
     days_declining: 12
-    
-  key_insight: "Technical weakness + strong fundamentals = OPPORTUNITY per skill"
-  entry_signal: "Price at $138.50, declining toward $135 support = entry zone"
-
-# ═══════════════════════════════════════════════════════════════
-# PHASE 4: SENTIMENT AND POSITIONING
-# ═══════════════════════════════════════════════════════════════
-
+  key_insight: Technical weakness + strong fundamentals = OPPORTUNITY per skill
+  entry_signal: Price at $138.50, declining toward $135 support = entry zone
 phase4_sentiment:
-  
   analyst_consensus:
     buy_pct: 85
     hold_pct: 12
     sell_pct: 3
     avg_price_target: 165
     upside_to_target_pct: 19
-    
   institutional_ownership:
     current_pct: 68
     change_last_quarter_pct: 2.1
     direction: accumulation
-    
   short_interest:
     current_pct: 1.2
     days_to_cover: 0.8
     trend: decreasing
     squeeze_potential: low
-    
   media_sentiment:
     positive_mentions: 45
     negative_mentions: 18
     ratio: 2.5
-    dominant_narrative: "AI infrastructure leader but valuation concerns"
-    
+    dominant_narrative: AI infrastructure leader but valuation concerns
   bias_check:
-    note: "Negative headlines ≠ negative earnings"
-    media_vs_fundamentals: "Media focused on valuation; fundamentals show demand exceeding supply"
-
-# ═══════════════════════════════════════════════════════════════
-# PHASE 5: PROBABILITY-WEIGHTED ASSESSMENT
-# ═══════════════════════════════════════════════════════════════
-
+    note: Negative headlines ≠ negative earnings
+    media_vs_fundamentals: Media focused on valuation; fundamentals show demand exceeding supply
 phase5_probability:
-  
   scenarios:
-    - name: strong_beat
-      description: "Data center revenue >$34B, strong Blackwell commentary"
-      probability: 0.45
-      key_metric_outcome: ">$34B DC revenue (vs $32.5B consensus)"
-      expected_move_pct: 12
-      contribution_to_ev: 5.4  # 0.45 × 12
-      triggers:
-        - "DC revenue beats by >5%"
-        - "Gross margin holds >74%"
-        - "Blackwell ramp ahead of schedule"
-        
-    - name: modest_beat
-      description: "In-line to slight beat, meets expectations"
-      probability: 0.35
-      key_metric_outcome: "$32-34B DC revenue"
-      expected_move_pct: 3
-      contribution_to_ev: 1.05  # 0.35 × 3
-      triggers:
-        - "DC revenue +/- 3% of consensus"
-        - "Guidance in-line"
-        
-    - name: miss_disappoint
-      description: "Miss on DC revenue or weak guidance"
-      probability: 0.20
-      key_metric_outcome: "<$32B DC revenue or weak guide"
-      expected_move_pct: -12
-      contribution_to_ev: -2.4  # 0.20 × -12
-      triggers:
-        - "DC revenue misses"
-        - "Blackwell delays"
-        - "Margin compression"
-        
-  expected_value_pct: 4.05  # Sum of contributions: 5.4 + 1.05 - 2.4 = 4.05
-  
-  probability_sum_check: 1.0  # 0.45 + 0.35 + 0.20 = 1.0 ✓
-
-# ═══════════════════════════════════════════════════════════════
-# PHASE 6: RISK ASSESSMENT AND BIAS CHECK
-# ═══════════════════════════════════════════════════════════════
-
+  - name: strong_beat
+    description: Data center revenue >$34B, strong Blackwell commentary
+    probability: 0.45
+    key_metric_outcome: '>$34B DC revenue (vs $32.5B consensus)'
+    expected_move_pct: 12
+    contribution_to_ev: 5.4
+    triggers:
+    - DC revenue beats by >5%
+    - Gross margin holds >74%
+    - Blackwell ramp ahead of schedule
+  - name: modest_beat
+    description: In-line to slight beat, meets expectations
+    probability: 0.35
+    key_metric_outcome: $32-34B DC revenue
+    expected_move_pct: 3
+    contribution_to_ev: 1.05
+    triggers:
+    - DC revenue +/- 3% of consensus
+    - Guidance in-line
+  - name: miss_disappoint
+    description: Miss on DC revenue or weak guidance
+    probability: 0.2
+    key_metric_outcome: <$32B DC revenue or weak guide
+    expected_move_pct: -12
+    contribution_to_ev: -2.4
+    triggers:
+    - DC revenue misses
+    - Blackwell delays
+    - Margin compression
+  expected_value_pct: 4.05
+  probability_sum_check: 1.0
 phase6_risk_and_bias:
-  
-  # Mandatory Bias Checks (per skill)
   bias_checks:
     recency:
       status: pass
-      check: "Am I overweighting recent news?"
-      analysis: "Recent 8% decline is technical, not fundamental. Customer demand signals from Jan are fresh and bullish. Not overweighting the price decline."
-      
+      check: Am I overweighting recent news?
+      analysis: Recent 8% decline is technical, not fundamental. Customer demand signals from Jan are fresh and bullish. Not
+        overweighting the price decline.
     confirmation:
       status: pass
-      check: "Have I sought contradicting evidence?"
-      analysis: "Actively sought bear case: valuation at 35x forward, China exposure ~20%, potential margin compression from Blackwell transition. These are real but manageable risks."
-      
+      check: Have I sought contradicting evidence?
+      analysis: 'Actively sought bear case: valuation at 35x forward, China exposure ~20%, potential margin compression from
+        Blackwell transition. These are real but manageable risks.'
     timing_conservatism:
       status: pass
-      check: "Am I waiting for 'confirmation' when conviction >70%?"
-      analysis: "Conviction is 72%. Stock is declining. Per skill: this is ENTRY SIGNAL not warning. Planning to enter at $135-138 support zone NOW, not wait."
-      
+      check: Am I waiting for 'confirmation' when conviction >70%?
+      analysis: 'Conviction is 72%. Stock is declining. Per skill: this is ENTRY SIGNAL not warning. Planning to enter at
+        $135-138 support zone NOW, not wait.'
     anchoring:
       status: pass
-      check: "Am I fixated on arbitrary price targets?"
-      analysis: "Entry based on support levels ($135), not arbitrary round numbers. Stop based on technical invalidation ($128), not arbitrary %."
-      
-  # Steel-Man Exercise (per skill)
+      check: Am I fixated on arbitrary price targets?
+      analysis: Entry based on support levels ($135), not arbitrary round numbers. Stop based on technical invalidation ($128),
+        not arbitrary %.
   steel_man:
-    bear_case: |
-      STRONGEST argument against bullish thesis:
-      
-      1. VALUATION: At 35x forward earnings, NVDA is priced for perfection. Any slight miss 
-         or deceleration could trigger 20%+ correction. Multiples this high historically 
-         contract when growth slows.
-         
-      2. CHINA RISK: ~20% of revenue exposed to export restrictions. Further tightening 
-         could materially impact results. This is binary political risk.
-         
-      3. COMPETITION: AMD gaining share in inference. Google TPUs, Amazon Trainium, 
-         Microsoft Maia all reducing reliance on NVDA. 2-3 year outlook less certain.
-         
-      4. BLACKWELL TRANSITION: Product transitions historically cause margin compression 
-         and execution risk. Q4 could be messy.
-         
+    bear_case: "STRONGEST argument against bullish thesis:\n\n1. VALUATION: At 35x forward earnings, NVDA is priced for perfection.\
+      \ Any slight miss \n   or deceleration could trigger 20%+ correction. Multiples this high historically \n   contract\
+      \ when growth slows.\n   \n2. CHINA RISK: ~20% of revenue exposed to export restrictions. Further tightening \n   could\
+      \ materially impact results. This is binary political risk.\n   \n3. COMPETITION: AMD gaining share in inference. Google\
+      \ TPUs, Amazon Trainium, \n   Microsoft Maia all reducing reliance on NVDA. 2-3 year outlook less certain.\n   \n4.\
+      \ BLACKWELL TRANSITION: Product transitions historically cause margin compression \n   and execution risk. Q4 could\
+      \ be messy.\n   \n"
     can_argue_both_sides: true
-    bias_assessment: "Can articulate bear case with conviction. Not blindly bullish."
-
-# ═══════════════════════════════════════════════════════════════
-# PHASE 7: FINAL DECISION FRAMEWORK
-# ═══════════════════════════════════════════════════════════════
-
+    bias_assessment: Can articulate bear case with conviction. Not blindly bullish.
 phase7_decision:
-  
-  # 7.0 "Do Nothing" Gate (per skill)
   do_nothing_gate:
     expected_value_above_5pct:
       threshold: 5
       actual: 4.05
-      status: warning  # Slightly below 5%, but close
-      
+      status: warning
     confidence_above_60pct:
       threshold: 60
       actual: 72
       status: pass
-      
     risk_reward_above_2to1:
       target_move_pct: 12
-      stop_loss_pct: 7.6  # Entry $138 to stop $128
-      ratio: 1.58  # 12 / 7.6
-      status: warning  # Below 2:1
-      
+      stop_loss_pct: 7.6
+      ratio: 1.58
+      status: warning
     edge_not_priced_in:
       implied_move_pct: 8.5
-      expected_move_pct: 12  # Strong beat scenario
-      status: pass  # Upside exceeds implied move
-      
+      expected_move_pct: 12
+      status: pass
     gate_result: proceed_with_caution
-    gate_notes: "EV slightly below 5% and R:R below 2:1, but conviction high and customer demand edge strong. Proceed with reduced size."
-
-  # 7.1 Position Determination
+    gate_notes: EV slightly below 5% and R:R below 2:1, but conviction high and customer demand edge strong. Proceed with
+      reduced size.
   position_determination:
     confidence: 0.72
-    action_per_framework: "Full directional position (confidence >70%)"
-    adjustment: "Reduce size due to Do Nothing gate warnings"
-    
-  # 7.2 Pre-Earnings Entry Strategy
+    action_per_framework: Full directional position (confidence >70%)
+    adjustment: Reduce size due to Do Nothing gate warnings
   entry_strategy:
-    rule: "Enter during weakness when conviction >70%"
-    current_situation: "Stock declined 8% from high, conviction 72%"
-    action: "Enter NOW at support, not wait for confirmation"
-    
-  # 7.3 Entry via Support Levels
+    rule: Enter during weakness when conviction >70%
+    current_situation: Stock declined 8% from high, conviction 72%
+    action: Enter NOW at support, not wait for confirmation
   entry_levels:
     primary_entry: 138
-    primary_entry_note: "Current price near 50-day MA support"
+    primary_entry_note: Current price near 50-day MA support
     scale_entry: 135
-    scale_entry_note: "Add if drops to stronger support"
+    scale_entry_note: Add if drops to stronger support
     stop_loss: 128
-    stop_loss_note: "Below 200-day MA, thesis invalidated"
+    stop_loss_note: Below 200-day MA, thesis invalidated
     risk_reward_at_primary: 1.58
-    
-  # 7.4 Position Structure (IV-Based per skill)
   position_structure:
-    conviction: 0.72  # >70% but <75%
-    iv_percentile: 75  # >60%
-    recommended_structure: "Bull call spreads"
-    rationale: "High IV makes spreads more attractive than outright calls. Conviction not >75% so not max size."
-    
-  # 7.5 Final Recommendation
+    conviction: 0.72
+    iv_percentile: 75
+    recommended_structure: Bull call spreads
+    rationale: High IV makes spreads more attractive than outright calls. Conviction not >75% so not max size.
   recommendation:
     direction: long
     confidence: 0.72
     entry_price: 138
-    entry_zone: [135, 140]
+    entry_zone:
+    - 135
+    - 140
     target_price: 155
     stop_loss: 128
-    position_size_pct: 3.5  # Reduced from 4% due to gate warnings
+    position_size_pct: 3.5
     structure: bull_call_spread
-    expiration: "March monthly (post-earnings)"
-    specific_trade: "Buy $140 call, sell $160 call, March expiry"
-    max_loss_pct: 1.2  # Of portfolio
-    
-  # 7.6 Falsification Criteria
+    expiration: March monthly (post-earnings)
+    specific_trade: Buy $140 call, sell $160 call, March expiry
+    max_loss_pct: 1.2
   falsification:
     thesis_wrong_if:
-      - "Data center revenue < $30B (vs $32.5B consensus)"
-      - "Gross margin < 70% (vs 75% expected)"
-      - "Blackwell delay announced"
-      - "Major customer (MSFT/GOOGL/AMZN) cuts capex guidance"
+    - Data center revenue < $30B (vs $32.5B consensus)
+    - Gross margin < 70% (vs 75% expected)
+    - Blackwell delay announced
+    - Major customer (MSFT/GOOGL/AMZN) cuts capex guidance
     exit_immediately_if:
-      - "Close below $128 (200-day MA)"
-      - "Any falsification trigger occurs pre-earnings"
-
-# ═══════════════════════════════════════════════════════════════
-# PHASE 8: POST-EARNINGS REVIEW (TO BE COMPLETED AFTER 2/26)
-# ═══════════════════════════════════════════════════════════════
-
+    - Close below $128 (200-day MA)
+    - Any falsification trigger occurs pre-earnings
 phase8_post_earnings:
   status: pending
-  review_scheduled: "2025-02-27"
-  
-  # 8.1 Outcome Documentation (fill after earnings)
+  review_scheduled: '2025-02-27'
   outcome: null
-  
-  # 8.2 Error Analysis (fill after earnings)
   error_analysis: null
-  
-  # 8.3 Entry Timing Assessment (fill after earnings)
   entry_timing: null
-  
-  # 8.4 Data Source Effectiveness (fill after earnings)
   data_source_review: null
-
-# ═══════════════════════════════════════════════════════════════
-# SUMMARY OUTPUT (per skill format)
-# ═══════════════════════════════════════════════════════════════
-
 summary:
-  header: "NVDA EARNINGS ANALYSIS | 2025-01-20 | Earnings: 2025-02-26 | 37 days"
-    
+  header: 'NVDA EARNINGS ANALYSIS | 2025-01-20 | Earnings: 2025-02-26 | 37 days'
   current_setup:
-    price: 138.50
+    price: 138.5
     iv_pct: 75
     implied_move_pct: 8.5
-    beat_history: "8/8"
-    key_metric: "Data Center Revenue"
-    
+    beat_history: 8/8
+    key_metric: Data Center Revenue
   probability_assessment:
-    strong_beat: {prob_pct: 45, move_pct: 12}
-    modest_beat: {prob_pct: 35, move_pct: 3}
-    miss: {prob_pct: 20, move_pct: -12}
+    strong_beat:
+      prob_pct: 45
+      move_pct: 12
+    modest_beat:
+      prob_pct: 35
+      move_pct: 3
+    miss:
+      prob_pct: 20
+      move_pct: -12
     expected_value_pct: 4.05
-    
   recommendation:
     direction: BULLISH
     confidence_pct: 72
-    
   position:
     entry: 138
-    entry_note: "at 50-day MA support"
+    entry_note: at 50-day MA support
     target: 155
     stop_loss: 128
     size_pct: 3.5
-    structure: "Bull call spread ($140/$160 March)"
-    
-  falsification: "Thesis wrong if DC revenue <$30B, margin <70%, or Blackwell delay"
-  
+    structure: Bull call spread ($140/$160 March)
+  falsification: Thesis wrong if DC revenue <$30B, margin <70%, or Blackwell delay
   biases_checked:
     recency: pass
     confirmation: pass
     timing_conservatism: pass
     both_sides_argued: true
-    
-  post_earnings_review: "2025-02-27"
-
-# ═══════════════════════════════════════════════════════════════
-# GRAPH & LINKS
-# ═══════════════════════════════════════════════════════════════
-
+  post_earnings_review: '2025-02-27'
 _graph:
   entities:
-    - [ticker, NVDA]
-    - [event, NVDA-Q4-FY2025-Earnings]
-    - [metric, Data-Center-Revenue]
-    - [strategy, bull-call-spread]
-    - [customer, Microsoft]
-    - [customer, Google]
-    - [customer, Amazon]
-    - [customer, Meta]
+  - - ticker
+    - NVDA
+  - - event
+    - NVDA-Q4-FY2025-Earnings
+  - - metric
+    - Data-Center-Revenue
+  - - strategy
+    - bull-call-spread
+  - - customer
+    - Microsoft
+  - - customer
+    - Google
+  - - customer
+    - Amazon
+  - - customer
+    - Meta
   relations:
-    - [this, analyzes, NVDA]
-    - [this, for_event, NVDA-Q4-FY2025-Earnings]
-    - [NVDA, key_metric, Data-Center-Revenue]
-    - [this, recommends, bull-call-spread]
-    - [this, uses_signal_from, Microsoft]
-    - [this, uses_signal_from, Google]
-    - [this, uses_signal_from, Amazon]
-    - [this, uses_signal_from, Meta]
-
-# Top-level recommendation (required by schema)
+  - - this
+    - analyzes
+    - NVDA
+  - - this
+    - for_event
+    - NVDA-Q4-FY2025-Earnings
+  - - NVDA
+    - key_metric
+    - Data-Center-Revenue
+  - - this
+    - recommends
+    - bull-call-spread
+  - - this
+    - uses_signal_from
+    - Microsoft
+  - - this
+    - uses_signal_from
+    - Google
+  - - this
+    - uses_signal_from
+    - Amazon
+  - - this
+    - uses_signal_from
+    - Meta
 recommendation:
   direction: long
   confidence: 0.72
   entry_price: 138
-  entry_zone: [135, 140]
+  entry_zone:
+  - 135
+  - 140
   target_price: 155
   stop_loss: 128
   position_size_pct: 3.5
   structure: bull_call_spread
-
 _links:
   ticker: analysis/ticker-profiles/2025/01/NVDA_20250110T1000.yaml
   strategy: strategies/earnings-momentum.yaml
   related_research: analysis/research/AI_CAPEX_20250110T0800.yaml
+historical_moves:
+  quarters_analyzed: 8
+  data: []
+  pattern_summary: null
+  expected_range: null
+news_age_check:
+  oldest_news_used: null
+  age_days: null
+  acceptable: null
+  concerns: null
+expectations_assessment:
+  bar_level: null
+  reasoning: null
+  what_beats_expectations: null
+  what_disappoints: null
+bear_case_analysis:
+  summary: null
+  strength: null
+  arguments: []
+  strongest_argument: null
+  why_bull_wins: null
+  conditions_where_bear_wins: null
+bias_check:
+  biases_detected: []
+  pre_exit_gate:
+    thesis_intact: null
+    catalyst_pending: null
+    exit_reason: null
+    gate_result: null
+  countermeasures_applied: []
+  estimated_cost_total: null
+falsification:
+  conditions: []
+  thesis_invalid_if: null
+meta_learning:
+  patterns_applied: []
+  rules_tested: []
+  new_learning:
+    learning: null
+    learning_type: null
+    validation_criteria: null
+    creates_learning_file: false
+_indexing:
+  rag_embed_fields: []
+  graph_extract_fields: []

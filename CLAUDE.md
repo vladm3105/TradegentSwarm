@@ -1,5 +1,8 @@
 # TradegentSwarm - Claude Code Instructions
 
+> **Skills Version**: v2.3 (stock-analysis, earnings-analysis), v2.1 (other skills)
+> **Last Updated**: 2026-02-21
+
 **Tradegent** — AI-driven trading platform using Claude Code CLI, Interactive Brokers, and a hybrid RAG+Graph knowledge system. A multi-agent swarm for market analysis, trade execution, and knowledge persistence.
 
 ## Project Structure
@@ -34,16 +37,27 @@ Skills in `.claude/skills/` auto-invoke based on context. Each skill has:
 
 ### Skill Index
 
-| Skill                 | Triggers                                                 | Category   |
-| --------------------- | -------------------------------------------------------- | ---------- |
-| **earnings-analysis** | "earnings analysis", "pre-earnings", "before earnings"   | Analysis   |
-| **stock-analysis**    | "stock analysis", "technical analysis", "value analysis" | Analysis   |
-| **research**          | "research", "macro analysis", "sector analysis"          | Research   |
-| **ticker-profile**    | "ticker profile", "what do I know about"                 | Knowledge  |
-| **trade-journal**     | "log trade", "bought", "sold", "entered position"        | Trade Mgmt |
-| **watchlist**         | "watchlist", "add to watchlist", "watch this"            | Trade Mgmt |
-| **post-trade-review** | "review trade", "closed trade", "what did I learn"       | Learning   |
-| **scan**              | "scan", "find opportunities", "what should I trade"      | Scanning   |
+| Skill                 | Version | Triggers                                                 | Category   |
+| --------------------- | ------- | -------------------------------------------------------- | ---------- |
+| **stock-analysis**    | v2.3    | "stock analysis", "technical analysis", "value analysis" | Analysis   |
+| **earnings-analysis** | v2.3    | "earnings analysis", "pre-earnings", "before earnings"   | Analysis   |
+| **research-analysis** | v2.1    | "research", "macro analysis", "sector analysis"          | Research   |
+| **ticker-profile**    | v2.1    | "ticker profile", "what do I know about"                 | Knowledge  |
+| **trade-journal**     | v2.1    | "log trade", "bought", "sold", "entered position"        | Trade Mgmt |
+| **watchlist**         | v2.1    | "watchlist", "add to watchlist", "watch this"            | Trade Mgmt |
+| **post-trade-review** | v2.1    | "review trade", "closed trade", "what did I learn"       | Learning   |
+| **scan**              | v1.0    | "scan", "find opportunities", "what should I trade"      | Scanning   |
+
+### v2.3 Key Features (stock-analysis, earnings-analysis)
+
+- **Steel-man bear case** with scored arguments
+- **Bias countermeasures** (rule + implementation + checklist + mantra)
+- **Pre-exit gate** for loss aversion prevention
+- **Do Nothing gate** (EV >5%, Confidence >60%, R:R >2:1, Edge exists)
+- **4-scenario framework** (bull, base, bear, disaster)
+- **Meta-learning** with validation tracking
+- **Falsification criteria** (conditions that break thesis)
+- **Data quality** and news age checks
 
 ### Skill Workflow Pattern
 

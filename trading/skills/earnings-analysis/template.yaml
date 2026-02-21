@@ -1,86 +1,333 @@
-# Earnings Analysis Template
+# Earnings Analysis Template v2.3
 # Output: knowledge/analysis/earnings/{TICKER}_{YYYYMMDDTHHMM}.yaml
+#
+# CHANGELOG v2.3 (from loss-aversion learning):
+# - Added pre_exit_gate in loss_aversion bias
+# - Added countermeasures_applied with rule/implementation/checklist/mantra
+# - Added validation tracking in meta_learning.new_rule
+#
+# CHANGELOG v2.2 (from NFLX):
+# - Added data_quality section
+# - Added news_age_check for priced-in assessment
+# - Added historical_moves table with averages
+# - Added expectations_assessment ("priced for perfection")
+# - Added pass_reasoning when passing
+# - Added alternative_strategies
+#
+# CHANGELOG v2.1 (from DOCU):
+# - Added post_mortem for follow-up analyses
+# - Added threat_assessment (structural vs cyclical)
+# - Added thesis_reversal conditions
+# - Added alert_levels
+# - Added meta_learning
+# - Expanded to 4 scenarios
+#
+# CHANGELOG v2.0 (from MSFT):
+# - Added bear_case_analysis
+# - Enhanced bias_check
+# - Added do_nothing_gate with 4 criteria
+# - Added falsification criteria
+# - Added trade_plan with staged entry
+# - Added summary box
+# - Added action_items
 
 _meta:
   id: "{TICKER}_{YYYYMMDDTHHMM}"
   type: earnings-analysis
-  version: 1
+  version: 2.3
   created: "{ISO_DATETIME}"
   status: "active"
 
+  _indexing:
+    rag_embed_fields:
+      - "customer_demand.summary"
+      - "bear_case_analysis.summary"
+      - "decision.rationale"
+      - "summary.narrative"
+      - "post_mortem.framework_lesson"
+      - "meta_learning.new_rule.rule"
+    graph_extract_fields:
+      - "ticker"
+      - "earnings_date"
+      - "decision.recommendation"
+      - "bear_case_analysis.arguments[].argument"
+      - "meta_learning.new_rule.rule"
+
+# ============================================================
+# DATA QUALITY (v2.2)
+# ============================================================
+data_quality:
+  price_data_source: "ib_gateway|yahoo|manual|delayed"
+  price_data_verified: true
+  price_data_timestamp: "{ISO_DATETIME}"
+
+  limitations:
+    - limitation: ""
+      impact: "high|medium|low"
+      mitigation: ""
+
+  requires_reverification: false
+  warning: ""
+
+# ============================================================
+# POST-MORTEM (v2.1)
+# ============================================================
+post_mortem:
+  is_follow_up: false
+
+  prior_analysis:
+    file: ""
+    date: "{YYYY-MM-DD}"
+    recommendation: ""
+    confidence: 0
+    p_beat: 0.00
+
+  prediction_vs_actual:
+    - element: "Beat/Miss Direction"
+      predicted: ""
+      actual: ""
+      correct: false
+    - element: "Move Magnitude"
+      predicted: ""
+      actual: ""
+      correct: false
+    - element: "Key Metric"
+      predicted: ""
+      actual: ""
+      correct: false
+
+  error_analysis:
+    what_we_got_right:
+      - ""
+    what_we_got_wrong:
+      - ""
+
+  biases_that_impacted:
+    - bias: ""
+      how_it_manifested: ""
+      severity: "high|medium|low"
+
+  framework_lesson: |
+    {Generalizable lesson}
+
+  grade: "A|B|C|D|F"
+  grade_rationale: ""
+
+# ============================================================
+# BASIC INFO
+# ============================================================
 ticker: "{TICKER}"
 earnings_date: "{YYYY-MM-DD}"
 earnings_time: "BMO|AMC"
 current_price: 0.00
 analysis_date: "{YYYY-MM-DD}"
+days_to_earnings: 0
 
-# Phase 1: Preparation
+# ============================================================
+# HISTORICAL POST-EARNINGS MOVES (v2.2)
+# ============================================================
+historical_moves:
+  quarters:
+    - quarter: "Q4 2025"
+      date: "{YYYY-MM-DD}"
+      eps_surprise_pct: 0.00
+      revenue_surprise_pct: 0.00
+      move_pct: 0.00
+      beat_miss: "beat|miss|inline"
+
+    - quarter: "Q3 2025"
+      date: "{YYYY-MM-DD}"
+      eps_surprise_pct: 0.00
+      revenue_surprise_pct: 0.00
+      move_pct: 0.00
+      beat_miss: "beat|miss|inline"
+
+    - quarter: "Q2 2025"
+      date: "{YYYY-MM-DD}"
+      eps_surprise_pct: 0.00
+      revenue_surprise_pct: 0.00
+      move_pct: 0.00
+      beat_miss: "beat|miss|inline"
+
+    - quarter: "Q1 2025"
+      date: "{YYYY-MM-DD}"
+      eps_surprise_pct: 0.00
+      revenue_surprise_pct: 0.00
+      move_pct: 0.00
+      beat_miss: "beat|miss|inline"
+
+  average_move_pct: 0.00
+  average_beat_move_pct: 0.00
+  average_miss_move_pct: 0.00
+
+  current_implied_move_pct: 0.00
+  implied_vs_historical: "above|inline|below"
+  implied_move_assessment: |
+    {Is market pricing more or less volatility than historical?}
+
+# ============================================================
+# NEWS AGE CHECK (v2.2)
+# ============================================================
+news_age_check:
+  items:
+    - news_item: ""
+      date: "{YYYY-MM-DD}"
+      age_weeks: 0
+      priced_in: "fully|partially|not_priced"
+      reasoning: ""
+
+    - news_item: ""
+      date: "{YYYY-MM-DD}"
+      age_weeks: 0
+      priced_in: "fully|partially|not_priced"
+      reasoning: ""
+
+  stale_news_risk: false
+  fresh_catalyst_exists: false
+  news_summary: |
+    {Summary of news priced-in assessment}
+
+# ============================================================
+# PHASE 1: PREPARATION
+# ============================================================
 preparation:
   beat_history:
     quarters_analyzed: 8
     beats: 0
     misses: 0
     beat_rate: 0.00
-    
-  historical_reactions:
-    avg_move_on_beat: 0.00
-    avg_move_on_miss: 0.00
-    largest_beat_move: 0.00
-    largest_miss_move: 0.00
-    
+
   current_estimates:
     consensus_eps: 0.00
-    consensus_revenue: 0.00
+    consensus_revenue_b: 0.00
     whisper_eps: 0.00
     analyst_count: 0
-    
+
   estimate_revisions:
     direction: "up|flat|down"
     magnitude: "significant|slight|none"
-    
+    eps_revision_30d: 0.00
+    revenue_revision_30d: 0.00
+
   implied_move:
     percentage: 0.00
     iv_percentile: 0
+    iv_rank: 0
 
-# Phase 2: Customer Demand (50% WEIGHT)
+  key_metric:
+    name: ""
+    consensus: ""
+    your_view: ""
+
+# ============================================================
+# PHASE 2: CUSTOMER DEMAND (50% WEIGHT)
+# ============================================================
 customer_demand:
   signal_strength: "strong_bullish|moderate_bullish|neutral|moderate_bearish|strong_bearish"
   confidence: "high|medium|low"
-  
-  signals:
-    - source: "{Data source}"
-      signal: "{What it indicates}"
-      interpretation: "bullish|bearish|neutral"
-      
-  adjustment_to_probability: 0.00  # -20% to +20%
-  
-  summary: |
-    {One paragraph summary of customer demand picture}
 
-# Phase 3: Technical Setup
+  signals:
+    - source: ""
+      signal: ""
+      interpretation: "bullish|bearish|neutral"
+      weight: 0.00
+
+    - source: ""
+      signal: ""
+      interpretation: "bullish|bearish|neutral"
+      weight: 0.00
+
+    - source: ""
+      signal: ""
+      interpretation: "bullish|bearish|neutral"
+      weight: 0.00
+
+  adjustment_to_probability: 0.00
+
+  summary: |
+    {Customer demand picture}
+
+# ============================================================
+# THREAT ASSESSMENT (v2.1)
+# ============================================================
+threat_assessment:
+  primary_concern: "structural|cyclical|none"
+
+  structural_threat:
+    exists: false
+    description: ""
+    beat_streak_relevance: "high|medium|low|irrelevant"
+    beat_streak_reasoning: ""
+
+  cyclical_weakness:
+    exists: false
+    cycle_phase: "early|mid|late"
+    recovery_catalysts:
+      - ""
+
+  threat_summary: |
+    {Structural vs cyclical assessment}
+
+# ============================================================
+# EXPECTATIONS ASSESSMENT (v2.2)
+# ============================================================
+expectations_assessment:
+  priced_for_perfection: false
+  expectations_level: "low|moderate|high|extreme"
+
+  evidence:
+    - ""
+
+  beat_streak_length: 0
+  beat_streak_impact: |
+    {How does beat streak affect expectations?}
+
+  sell_the_news_risk: "low|medium|high"
+  sell_the_news_reasoning: ""
+
+  near_ath: false
+  ath_distance_pct: 0.00
+  limited_upside_even_on_beat: false
+
+  expectations_summary: |
+    {Overall expectations assessment}
+
+# ============================================================
+# PHASE 3: TECHNICAL SETUP
+# ============================================================
 technical:
   trend:
     vs_20d_ma: "above|below"
     vs_50d_ma: "above|below"
     vs_200d_ma: "above|below"
     ma_alignment: "bullish|neutral|bearish"
-    
+
   momentum:
     rsi: 0
+    rsi_condition: "overbought|neutral|oversold"
+    macd_signal: "bullish|neutral|bearish"
     recent_action: "trending_up|consolidating|trending_down|overextended"
-    
+
   key_levels:
     support: 0.00
     resistance: 0.00
+    ath: 0.00
     ath_distance_pct: 0.00
-    
+    fifty_two_week_low: 0.00
+
   pre_earnings_run:
     already_run_up: false
     run_up_pct: 0.00
-    
-  technical_score: 0  # 1-10
+    run_up_assessment: ""
 
-# Phase 4: Sentiment
+  technical_score: 0
+
+  technical_summary: |
+    {Technical setup assessment}
+
+# ============================================================
+# PHASE 4: SENTIMENT
+# ============================================================
 sentiment:
   analyst_ratings:
     buy: 0
@@ -88,103 +335,462 @@ sentiment:
     sell: 0
     recent_changes: "upgrades|downgrades|mixed|none"
     avg_price_target: 0.00
-    
+    high_target: 0.00
+    low_target: 0.00
+
   short_interest:
     pct_float: 0.00
     days_to_cover: 0.00
     trend: "increasing|stable|decreasing"
-    
+    squeeze_potential: false
+
   options_positioning:
     put_call_ratio: 0.00
+    iv_percentile: 0
     unusual_activity: "bullish|bearish|none"
-    
+    unusual_activity_detail: ""
+
+  institutional:
+    ownership_pct: 0.00
+    recent_13f_changes: "accumulation|neutral|distribution"
+
   overall_sentiment: "very_bullish|bullish|neutral|bearish|very_bearish"
   contrarian_opportunity: false
-  sentiment_score: 0  # 1-10
+  sentiment_score: 0
 
-# Phase 5: Probability Assessment
+  crowded_trade:
+    consensus_direction: "bullish|neutral|bearish"
+    crowded: false
+    crowded_detail: ""
+
+# ============================================================
+# PHASE 5: SCENARIO ANALYSIS (4 Scenarios)
+# ============================================================
+scenarios:
+  strong_beat:
+    probability: 0.00
+    description: ""
+    move_pct: 0.00
+    key_driver: ""
+
+  modest_beat:
+    probability: 0.00
+    description: ""
+    move_pct: 0.00
+    key_driver: ""
+
+  modest_miss:
+    probability: 0.00
+    description: ""
+    move_pct: 0.00
+    key_driver: ""
+
+  strong_miss:
+    probability: 0.00
+    description: ""
+    move_pct: 0.00
+    key_driver: ""
+
+  probability_check: 0.00
+
+  expected_value: 0.00
+
+  ev_calculation: |
+    EV = (P_sb * M_sb) + (P_mb * M_mb) + (P_mm * M_mm) + (P_sm * M_sm)
+    EV = ({sb} * {sb_m}) + ({mb} * {mb_m}) + ({mm} * {mm_m}) + ({sm} * {sm_m})
+    EV = {result}%
+
+# ============================================================
+# PROBABILITY ASSESSMENT
+# ============================================================
 probability:
-  base_rate: 0.00  # Historical beat rate
-  
+  base_rate: 0.00
+
   adjustments:
     customer_demand: 0.00
     estimate_revisions: 0.00
     sentiment_contrarian: 0.00
     technical: 0.00
-    
+    expectations: 0.00
+
   final_probability:
     p_beat: 0.00
     p_miss: 0.00
     p_significant_beat: 0.00
-    
-  confidence: "high|medium|low"
+    p_significant_miss: 0.00
 
-# Phase 6: Bias Check
+  confidence: "high|medium|low"
+  confidence_pct: 0
+
+# ============================================================
+# STEEL-MAN BEAR CASE (v2.0)
+# ============================================================
+bear_case_analysis:
+  strength: 0
+
+  arguments:
+    - argument: ""
+      evidence: ""
+      counter: ""
+      counter_strength: 0
+
+    - argument: ""
+      evidence: ""
+      counter: ""
+      counter_strength: 0
+
+    - argument: ""
+      evidence: ""
+      counter: ""
+      counter_strength: 0
+
+  summary: |
+    {Steel-man bear case}
+
+  strength_interpretation: ""
+
+# ============================================================
+# BIAS CHECK (v2.0 + v2.3)
+# ============================================================
 bias_check:
   recency_bias:
     present: false
+    severity: "high|medium|low|none"
     notes: ""
-    
+    mitigation: ""
+
   confirmation_bias:
     present: false
+    severity: "high|medium|low|none"
     notes: ""
-    
+    contrary_evidence_sought: ""
+
   overconfidence:
     present: false
+    severity: "high|medium|low|none"
     notes: ""
-    
+    confidence_calibration: ""
+
   anchoring:
     present: false
+    severity: "high|medium|low|none"
+    anchor_price: 0.00
     notes: ""
-    
+
   fomo:
     present: false
+    severity: "high|medium|low|none"
     notes: ""
-    
-  corrections_applied: ""
 
-# Phase 7: Decision
+  timing_conservatism:
+    present: false
+    severity: "high|medium|low|none"
+    notes: ""
+    this_is_entry_signal: false
+
+  loss_aversion:
+    present: false
+    severity: "high|medium|low|none"
+    notes: ""
+    # v2.3: Pre-exit gate
+    pre_exit_gate:
+      thesis_intact: true
+      catalyst_pending: true
+      exit_reason: "logic|fear"
+      gate_result: "hold|exit_ok"
+
+  both_sides_argued: true
+
+  # v2.3: Countermeasures
+  countermeasures_applied:
+    - bias_type: ""
+      rule: ""
+      implementation_steps:
+        - ""
+      checklist_addition: ""
+      mantra: ""
+
+  corrections_applied: |
+    {What adjustments were made after bias check?}
+
+# ============================================================
+# DO NOTHING GATE (v2.0)
+# ============================================================
+do_nothing_gate:
+  ev_threshold: 5.0
+  ev_actual: 0.00
+  ev_passes: false
+
+  confidence_threshold: 60
+  confidence_actual: 0
+  confidence_passes: false
+
+  rr_threshold: 2.0
+  rr_actual: 0.0
+  rr_passes: false
+
+  edge_exists: false
+  edge_description: ""
+
+  gates_passed: 0
+  gate_result: "PASS|FAIL"
+
+  gate_reasoning: |
+    {Gate results explanation}
+
+# ============================================================
+# FALSIFICATION CRITERIA (v2.0)
+# ============================================================
+falsification:
+  beat_thesis_wrong_if:
+    - ""
+    - ""
+    - ""
+
+  miss_thesis_wrong_if:
+    - ""
+    - ""
+
+  post_earnings_watch:
+    - metric: ""
+      threshold: ""
+    - metric: ""
+      threshold: ""
+
+  thesis_invalid_if: |
+    {When to abandon thesis}
+
+# ============================================================
+# THESIS REVERSAL (v2.1)
+# ============================================================
+thesis_reversal:
+  conditions_to_flip:
+    - condition: ""
+      threshold: ""
+      new_recommendation_if_met: ""
+
+    - condition: ""
+      threshold: ""
+      new_recommendation_if_met: ""
+
+  what_would_change_mind: |
+    {What would flip recommendation}
+
+# ============================================================
+# ALERT LEVELS (v2.1)
+# ============================================================
+alert_levels:
+  price_alerts:
+    - price: 0.00
+      direction: "above|below"
+      significance: ""
+      action_if_triggered: ""
+
+  event_alerts:
+    - event: "Earnings release"
+      date: "{YYYY-MM-DD}"
+      action: ""
+
+  post_earnings_review: "{YYYY-MM-DD}"
+
+# ============================================================
+# DECISION
+# ============================================================
 decision:
   recommendation: "BULLISH|MODERATE_BULLISH|NEUTRAL|MODERATE_BEARISH|BEARISH"
-  
-  rationale: |
-    {2-3 sentence summary of why}
-    
-  do_nothing_gate:
-    passed: true
-    reason: ""
+  confidence_pct: 0
 
-# Phase 8: Execution Plan
-execution:
-  trade: true  # false if DO NOT TRADE
-  
+  rationale: |
+    {3-5 paragraphs covering thesis, key drivers, risks}
+
+  key_insight: |
+    {What does the market not understand?}
+
+# ============================================================
+# PASS REASONING (v2.2)
+# ============================================================
+pass_reasoning:
+  applicable: false
+
+  primary_reason: ""
+
+  reasons:
+    - reason: ""
+      impact: "high|medium|low"
+
+    - reason: ""
+      impact: "high|medium|low"
+
+  summary: |
+    {Why passing on this earnings play}
+
+  better_opportunities_exist: true
+  opportunity_cost_assessment: ""
+
+  learning_value: |
+    {What does this analysis teach?}
+
+# ============================================================
+# ALTERNATIVE STRATEGIES (v2.2)
+# ============================================================
+alternative_strategies:
+  applicable: false
+
+  strategies:
+    - strategy: "Wait for pullback"
+      trigger: ""
+      entry_zone: ""
+      rationale: ""
+
+    - strategy: "Volatility play (Iron Condor)"
+      condition: ""
+      rationale: ""
+
+    - strategy: "Post-earnings drift"
+      condition: ""
+      rationale: ""
+
+  best_alternative: ""
+  best_alternative_rationale: ""
+
+# ============================================================
+# TRADE PLAN (v2.0)
+# ============================================================
+trade_plan:
+  trade: true
+
   entry:
     price: 0.00
     date: "{YYYY-MM-DD}"
     size_shares: 0
     size_pct_portfolio: 0.00
-    
+
   structure:
-    type: "stock|calls|puts|call_spread|put_spread"
-    strike: 0.00
+    type: "stock|calls|puts|call_spread|put_spread|straddle|strangle|iron_condor"
+    strike_1: 0.00
+    strike_2: 0.00
     expiration: "{YYYY-MM-DD}"
-    
-  risk_management:
-    stop_loss: 0.00
-    max_loss_dollars: 0.00
-    max_loss_pct: 0.00
-    
+    max_risk: 0.00
+    max_reward: 0.00
+    breakeven: 0.00
+
+  position_sizing:
+    max_portfolio_pct: 0.00
+    account_risk_pct: 0.00
+    dollar_risk: 0.00
+
+  stop_loss:
+    price: 0.00
+    type: "hard|mental|time"
+    distance_pct: 0.00
+
   targets:
     target_1: 0.00
+    target_1_sell_pct: 0
     target_2: 0.00
-    
+    target_2_sell_pct: 0
+
   contingency:
     if_gaps_against: ""
     if_gaps_for: ""
     if_flat: ""
 
-# Links
+# ============================================================
+# SUMMARY (v2.0)
+# ============================================================
+summary:
+  one_liner: "{TICKER} Earnings: {Recommendation} | P(Beat): {p}% | EV: {ev}%"
+
+  narrative: |
+    {3-4 sentence executive summary}
+
+  key_levels:
+    entry: 0.00
+    stop: 0.00
+    target_1: 0.00
+    target_2: 0.00
+
+  summary_box: |
+    ═══════════════════════════════════════════════════════════════
+    {TICKER} EARNINGS ANALYSIS
+    Date: {date} | Earnings: {earnings_date} {time} | Days: {days}
+    ═══════════════════════════════════════════════════════════════
+
+    BEAT HISTORY: {beats}/{total} ({rate}%)
+
+    HISTORICAL MOVES:
+    - Avg move: {avg}%
+    - Avg beat move: {beat}%
+    - Avg miss move: {miss}%
+    - Current implied: {implied}%
+
+    PROBABILITY ASSESSMENT:
+    - Strong Beat: {pct}% -> {move}%
+    - Modest Beat: {pct}% -> {move}%
+    - Modest Miss: {pct}% -> {move}%
+    - Strong Miss: {pct}% -> {move}%
+    Expected Value: {ev}%
+
+    RECOMMENDATION: {recommendation} ({confidence}% confidence)
+
+    "DO NOTHING" GATE: {result} ({n}/4 criteria)
+
+    POSITION: {position_detail}
+
+    FALSIFICATION: {criteria}
+
+    BIASES CHECKED:
+    - [x] ...
+
+    POST-EARNINGS REVIEW: {date}
+    ═══════════════════════════════════════════════════════════════
+
+# ============================================================
+# ACTION ITEMS (v2.0)
+# ============================================================
+action_items:
+  immediate:
+    - ""
+  pre_earnings:
+    - ""
+  earnings_day:
+    - ""
+  post_earnings:
+    - ""
+
+# ============================================================
+# META-LEARNING (v2.1 + v2.3)
+# ============================================================
+meta_learning:
+  new_rule:
+    rule: ""
+    trigger_condition: ""
+    applies_to: "all|earnings|this_ticker"
+    add_to_framework: false
+    # v2.3: Validation tracking
+    validation:
+      status: "pending|validated|rejected"
+      criteria:
+        - ""
+      occurrences_tested: 0
+      results: []
+      validated_date: ""
+
+  data_source_effectiveness:
+    - source: ""
+      expected_weight: 0.00
+      actual_predictive: "high|medium|low"
+      weight_adjustment: "increase|keep|decrease"
+
+  pattern_identified: ""
+
+  post_analysis_review_date: "{YYYY-MM-DD}"
+
+# ============================================================
+# LINKS
+# ============================================================
 _links:
-  trade_journal: ""  # Fill after trade executed
-  post_review: ""    # Fill after trade closed
-  ticker_profile: "analysis/ticker-profiles/{TICKER}_*.yaml"
+  trade_journal: ""
+  post_review: ""
+  ticker_profile: ""
+  prior_analysis: ""

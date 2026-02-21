@@ -1,8 +1,9 @@
 # Scanner System — Architecture
 
 > **Status**: Active
-> **Last updated**: 2026-02-20
+> **Last updated**: 2026-02-21
 > **Location**: `trading/knowledge/scanners/`
+> **Skills Version**: v2.3 (stock-analysis, earnings-analysis), v2.1 (other skills)
 > **Companion**: [TRADING_RAG_ARCHITECTURE.md](TRADING_RAG_ARCHITECTURE.md), [TRADING_GRAPH_ARCHITECTURE.md](TRADING_GRAPH_ARCHITECTURE.md)
 
 ## Overview
@@ -413,6 +414,21 @@ scan → earnings-analysis → watchlist → trade-journal → post-trade-review
          ↓
       research
 ```
+
+### 5.3 v2.3 Skill Features
+
+When scanners trigger analysis skills (v2.3), the following enhanced features are applied:
+
+| Feature | stock-analysis | earnings-analysis |
+|---------|---------------|-------------------|
+| **Bear Case Analysis** | Steel-manned with scored arguments | Yes, with 8-quarter history |
+| **Bias Check** | Full countermeasure structure | Yes, with cost tracking |
+| **Do Nothing Gate** | 4 criteria (EV, Confidence, R:R, Edge) | Integrated in trade structure |
+| **Falsification** | Conditions that would break thesis | Per-catalyst conditions |
+| **Pre-Exit Gate** | Loss aversion prevention | Catalyst-based hold rules |
+| **Meta-Learning** | Pattern/rule validation tracking | Pattern tracking |
+| **Scenarios** | 4 scenarios (bull, base, bear, disaster) | 4 scenarios |
+| **Data Quality** | Source freshness tracking | News age check |
 
 ---
 

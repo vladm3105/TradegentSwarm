@@ -1,17 +1,35 @@
-# Post-Trade Review Template
+# Post-Trade Review Template v2.1
 # Output: knowledge/reviews/{TICKER}_{YYYYMMDDTHHMM}_review.yaml
+#
+# CHANGELOG v2.1:
+# - Added data_source_effectiveness tracking
+# - Added rule_validation section
+# - Added pattern_library integration
+# - Added countermeasure tracking
+# - Added learning_extraction section
 
 _meta:
   id: "{TICKER}_{YYYYMMDDTHHMM}_review"
   type: post-trade-review
-  version: 1
+  version: 2.1
   created: "{ISO_DATETIME}"
   status: "completed"
 
+  _indexing:
+    rag_embed_fields:
+      - "lessons.primary.lesson"
+      - "analysis.what_worked"
+      - "analysis.what_didnt_work"
+    graph_extract_fields:
+      - "trade.ticker"
+      - "lessons.primary.lesson"
+      - "lessons.rule_to_add.rule"
+      - "lessons.pattern_to_add.pattern"
+
 # Trade Reference
 trade:
-  trade_journal: ""  # Link to trades/{TICKER}_*.yaml
-  analysis: ""       # Link to analysis/*/{TICKER}_*.yaml
+  trade_journal: ""
+  analysis: ""
   ticker: "{TICKER}"
   direction: "long|short"
 
@@ -21,11 +39,11 @@ facts:
     date: "{YYYY-MM-DD}"
     price: 0.00
     shares: 0
-    
+
   exit:
     date: "{YYYY-MM-DD}"
     price: 0.00
-    
+
   result:
     holding_days: 0
     gross_pnl: 0.00
@@ -41,6 +59,7 @@ original_thesis:
   expected_timeframe_days: 0
   target: 0.00
   stop: 0.00
+  confidence_pct: 0
 
 # Execution Analysis
 execution:
@@ -51,16 +70,16 @@ execution:
     timing: "early|on_time|late"
     grade: "A|B|C|D|F"
     notes: ""
-    
+
   exit:
     planned_price: 0.00
     actual_price: 0.00
-    reason: "target_hit|stop_hit|thesis_changed|time_stop|manual"
+    reason: "target_hit|stop_hit|thesis_changed|time_stop|manual|emotional"
     followed_plan: true
     timing: "early|on_time|late"
     grade: "A|B|C|D|F"
     notes: ""
-    
+
   position_sizing:
     planned_pct: 0.00
     actual_pct: 0.00
@@ -73,22 +92,22 @@ thesis_accuracy:
     predicted: "up|down"
     actual: "up|down"
     correct: true
-    
+
   magnitude:
     predicted_pct: 0.00
     actual_pct: 0.00
     within_50pct: true
-    
+
   timing:
     predicted_days: 0
     actual_days: 0
     correct: true
-    
+
   catalyst:
     predicted: ""
     actual: ""
     correct: "yes|no|partially"
-    
+
   # For earnings trades only
   earnings_specific:
     customer_demand_signal: "bullish|neutral|bearish"
@@ -106,31 +125,83 @@ analysis:
   missed_signals:
     - ""
 
+# ============================================================
+# DATA SOURCE EFFECTIVENESS - NEW v2.1
+# ============================================================
+data_source_effectiveness:
+  - source: ""
+    used_for: ""
+    expected_weight: 0.00
+    actual_predictive: "high|medium|low"
+    weight_adjustment: "increase|keep|decrease"
+    notes: ""
+
+  - source: ""
+    used_for: ""
+    expected_weight: 0.00
+    actual_predictive: "high|medium|low"
+    weight_adjustment: "increase|keep|decrease"
+    notes: ""
+
+  - source: ""
+    used_for: ""
+    expected_weight: 0.00
+    actual_predictive: "high|medium|low"
+    weight_adjustment: "increase|keep|decrease"
+    notes: ""
+
+  source_effectiveness_summary: |
+    {Summary of which sources were predictive}
+
 # Bias Retrospective
 bias_check:
   recency_bias:
-    score: 0  # 1-5
+    score: 0
     notes: ""
-    
+    cost_estimate: 0.00
+
   confirmation_bias:
     score: 0
     notes: ""
-    
+    cost_estimate: 0.00
+
   overconfidence:
     score: 0
     notes: ""
-    
+    cost_estimate: 0.00
+
   loss_aversion:
     score: 0
     notes: ""
-    
+    cost_estimate: 0.00
+    # v2.1: Specific check
+    premature_exit: false
+    premature_exit_cost: 0.00
+
   anchoring:
     score: 0
     notes: ""
-    
+    cost_estimate: 0.00
+
+  timing_conservatism:
+    score: 0
+    notes: ""
+    cost_estimate: 0.00
+
   new_biases:
     - bias: ""
       impact: ""
+      cost_estimate: 0.00
+
+  total_bias_cost_estimate: 0.00
+
+  # v2.1: Countermeasure tracking
+  countermeasures_needed:
+    - bias_type: ""
+      rule: ""
+      implementation: ""
+      checklist_addition: ""
+      mantra: ""
 
 # Grades
 grades:
@@ -139,36 +210,77 @@ grades:
   exit_execution: "A|B|C|D|F"
   risk_management: "A|B|C|D|F"
   emotional_discipline: "A|B|C|D|F"
-  
+
   overall: "A|B|C|D|F"
   rationale: ""
   what_would_make_A: ""
 
-# Lessons
+# ============================================================
+# LESSONS & LEARNING EXTRACTION - Enhanced v2.1
+# ============================================================
 lessons:
   primary:
     lesson: ""
     action: ""
     applies_to: "all|earnings|technical|this_ticker"
-    
+    add_to_framework: false
+
   secondary:
     - lesson: ""
       action: ""
-      
+
+  # Pattern to add to pattern library
   pattern_to_add:
     pattern: ""
     description: ""
+    trigger_conditions:
+      - ""
     expected_outcome: ""
-    
+    historical_accuracy: ""
+    add_to_library: false
+
+  # Rule to add to framework
   rule_to_add:
     rule: ""
     reason: ""
+    trigger_condition: ""
+    applies_to: "all|earnings|technical|sector_specific|this_ticker"
+    add_to_framework: false
+
+    # v2.1: Validation tracking
+    validation:
+      status: "pending|validated|rejected"
+      criteria:
+        - ""
+      occurrences_tested: 0
+      results: []
+
+  # v2.1: Link to learnings
+  creates_learning:
+    learning_type: "bias|pattern|rule|none"
+    learning_file: ""
+    learning_id: ""
 
 # One-Line Summary
-summary: ""  # "{TICKER}: {Win/Loss} {%} - {Key lesson}"
+summary: ""
+
+# ============================================================
+# COMPARISON TO SIMILAR TRADES - NEW v2.1
+# ============================================================
+comparison:
+  similar_past_trades:
+    - trade_id: ""
+      similarity: ""
+      outcome: ""
+      lesson_applied: false
+
+  pattern_match: ""
+  pattern_performance: ""
 
 # Links to Knowledge Base
 _links:
   trade_journal: ""
   analysis: ""
-  new_learning: ""  # If learning was created
+  new_learning: ""
+  ticker_profile: ""
+  similar_reviews: []

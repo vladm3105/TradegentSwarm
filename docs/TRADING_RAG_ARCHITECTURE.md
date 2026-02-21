@@ -1,7 +1,8 @@
 # Trading RAG (Retrieval-Augmented Generation) — Architecture Plan
 
 > **Status**: Implemented
-> **Last updated**: 2026-02-20
+> **Last updated**: 2026-02-21
+> **Skills Version**: v2.3 (stock-analysis, earnings-analysis), v2.1 (other skills)
 > **Replaces**: LightRAG vector search component
 > **Companions**: [TRADING_GRAPH_ARCHITECTURE.md](TRADING_GRAPH_ARCHITECTURE.md) (knowledge graph), [SCANNER_ARCHITECTURE.md](SCANNER_ARCHITECTURE.md) (opportunity finding)
 
@@ -326,17 +327,19 @@ YAML Document
 
 ### 3.2 Section Mapping by Document Type
 
-Each document type has sections worth embedding (skip metadata/structural keys):
+Each document type has sections worth embedding (skip metadata/structural keys). Updated for v2.3 skill templates:
 
 | Document Type | Sections to Embed | Skip |
 |---------------|-------------------|------|
-| **earnings-analysis** | `phase1_preparation`, `phase2_fundamentals.*` (subsections), `phase3_technicals`, `phase4_trade_structure`, `phase5_risk_management`, `thesis` | `_meta`, `_graph`, `_links`, `ticker`, `earnings_date` |
-| **stock-analysis** | `thesis`, `catalysts`, `risks`, `technicals`, `fundamentals`, `competitive_position`, `sentiment` | `_meta`, `_graph`, `_links`, `ticker` |
-| **trade-journal** | `thesis`, `execution`, `results`, `review` | `_meta`, `_graph`, `_links`, `ticker`, `catalyst` |
-| **post-trade-review** | `analysis`, `lessons`, `framework_updates`, `bias_review` | `_meta`, `_graph`, `_links` |
-| **research-analysis** | `thesis`, `findings`, `implications`, `data_points` | `_meta`, `_graph`, `_links` |
-| **strategy** | `description`, `entry_rules`, `exit_rules`, `risk_management`, `performance` | `_meta`, `_graph`, `_links` |
-| **learning** | `rule`, `context`, `evidence`, `application` | `_meta`, `_graph`, `_links` |
+| **stock-analysis** (v2.3) | `data_quality`, `catalyst`, `news_age_check`, `market_environment`, `post_mortem`, `technical`, `fundamentals`, `sentiment`, `expectations_assessment`, `bear_case_analysis` (summary, arguments, why_bull_wins), `threat_assessment`, `thesis_reversal`, `scenarios` (4 scenarios), `bias_check` (biases_detected, pre_exit_gate, countermeasures), `do_nothing_gate`, `falsification`, `alert_levels`, `alternative_strategies`, `trade_plan`, `summary`, `meta_learning` | `_meta`, `_graph`, `_links`, `_indexing`, `ticker` |
+| **earnings-analysis** (v2.3) | `phase1_preparation`, `phase2_fundamentals.*`, `phase3_technicals`, `phase4_trade_structure`, `phase5_risk_management`, `historical_moves`, `news_age_check`, `expectations_assessment`, `bear_case_analysis`, `bias_check`, `falsification`, `meta_learning`, `thesis` | `_meta`, `_graph`, `_links`, `_indexing`, `ticker`, `earnings_date` |
+| **research-analysis** (v2.1) | `research_question`, `thesis` (statement, reasoning), `supporting_arguments`, `counter_thesis` (steel-manned), `bias_check`, `sources`, `implications` | `_meta`, `_graph`, `_links`, `_indexing` |
+| **watchlist** (v2.1) | `thesis` (summary, reasoning, why_not_now), `conviction` (level, conditions), `analysis_quality_check`, `entry_trigger`, `invalidation`, `resolution` | `_meta`, `_graph`, `_links`, `_indexing` |
+| **trade-journal** (v2.1) | `pre_trade_checklist`, `thesis`, `execution`, `psychological_state` (entry/exit), `decision_quality`, `loss_aversion_check`, `during_trade`, `results`, `review` | `_meta`, `_graph`, `_links`, `_indexing`, `ticker` |
+| **post-trade-review** (v2.1) | `analysis`, `data_source_effectiveness`, `bias_review` (with costs), `countermeasures_needed`, `lessons`, `rule_validation`, `comparison_to_similar_trades`, `framework_updates` | `_meta`, `_graph`, `_links`, `_indexing` |
+| **ticker-profile** (v2.1) | `company`, `earnings_patterns`, `technical_levels`, `your_edge`, `analysis_track_record`, `trading_history`, `bias_history`, `known_risks`, `learned_patterns` | `_meta`, `_graph`, `_links`, `_indexing` |
+| **strategy** | `description`, `entry_rules`, `exit_rules`, `risk_management`, `performance` | `_meta`, `_graph`, `_links`, `_indexing` |
+| **learning** (v2.1) | `pattern`, `root_cause`, `countermeasure` (rule, implementation, mantra), `validation`, `evidence` | `_meta`, `_graph`, `_links`, `_indexing` |
 
 ### 3.3 Subsection Handling
 

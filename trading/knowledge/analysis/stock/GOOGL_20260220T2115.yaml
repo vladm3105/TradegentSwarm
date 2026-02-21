@@ -2,34 +2,27 @@ _meta:
   ticker: GOOGL
   name: Alphabet Inc.
   type: stock_analysis
-  created: "2026-02-20T21:15:00-05:00"
-  analysis_version: "1.0"
+  created: '2026-02-20T21:15:00-05:00'
+  analysis_version: '1.0'
   skill: stock-analysis
   tags:
-    - mega_cap
-    - search
-    - cloud
-    - ai
-
-# Phase 1: Catalyst Identification
+  - mega_cap
+  - search
+  - cloud
+  - ai
 catalyst:
   type: post_earnings_momentum
-  description: >
-    Q4 2025 earnings beat with accelerating AI/Cloud growth.
-    Revenue $113.8B (+18% YoY) vs $111.4B consensus.
-    Cloud revenue $17.7B (+48% YoY) with $240B backlog.
+  description: |
+    Q4 2025 earnings beat with accelerating AI/Cloud growth. Revenue $113.8B (+18% YoY) vs $111.4B consensus. Cloud revenue $17.7B (+48% YoY) with $240B backlog.
   specific_events:
-    - Q4 2025 beat: $113.8B revenue vs $111.4B consensus
-    - Cloud growth acceleration: 48% YoY to $17.7B
-    - Cloud backlog: $240B (doubled YoY, +55% QoQ)
-    - Enterprise deals: >$1B deals in 2025 exceeded prior 3 years combined
-    - YouTube milestone: >$60B annual revenue
+  - Q4 2025 beat: $113.8B revenue vs $111.4B consensus
+  - Cloud growth acceleration: 48% YoY to $17.7B
+  - Cloud backlog: $240B (doubled YoY, +55% QoQ)
+  - 'Enterprise deals: >$1B deals in 2025 exceeded prior 3 years combined'
+  - 'YouTube milestone: >$60B annual revenue'
   quality_score: 8
-  quality_notes: >
-    Clear, quantifiable catalyst with multi-quarter visibility.
-    AI/Cloud narrative supported by backlog growth.
-
-# Phase 2: Market Environment
+  quality_notes: |
+    Clear, quantifiable catalyst with multi-quarter visibility. AI/Cloud narrative supported by backlog growth.
 market_environment:
   regime: neutral_recovery
   regime_source: TradingView Alpha Score 84
@@ -40,22 +33,18 @@ market_environment:
   volatility:
     vix_level: 20.84
     vix_trend: elevated
-    notes: >
-      VIX jumped 18% on Feb 13 CPI data. February historically
-      adds +5.5% to VIX. Warrants position sizing caution.
+    notes: |
+      VIX jumped 18% on Feb 13 CPI data. February historically adds +5.5% to VIX. Warrants position sizing caution.
   correlation_regime: stock_picking
   environment_score: 7
-  environment_notes: >
-    Favorable sector momentum but elevated VIX. GOOGL outperforming
-    Magnificent 7 peers (+62% YoY while others lag).
-
-# Phase 3: Technical Analysis
+  environment_notes: |
+    Favorable sector momentum but elevated VIX. GOOGL outperforming Magnificent 7 peers (+62% YoY while others lag).
 technical:
   price:
     current: 303.27
-    price_date: "2026-02-18"
+    price_date: '2026-02-18'
     all_time_high: 343.69
-    ath_date: "2026-02-02"
+    ath_date: '2026-02-02'
     pullback_from_ath_pct: -11.8
     yoy_return_pct: 62.0
   trend:
@@ -64,27 +53,27 @@ technical:
     short_term: finding_support
   key_levels:
     immediate_support: 303.0
-    support_zone: [295.0, 300.0]
-    immediate_resistance: [318.0, 325.0]
+    support_zone:
+    - 295.0
+    - 300.0
+    immediate_resistance:
+    - 318.0
+    - 325.0
     major_resistance: 343.69
     major_support: 280.0
   patterns:
     identified: downtrend_broken
-    notes: >
-      Benzinga: "broken a downtrend after finding support"
-      TradingView: CALLS signal, Moderate/High conviction, Alpha 84
+    notes: |
+      Benzinga: "broken a downtrend after finding support" TradingView: CALLS signal, Moderate/High conviction, Alpha 84
   momentum:
     relative_strength_vs_spy: strong_outperform
     notes: Leading Magnificent 7, +62% YoY
   technical_score: 7
-  technical_notes: >
-    Healthy pullback from ATH creating entry opportunity.
-    Support holding at $303 level.
-
-# Phase 4: Fundamentals
+  technical_notes: |
+    Healthy pullback from ATH creating entry opportunity. Support holding at $303 level.
 fundamentals:
   valuation:
-    pe_implied: "22-25x"
+    pe_implied: 22-25x
     notes: Reasonable for growth profile
   growth:
     q4_revenue_growth_pct: 18.0
@@ -98,14 +87,11 @@ fundamentals:
   quality:
     free_cash_flow: strong
     debt_level: low
-    capex_2026_guidance: "$175-185B"
+    capex_2026_guidance: $175-185B
   red_flags: none
   fundamental_score: 9
-  fundamental_notes: >
-    Exceptional fundamentals with AI/Cloud growth inflection.
-    $240B Cloud backlog provides multi-year visibility.
-
-# Phase 5: Sentiment
+  fundamental_notes: |
+    Exceptional fundamentals with AI/Cloud growth inflection. $240B Cloud backlog provides multi-year visibility.
 sentiment:
   analyst:
     consensus: strong_buy
@@ -115,10 +101,10 @@ sentiment:
     low_target: null
     upside_to_avg_pct: 15.8
   recent_changes:
-    - source: Tigress
-      date: "2026-02-19"
-      action: maintain_strong_buy
-      target_change: "$280 to $415"
+  - source: Tigress
+    date: '2026-02-19'
+    action: maintain_strong_buy
+    target_change: $280 to $415
   options:
     put_call_ratio: null
     iv_vs_historical: likely_elevated
@@ -127,11 +113,8 @@ sentiment:
     pct_float: null
     days_to_cover: null
   sentiment_score: 8
-  sentiment_notes: >
-    Very bullish Street consensus with 16% upside to avg target.
-    Recent target raises post-Q4 earnings.
-
-# Phase 6: Scenario Analysis
+  sentiment_notes: |
+    Very bullish Street consensus with 16% upside to avg target. Recent target raises post-Q4 earnings.
 scenarios:
   bull:
     probability_pct: 40
@@ -155,14 +138,14 @@ scenarios:
     timeline_days: 30-60
     key_driver: VIX spike, sector rotation, recession fears
   expected_value_pct: 12.01
-
-# Phase 7: Risk Management
 trade_plan:
   entry:
-    trigger: "Price holds $300 support OR breaks above $320"
+    trigger: Price holds $300 support OR breaks above $320
     price: 305.0
     order_type: limit
-    zone: [300.0, 310.0]
+    zone:
+    - 300.0
+    - 310.0
   stop_loss:
     price: 285.0
     basis: below_major_support
@@ -173,12 +156,12 @@ trade_plan:
     max_position_pct: 6.0
     notes: From database max allocation
   targets:
-    - level: 1
-      price: 340.0
-      action: sell_50_pct
-    - level: 2
-      price: 365.0
-      action: sell_remaining
+  - level: 1
+    price: 340.0
+    action: sell_50_pct
+  - level: 2
+    price: 365.0
+    action: sell_remaining
   trailing_stop:
     activate_after: target_1
     method: 5_pct_trailing
@@ -186,15 +169,13 @@ trade_plan:
     days: 45
     action: reassess_thesis
   risk_reward:
-    ratio: "2.7:1"
+    ratio: 2.7:1
     notes: To base case $340
-
-# Scoring Summary
 scoring:
   catalyst_quality:
     score: 8
     weight: 0.25
-    weighted: 2.00
+    weighted: 2.0
   market_environment:
     score: 7
     weight: 0.15
@@ -206,31 +187,26 @@ scoring:
   risk_reward:
     score: 8
     weight: 0.25
-    weighted: 2.00
+    weighted: 2.0
   sentiment_edge:
     score: 8
-    weight: 0.10
-    weighted: 0.80
-  total_score: 7.60
-
-# Recommendation
+    weight: 0.1
+    weighted: 0.8
+  total_score: 7.6
 recommendation:
   action: BULLISH
   strength: STRONG_BUY
   confidence_pct: 76
   structure: shares
-  rationale: >
-    GOOGL presents compelling entry on pullback from ATH.
-    Post-Q4 earnings demonstrate AI/Cloud growth acceleration.
-    Street strongly bullish with 16% average upside to targets.
-    R:R favorable at 2.7:1 with clear technical support at $300.
+  rationale: |
+    GOOGL presents compelling entry on pullback from ATH. Post-Q4 earnings demonstrate AI/Cloud growth acceleration. Street strongly bullish with 16% average upside to targets. R:R favorable at 2.7:1 with clear technical support at $300.
   alternatives:
-    - structure: call_spread
-      expiry: "20260320"
-      strikes: "305/340"
-      notes: Defined risk for elevated VIX environment
+  - structure: call_spread
+    expiry: '20260320'
+    strikes: 305/340
+    notes: Defined risk for elevated VIX environment
   next_actions:
-    - Monitor $300 support level
-    - Watch VIX for position sizing adjustment
-    - Track Cloud deal announcements
+  - Monitor $300 support level
+  - Watch VIX for position sizing adjustment
+  - Track Cloud deal announcements
   chain_to: null

@@ -1,5 +1,8 @@
 # Testing Guide
 
+> **Last Updated**: 2026-02-21
+> **Skills Version**: v2.3
+
 This guide covers the test structure, fixtures, mocking patterns, and best practices for TradegentSwarm.
 
 ## Test Structure
@@ -586,4 +589,200 @@ pip install -e ".[dev]"
 
 # Run tests as CI would
 python -m pytest -v --tb=short
+```
+
+---
+
+## Skills Testing (v2.3)
+
+### Testing Skill Templates
+
+Skill templates (`trading/skills/*/template.yaml`) should be validated for:
+
+1. **YAML Syntax** - Valid YAML structure
+2. **Required Sections** - All v2.3 sections present
+3. **Field Types** - Correct data types per schema
+4. **`_indexing` Hints** - RAG/Graph field mappings valid
+
+### Template Validation Script
+
+```bash
+# Validate all templates
+python scripts/validate_templates.py
+
+# Validate specific skill
+python scripts/validate_templates.py --skill stock-analysis
+```
+
+### Template Test Fixtures
+
+```python
+# trading/skills/tests/conftest.py
+
+@pytest.fixture
+def stock_analysis_template():
+    """Load stock-analysis template for testing."""
+    template_path = Path("trading/skills/stock-analysis/template.yaml")
+    with open(template_path) as f:
+        return yaml.safe_load(f)
+
+@pytest.fixture
+def v23_required_sections():
+    """v2.3 required sections for stock-analysis."""
+    return [
+        "data_quality",
+        "catalyst",
+        "news_age_check",
+        "bear_case_analysis",
+        "bias_check",
+        "do_nothing_gate",
+        "falsification",
+        "scenarios",
+        "trade_plan",
+        "summary",
+        "meta_learning",
+    ]
+```
+
+### Testing Template Structure
+
+```python
+class TestStockAnalysisTemplate:
+    """Test stock-analysis template v2.3 structure."""
+
+    def test_has_v23_version(self, stock_analysis_template):
+        """Template declares v2.3."""
+        assert stock_analysis_template["_meta"]["version"] == "2.3"
+
+    def test_has_required_sections(self, stock_analysis_template, v23_required_sections):
+        """All v2.3 sections present."""
+        for section in v23_required_sections:
+            assert section in stock_analysis_template, f"Missing: {section}"
+
+    def test_bear_case_has_arguments(self, stock_analysis_template):
+        """Bear case has steel-man structure."""
+        bear = stock_analysis_template["bear_case_analysis"]
+        assert "arguments" in bear
+        assert "strength" in bear
+        assert "why_bull_wins" in bear
+
+    def test_bias_check_has_countermeasures(self, stock_analysis_template):
+        """Bias check has countermeasure structure."""
+        bias = stock_analysis_template["bias_check"]
+        assert "biases_detected" in bias
+        assert "pre_exit_gate" in bias
+        assert "countermeasures_applied" in bias
+
+    def test_do_nothing_gate_has_criteria(self, stock_analysis_template):
+        """Do Nothing gate has 4 criteria."""
+        gate = stock_analysis_template["do_nothing_gate"]
+        criteria = gate["criteria"]
+        assert "ev_positive" in criteria
+        assert "confidence_above_60" in criteria
+        assert "rr_above_2" in criteria
+        assert "edge_exists" in criteria
+
+    def test_indexing_hints_valid(self, stock_analysis_template):
+        """_indexing hints reference valid fields."""
+        indexing = stock_analysis_template.get("_indexing", {})
+        rag_fields = indexing.get("rag_embed_fields", [])
+        graph_fields = indexing.get("graph_extract_fields", [])
+
+        # Check that referenced fields exist in template
+        for field in rag_fields:
+            parts = field.split(".")
+            assert parts[0] in stock_analysis_template
+```
+
+### Testing Migration Script
+
+```python
+class TestMigrationScript:
+    """Test v1 → v2.3 migration."""
+
+    def test_detects_document_type(self, sample_v1_document):
+        """Migration detects document type correctly."""
+        from scripts.migrate_skills_v23 import detect_document_type
+
+        doc_type = detect_document_type(sample_v1_document)
+        assert doc_type == "stock-analysis"
+
+    def test_adds_missing_sections(self, sample_v1_document):
+        """Migration adds v2.3 sections."""
+        from scripts.migrate_skills_v23 import migrate_document
+
+        migrated, changes = migrate_document(sample_v1_document, "stock-analysis")
+
+        assert "bear_case_analysis" in migrated
+        assert "bias_check" in migrated
+        assert "do_nothing_gate" in migrated
+
+    def test_preserves_existing_data(self, sample_v1_document):
+        """Migration doesn't overwrite existing values."""
+        from scripts.migrate_skills_v23 import migrate_document
+
+        original_thesis = sample_v1_document.get("thesis", {}).get("summary")
+        migrated, _ = migrate_document(sample_v1_document, "stock-analysis")
+
+        assert migrated["thesis"]["summary"] == original_thesis
+
+    def test_updates_version(self, sample_v1_document):
+        """Migration updates _meta.version to 2.3."""
+        from scripts.migrate_skills_v23 import migrate_document
+
+        migrated, _ = migrate_document(sample_v1_document, "stock-analysis")
+
+        assert migrated["_meta"]["version"] == "2.3"
+        assert "migrated_from" in migrated["_meta"]
+```
+
+### Testing Field Mappings
+
+```python
+class TestFieldMappings:
+    """Test graph/field_mappings.yaml validity."""
+
+    def test_all_document_types_present(self, field_mappings):
+        """All skill document types have mappings."""
+        required = [
+            "stock-analysis",
+            "earnings-analysis",
+            "trade-journal",
+            "post-trade-review",
+            "research-analysis",
+            "watchlist",
+            "ticker-profile",
+        ]
+        for doc_type in required:
+            assert doc_type in field_mappings
+
+    def test_v23_fields_included(self, field_mappings):
+        """v2.3 fields are in extraction list."""
+        stock = field_mappings["stock-analysis"]["extract_fields"]
+
+        v23_fields = [
+            "bear_case_analysis.summary",
+            "bias_check.biases_detected",
+            "do_nothing_gate.pass_reasoning",
+            "falsification.conditions",
+            "meta_learning.patterns_applied",
+        ]
+        for field in v23_fields:
+            assert any(field in f for f in stock), f"Missing: {field}"
+```
+
+### Running Skills Tests
+
+```bash
+# All skills tests
+python -m pytest trading/skills/tests/ -v
+
+# Template validation only
+python -m pytest trading/skills/tests/test_templates.py -v
+
+# Migration tests
+python -m pytest trading/skills/tests/test_migration.py -v
+
+# Field mapping tests
+python -m pytest trading/skills/tests/test_field_mappings.py -v
 ```

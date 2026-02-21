@@ -1,5 +1,8 @@
 # TradegentSwarm Architecture
 
+> **Last Updated**: 2026-02-21
+> **Skills Version**: v2.3 (stock-analysis, earnings-analysis), v2.1 (other skills)
+
 ## System Overview
 
 TradegentSwarm is an AI-driven trading platform that combines automated market analysis, trade execution, and knowledge persistence.
@@ -224,8 +227,71 @@ Environment variables in `.env`:
 - **CI/CD**: Blocking secrets scan before other jobs
 - **Audit**: All operations logged to `audit_log` table
 
+## Skills System
+
+The skills system provides structured YAML templates for consistent AI analysis output.
+
+### Skill Versions
+
+| Skill | Version | Key Features |
+|-------|---------|--------------|
+| **stock-analysis** | v2.3 | 12-phase workflow, steel-man bear case, bias countermeasures, pre-exit gate, do-nothing gate, falsification criteria, 4-scenario framework, meta-learning |
+| **earnings-analysis** | v2.3 | 14-phase workflow, historical moves, expectations assessment, bear case analysis, bias tracking |
+| **research-analysis** | v2.1 | Counter-thesis (steel-manned), bias check, confidence tracking |
+| **trade-journal** | v2.1 | Pre-trade checklist, psychological state, decision quality, loss aversion check |
+| **post-trade-review** | v2.1 | Data source effectiveness, countermeasures, rule validation, comparison to similar trades |
+| **ticker-profile** | v2.1 | Analysis track record, bias history, learned patterns, known risks |
+| **watchlist** | v2.1 | Conviction levels, thesis reasoning, analysis quality check |
+
+### v2.3 Key Enhancements
+
+**Reasoning Sections** (using YAML multi-line `|` blocks):
+- Steel-man bear case with scored arguments
+- Bias countermeasure structure: rule + implementation + checklist + mantra
+- Pre-exit gate for loss aversion prevention
+- Do Nothing gate with 4 criteria (EV >5%, Confidence >60%, R:R >2:1, Edge exists)
+
+**Meta-Learning**:
+- Pattern application tracking with outcomes
+- Rule validation status (Pending/Validated/Rejected)
+- New learning creation with validation criteria
+
+**Integration**:
+- `_indexing` hints in templates for RAG/Graph processing
+- Field mappings in `tradegent/graph/field_mappings.yaml`
+- Migration script: `scripts/migrate_skills_v23.py`
+
+### Skill Workflow Pattern
+
+```mermaid
+flowchart LR
+    subgraph Pre["Pre-Analysis"]
+        RAG["RAG Context"]
+        Graph["Graph Context"]
+    end
+
+    subgraph Execute["Skill Execution"]
+        Data["Market Data"]
+        Analyze["Analysis Phases"]
+        Output["YAML Output"]
+    end
+
+    subgraph Post["Post-Save"]
+        Embed["RAG Embed"]
+        Extract["Graph Extract"]
+    end
+
+    RAG --> Analyze
+    Graph --> Analyze
+    Data --> Analyze
+    Analyze --> Output
+    Output --> Embed
+    Output --> Extract
+```
+
 ## Related Documentation
 
 - [Scanner Architecture](SCANNER_ARCHITECTURE.md)
 - [RAG Architecture](TRADING_RAG_ARCHITECTURE.md)
 - [Graph Architecture](TRADING_GRAPH_ARCHITECTURE.md)
+- [Skills Enhancement Plan](../tmp/SKILLS_ENHANCEMENT_PLAN_v2.md)

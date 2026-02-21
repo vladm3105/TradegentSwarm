@@ -1,7 +1,7 @@
-# Stock Analysis Skill
+# Stock Analysis Skill v2.3
 
 ## Purpose
-Systematic 7-phase analysis for non-earnings trading opportunities: technical setups, value plays, momentum trades.
+Systematic multi-phase analysis for non-earnings trading opportunities: technical setups, value plays, momentum trades. Enhanced with reasoning sections, bias checks, and decision gates.
 
 ## When to Use
 - Technical breakout/breakdown setup
@@ -9,11 +9,12 @@ Systematic 7-phase analysis for non-earnings trading opportunities: technical se
 - Momentum/trend following
 - Post-earnings drift
 - Catalyst-driven opportunity (non-earnings)
+- Follow-up analysis (post-mortem)
 
 ## Required Inputs
 - Ticker symbol
 - Catalyst or reason for analysis
-- Current stock price
+- Current stock price (verify data quality)
 
 ## Output
 - File: `{TICKER}_{YYYYMMDDTHHMM}.yaml`
@@ -21,9 +22,53 @@ Systematic 7-phase analysis for non-earnings trading opportunities: technical se
 
 ---
 
-## 7-Phase Framework
+## Framework Overview (12 Phases)
 
-### Phase 1: Catalyst Identification
+```
+Phase 0.5: Data Quality Check      → Verify data reliability
+Phase 1:   Catalyst Identification → Why trade this?
+Phase 1.5: News Age Check          → Is news priced in?
+Phase 2:   Market Environment      → Context alignment
+Phase 2.5: Threat Assessment       → Structural vs cyclical
+Phase 3:   Technical Analysis      → Price action setup
+Phase 4:   Fundamental Check       → Value assessment
+Phase 5:   Sentiment & Positioning → Market psychology
+Phase 5.5: Expectations Assessment → Priced for perfection?
+Phase 6:   Scenario Analysis       → 4-scenario framework
+Phase 7:   Steel-Man Bear Case     → Counter-arguments
+Phase 8:   Bias Check              → Self-assessment
+Phase 9:   Do Nothing Gate         → Go/No-Go decision
+Phase 9.5: Pass Reasoning          → Document why passing
+Phase 10:  Alternative Strategies  → Options when NO_POSITION
+Phase 11:  Trade Plan              → Execution details
+Phase 12:  Summary & Action Items  → Quick reference
+```
+
+---
+
+## Phase 0.5: Data Quality Check (NEW)
+```
+VERIFY DATA QUALITY BEFORE ANALYSIS:
+
+□ Price data source: IB Gateway / Yahoo / Manual / Delayed
+□ Price data fresh? (< 1 hour old for intraday relevance)
+□ Any data gaps or errors?
+□ Key metrics verified from reliable source?
+
+IF data issues exist:
+  → Flag with ⚠️ warning in data_quality.warning
+  → Note requires_reverification = true
+  → Document limitations and impact
+
+Example warning:
+"⚠️ DATA LIMITATION: IB Gateway offline - verify prices before trading"
+
+PROCEED WITH CAUTION if data quality is compromised.
+```
+
+---
+
+## Phase 1: Catalyst Identification
 ```
 IDENTIFY THE CATALYST:
 
@@ -61,9 +106,45 @@ RATE CATALYST QUALITY: 1-10
 - 3: No clear catalyst (avoid)
 
 NO CLEAR CATALYST = NO TRADE
+
+WRITE REASONING:
+Document 2-3 paragraphs explaining the catalyst:
+- What is the specific catalyst?
+- Why is the timing right?
+- What makes this catalyst actionable?
 ```
 
-### Phase 2: Market Environment
+---
+
+## Phase 1.5: News Age Check (NEW)
+```
+ASSESS IF NEWS IS PRICED IN:
+
+FOR EACH relevant news item, create table:
+| News Item | Date | Age (weeks) | Priced In? | Reasoning |
+|-----------|------|-------------|------------|-----------|
+| | | | Fully/Partially/Not | |
+
+RULES OF THUMB:
+- 6+ weeks old → Likely FULLY priced in
+- 2-6 weeks old → PARTIALLY priced, magnitude matters
+- < 2 weeks old → May NOT be fully priced
+- Fresh catalyst (< 1 week) → Price discovery ongoing
+
+ASSESS:
+□ Stale news risk? (relying heavily on old catalysts)
+□ Fresh catalyst exists?
+□ Market had time to digest information?
+
+IF stale_news_risk = true AND fresh_catalyst_exists = false:
+  → Reduce conviction
+  → This may be "priced in" trade
+  → Consider whether edge remains
+```
+
+---
+
+## Phase 2: Market Environment
 ```
 CHECK MARKET CONTEXT:
 
@@ -90,9 +171,50 @@ ENVIRONMENT SCORE: 1-10
 - 7: Good alignment
 - 5: Neutral
 - 3: Fighting the tape (reduce size or avoid)
+
+WRITE CONTEXT:
+Document market alignment and sector dynamics.
 ```
 
-### Phase 3: Technical Analysis
+---
+
+## Phase 2.5: Threat Assessment (NEW)
+```
+CLASSIFY THE PRIMARY THREAT:
+
+STRUCTURAL vs CYCLICAL FRAMEWORK:
+
+STRUCTURAL THREAT (Business model at risk):
+□ Moat erosion evidence?
+□ Competitive disruption?
+□ Secular decline?
+□ Regulatory existential risk?
+
+If structural threat exists:
+  - Beat streak IRRELEVANT (past success doesn't predict future)
+  - Management credibility suspect
+  - Value trap risk HIGH
+  - Historical valuation NOT anchor
+
+CYCLICAL WEAKNESS (Temporary downturn):
+□ Industry-wide slowdown?
+□ Macro-driven demand dip?
+□ Temporary execution issues?
+□ Recovery catalysts visible?
+
+If cyclical weakness:
+  - Beat streak RELEVANT
+  - History is valid guide
+  - Recovery timeline estimable
+  - Buy-the-dip candidate
+
+WRITE THREAT SUMMARY:
+"This is [STRUCTURAL/CYCLICAL/NONE] because..."
+```
+
+---
+
+## Phase 3: Technical Analysis
 ```
 ANALYZE PRICE ACTION:
 
@@ -101,7 +223,8 @@ Trend Analysis:
 □ Intermediate trend (daily)
 □ Short-term trend (hourly)
 □ Price vs 20/50/200 MA
-□ MA alignment
+□ MA alignment (bullish/neutral/bearish)
+□ Death cross or golden cross?
 
 Pattern Recognition:
 □ Chart patterns present
@@ -114,6 +237,7 @@ Key Levels:
 □ Major support
 □ Major resistance
 □ All-time high proximity
+□ 52-week low proximity
 
 Volume Analysis:
 □ Volume trend
@@ -121,38 +245,56 @@ Volume Analysis:
 □ Accumulation/distribution
 
 Momentum:
-□ RSI level and trend
+□ RSI level (overbought/neutral/oversold)
 □ MACD signal
+□ ADX trend strength
 □ Relative strength vs SPY
 
 TECHNICAL SCORE: 1-10
+
+WRITE TECHNICAL SUMMARY:
+Document setup quality and key observations.
 ```
 
-### Phase 4: Fundamental Check
+---
+
+## Phase 4: Fundamental Check
 ```
 VERIFY FUNDAMENTALS:
 
 Valuation:
-□ P/E vs peers
-□ P/E vs history
+□ P/E vs peers (cheap/fair/expensive)
+□ P/E vs 5-year history
 □ P/S ratio
 □ EV/EBITDA
 □ PEG ratio
+□ FCF yield
 
 Growth:
 □ Revenue growth rate
 □ Earnings growth rate
-□ Growth trajectory
+□ Growth trajectory (accelerating/stable/decelerating)
 
 Quality:
 □ Profit margins
+□ Operating margin
 □ Return on equity
 □ Free cash flow
 □ Debt levels
 
+KEY METRIC:
+Identify the ONE metric that matters most for this stock.
+- What is consensus expecting?
+- What is YOUR view?
+
+WHAT WOULD SURPRISE:
+- Positive surprise: What could beat?
+- Negative surprise: What could disappoint?
+
 Insider Activity:
 □ Recent insider buys/sells
-□ Institutional ownership changes
+□ Notable transactions
+□ Insider selling at lows? (RED FLAG)
 
 RED FLAGS (Any = caution):
 □ Declining revenues
@@ -162,110 +304,428 @@ RED FLAGS (Any = caution):
 □ Negative cash flow
 
 FUNDAMENTAL SCORE: 1-10
-(Lower weight for technical trades, higher for value)
+
+WRITE ASSESSMENTS:
+1. Value trap assessment: Is this a trap or opportunity?
+2. Market missing: What does consensus not appreciate?
 ```
 
-### Phase 5: Sentiment & Positioning
+---
+
+## Phase 5: Sentiment & Positioning
 ```
 ASSESS MARKET SENTIMENT:
 
 Analyst Sentiment:
-□ Ratings distribution
-□ Recent changes
+□ Ratings distribution (buy/hold/sell)
+□ Recent rating changes
 □ Price target range
+□ Notable analyst calls
 
 Short Interest:
 □ % of float short
 □ Days to cover
-□ Trend
+□ Trend (increasing/decreasing)
+□ Squeeze potential?
 
 Options Activity:
 □ Put/call ratio
-□ Unusual options flow
-□ IV vs historical
+□ IV percentile
+□ IV rank
+□ Unusual options flow (bullish/bearish)
 
-Retail/Institutional:
-□ Social sentiment (if relevant)
-□ 13F filings
-□ Fund flows
+Institutional:
+□ Ownership %
+□ Recent 13F changes
+□ Notable holders
 
-SENTIMENT SCORE: 1-10
-Note contrarian opportunities
+Retail Sentiment:
+□ Social media sentiment
+□ Capitulation signs?
+
+CROWDED TRADE CHECK:
+□ Is everyone on the same side?
+□ Consensus direction?
+□ Contrarian opportunity?
+□ Contrarian TRAP risk?
+
+SENTIMENT SCORE: 1-10 (0-100 numeric)
 ```
 
-### Phase 6: Scenario Analysis
-```
-DEFINE THREE SCENARIOS:
+---
 
-BULL CASE:
-- Probability: ___% 
-- What happens: [specific outcome]
+## Phase 5.5: Expectations Assessment (NEW)
+```
+"PRICED FOR PERFECTION" CHECK:
+
+□ Near ATH? (within 10%)
+  - If yes: Limited upside even on beat
+  - ATH distance: ___%
+
+□ Beat streak length?
+  - If >6 consecutive beats: "Priced for perfection" risk
+  - Market EXPECTS beats, surprise asymmetric
+
+□ Analyst targets already reached?
+  - If current price near avg target: Where does upside come from?
+
+□ Crowded bullish consensus?
+  - If >80% buy ratings: Disappointment risk elevated
+
+SELL THE NEWS RISK:
+- Low: Stock beaten down, low expectations, setup for surprise
+- Medium: Stock near fair value, moderate expectations
+- High: Stock near ATH, high expectations, long beat streak
+
+→ If HIGH: Even a beat may get "sell the news" reaction
+
+DOCUMENT:
+- Expectations level: Low / Moderate / High / Extreme
+- Priced for perfection: YES / NO
+- Sell the news risk: Low / Medium / High
+- Limited upside even on beat: YES / NO
+```
+
+---
+
+## Phase 6: Scenario Analysis (4 Scenarios)
+```
+DEFINE FOUR SCENARIOS (not three):
+
+STRONG BULL CASE:
+- Probability: ___%
+- What happens: [best case outcome]
 - Price target: $___
-- Timeline: ___ days/weeks
+- Return: ___%
+- Timeline: ___ days
 - Key driver: [what makes this happen]
 
-BASE CASE:
+BASE BULL CASE:
 - Probability: ___%
-- What happens: [expected outcome]
+- What happens: [moderately positive]
 - Price target: $___
-- Timeline: ___ days/weeks
-- Key driver: [most likely path]
+- Return: ___%
+- Timeline: ___ days
+- Key driver: [likely positive path]
 
-BEAR CASE:
+BASE BEAR CASE:
 - Probability: ___%
-- What happens: [what goes wrong]
+- What happens: [moderately negative]
 - Price target: $___
-- Timeline: ___ days/weeks
+- Return: ___%
+- Timeline: ___ days
+- Key driver: [likely negative path]
+
+STRONG BEAR CASE:
+- Probability: ___%
+- What happens: [worst case]
+- Price target: $___
+- Return: ___%
+- Timeline: ___ days
 - Key driver: [risk factor]
 
 PROBABILITIES MUST SUM TO 100%
 
-Expected Value:
-EV = (P_bull × Bull_return) + (P_base × Base_return) + (P_bear × Bear_return)
+Expected Value Calculation:
+EV = (P_sb × R_sb) + (P_bb × R_bb) + (P_br × R_br) + (P_sr × R_sr)
+
+Write out the calculation explicitly.
 ```
 
-### Phase 7: Risk Management
-```
-CALCULATE POSITION:
+---
 
-Entry:
-- Trigger: [specific condition]
-- Price: [exact or range]
-- Order type: [limit/stop/market]
+## Phase 7: Steel-Man Bear Case (NEW)
+```
+ARGUE THE BEAR CASE HONESTLY:
+
+For each bear argument:
+| # | Argument | Evidence | Counter | Strength |
+|---|----------|----------|---------|----------|
+| 1 | | | | 1-10 |
+| 2 | | | | 1-10 |
+| 3 | | | | 1-10 |
+| 4 | | | | 1-10 |
+| 5 | | | | 1-10 |
+
+BEAR CASE STRENGTH (overall): 1-10
+
+WRITE BEAR CASE SUMMARY:
+Steel-man the bear case in 2-3 paragraphs.
+Be honest about when bears would be right.
+
+INTERPRETATION:
+- 8-10: Bear case compelling, need strong bull conviction
+- 6-7: Solid bear case, proceed with caution
+- 4-5: Weak bear case, bull case dominates
+- 1-3: No credible bear case
+```
+
+---
+
+## Phase 8: Bias Check (NEW)
+```
+MANDATORY BIAS ASSESSMENT:
+
+For each bias:
+| Bias | Detected | Severity | Notes | Mitigation |
+|------|----------|----------|-------|------------|
+| Recency | Y/N | H/M/L | | |
+| Confirmation | Y/N | H/M/L | | |
+| Timing Conservatism | Y/N | H/M/L | | |
+| Anchoring | Y/N | H/M/L | | |
+| Overconfidence | Y/N | H/M/L | | |
+| Loss Aversion | Y/N | H/M/L | | |
+| FOMO | Y/N | H/M/L | | |
+| Value Trap Blindness | Y/N | H/M/L | | |
+| Contrarian Trap | Y/N | H/M/L | | |
+| Category Error | Y/N | H/M/L | | |
+
+SPECIAL CHECKS:
+
+TIMING CONSERVATISM:
+"Weakness + strong fundamentals = ENTRY SIGNAL, not warning"
+□ Am I treating weakness as warning when it's actually opportunity?
+□ this_is_entry_signal: true/false
+
+ANCHORING:
+□ What price am I anchored to? $___
+□ Is my target based on wishful thinking or realistic analysis?
+
+CONFIRMATION BIAS:
+□ Did I seek contrary evidence? Y/N
+□ What contrary sources did I check?
+□ What's the strongest counter-argument?
+
+LOSS AVERSION PRE-EXIT GATE (v2.3):
+When position is profitable:
+□ Is thesis intact?
+□ Is catalyst still pending?
+□ Am I exiting due to LOGIC or FEAR?
+→ If thesis_intact AND catalyst_pending AND exit_reason=FEAR:
+   "The catalyst justified entry; don't exit before it arrives"
+   gate_result = HOLD
+
+COUNTERMEASURES:
+For detected biases, document:
+- Rule: "IF [condition] THEN [action]"
+- Implementation steps
+- Checklist addition
+- Mantra (memorable phrase)
+
+FINAL CHECK:
+□ Both sides argued equally? Y/N
+□ Would I feel comfortable defending the opposite position?
+
+WRITE BIAS SUMMARY.
+```
+
+---
+
+## Phase 9: Do Nothing Gate (NEW)
+```
+"DO NOTHING" GATE - Must pass to take position:
+
+| Criteria | Threshold | Actual | Pass/Fail |
+|----------|-----------|--------|-----------|
+| Expected Value | >5% | | |
+| Confidence | >60% | | |
+| Risk:Reward | >2:1 | | |
+| Edge Not Priced | Yes | | |
+
+GATES PASSED: ___/4
+
+GATE RESULT: PASS / FAIL
+
+IF FAIL:
+→ Recommendation = NO_POSITION or WATCH
+→ Document reasoning in gate_reasoning
+→ Proceed to Phase 9.5 (Pass Reasoning)
+→ Proceed to Phase 10 (Alternative Strategies)
+
+POSITION SIZING BY CONFIDENCE:
+
+| Confidence | Position Size |
+|------------|---------------|
+| >70% | Full position (standard) |
+| 55-70% | Reduced size (50-75%) or spreads |
+| <55% | No position or volatility play |
+```
+
+---
+
+## Phase 9.5: Pass Reasoning (NEW)
+```
+WHEN NOT TAKING POSITION (NO_POSITION/WATCH/AVOID):
+
+Document why passing:
+
+PRIMARY REASON: ___
+
+ALL REASONS:
+| # | Reason | Impact |
+|---|--------|--------|
+| 1 | | H/M/L |
+| 2 | | H/M/L |
+| 3 | | H/M/L |
+
+WRITE SUMMARY:
+"Passing on this setup because..."
+
+BETTER OPPORTUNITIES:
+□ Do better opportunities exist elsewhere? Y/N
+□ Opportunity cost of capital in this position?
+
+LEARNING VALUE:
+Even when passing, document the lesson:
+"This analysis demonstrates..."
+
+Example:
+"Demonstrates proper application of Do Nothing gate.
+Strong fundamentals don't automatically translate to favorable R:R.
+Discipline in passing on marginal setups preserves capital
+for higher-EV opportunities."
+```
+
+---
+
+## Phase 10: Alternative Strategies (NEW)
+```
+WHEN RECOMMENDATION IS NO_POSITION:
+
+Consider these alternatives:
+
+ALTERNATIVE 1: Wait for Pullback
+- Entry trigger: "Price reaches $___ (___% below current)"
+- Entry zone: $___ - $___
+- Rationale: "R:R improves at lower levels"
+- Set alert? Y/N
+
+ALTERNATIVE 2: Volatility Play
+- Structure: Iron Condor / Straddle / Strangle
+- Condition: "If IV elevated vs expected move"
+- Rationale: "Sell premium if overpriced"
+
+ALTERNATIVE 3: Small Speculative Position
+- Condition: "If conviction develops"
+- Max size: ___% of normal position
+- Rationale: "Limited risk, optionality"
+
+BEST ALTERNATIVE: ___
+WHY: ___
+
+SET ALERTS for alternative triggers.
+```
+
+---
+
+## Phase 11: Trade Plan
+```
+DEFINE EXECUTION PLAN:
+
+Entry Criteria:
+- Primary trigger: ___
+- Alternative trigger: ___
+
+STAGED ENTRY (if applicable):
+
+Tranche 1: ___% allocation
+- Entry zone: $___ - $___
+- Trigger: ___
+- Rationale: ___
+
+Tranche 2: ___% allocation
+- Entry zone: $___ - $___
+- Trigger: ___
+- Rationale: ___
+
+Tranche 3: ___% allocation
+- Entry zone: $___ - $___
+- Trigger: ___
+- Rationale: ___
+
+Position Sizing:
+- Max portfolio %: ___
+- Account risk %: ___ (1-2% max)
+- Dollar risk: $___
 
 Stop Loss:
 - Price: $___
-- Basis: [technical level, %, ATR]
-- Type: [hard/mental/trailing]
+- Basis: Technical level / Percentage / ATR
+- Type: Hard / Mental / Trailing
+- Distance: ___%
 
-Position Size:
-- Account risk: ___% (1-2% max)
-- Dollar risk: $___
-- Stop distance: ___%
-- Position size = Dollar risk / (Entry × Stop %)
-- Shares: ___
-- Position value: $___
-- % of portfolio: ___%
-
-Risk/Reward:
-- Risk: $____ (___%)
-- Reward (base case): $____ (___%)
-- R:R ratio: ___:1
-- MINIMUM 2:1 REQUIRED
+HARD STOP (no exceptions): $___
 
 Targets:
 - Target 1: $___ (sell ___%)
 - Target 2: $___ (sell ___%)
-- Trailing stop after T1: [method]
+- Target 3: $___ (sell ___%)
 
 Time Stop:
-- If nothing in ___ days: [action]
+- Days: ___
+- Action: ___
+
+Contingencies:
+- If gaps against: ___
+- If gaps for: ___
+- If thesis changes: ___
+```
+
+---
+
+## Phase 12: Summary & Action Items
+```
+CREATE SUMMARY BOX:
+
+═══════════════════════════════════════════════════════════════
+{TICKER} ANALYSIS SUMMARY
+Date: {date} | Event: {event} | Days: {days}
+═══════════════════════════════════════════════════════════════
+
+SETUP:
+Price: ${price} | Beat History: {beats} | Key: {metric}
+
+PROBABILITY ASSESSMENT:
+- Strong Bull: {pct}% → {return}%
+- Base Bull: {pct}% → {return}%
+- Base Bear: {pct}% → {return}%
+- Strong Bear: {pct}% → {return}%
+Expected Value: {ev}%
+
+RECOMMENDATION: {recommendation} ({confidence}% confidence)
+
+"DO NOTHING" GATE: {result} ({n}/4 criteria)
+
+POSITION: {position_detail}
+
+ALTERNATIVE ACTIONS (if NO_POSITION):
+1. {alternative_1}
+2. {alternative_2}
+3. {alternative_3}
+
+FALSIFICATION: {criteria}
+
+BIASES CHECKED:
+- [x] Recency bias
+- [x] Confirmation bias
+- [x] Timing conservatism
+- [x] Anchoring
+- [x] Both sides argued
+
+POST-EVENT REVIEW: {date}
+═══════════════════════════════════════════════════════════════
+
+ACTION ITEMS:
+□ Immediate: ___
+□ Before entry: ___
+□ After entry: ___
+□ Monitoring: ___
+□ Post-event: ___
 ```
 
 ---
 
 ## Scoring & Recommendation
-
 ```
 SETUP SCORE CALCULATION:
 
@@ -278,31 +738,115 @@ Sentiment Edge:       ___/10 × 0.10 = ___
 TOTAL SCORE:                    ___/10
 
 RECOMMENDATION:
-- Score ≥ 7.5: STRONG_BUY (or STRONG_SELL)
-- Score 6.5-7.4: BUY (or SELL)
-- Score 5.5-6.4: WATCH (add to watchlist)
-- Score < 5.5: AVOID
-
-If WATCH: Document entry trigger for watchlist
+- Score ≥ 7.5 AND Gate PASS: STRONG_BUY (or STRONG_SELL)
+- Score 6.5-7.4 AND Gate PASS: BUY (or SELL)
+- Score 5.5-6.4 OR Gate marginal: WATCH (add to watchlist)
+- Score < 5.5 OR Gate FAIL: NO_POSITION or AVOID
 ```
 
 ---
 
-## Template
+## Post-Mortem (For Follow-Up Analyses)
+```
+WHEN is_follow_up = true:
 
-See `template.yaml` for the output format.
+Link prior analysis file.
+
+PREDICTION VS ACTUAL:
+| Element | Predicted | Actual | Correct? |
+|---------|-----------|--------|----------|
+| Direction | | | Y/N |
+| Key Metric | | | Y/N |
+| EV Estimate | | | Y/N |
+| Target Price | | | Y/N |
+
+ERROR ANALYSIS:
+What we got right:
+-
+What we got wrong:
+-
+
+BIASES THAT IMPACTED:
+| Bias | How it manifested | Severity |
+|------|-------------------|----------|
+
+FRAMEWORK LESSON:
+What generalizable lesson applies to future analyses?
+
+GRADE: A/B/C/D/F
+Rationale: ___
+```
+
+---
+
+## Meta-Learning
+```
+AFTER EVERY ANALYSIS:
+
+NEW RULE (if applicable):
+- Rule: "When [condition], then [action]"
+- Trigger: ___
+- Applies to: All / Earnings / Technical / Sector-specific / This ticker
+- Add to framework? Y/N
+- Validation status: Pending / Validated / Rejected
+
+DATA SOURCE EFFECTIVENESS:
+| Source | Expected Weight | Actual Predictive | Adjust? |
+|--------|-----------------|-------------------|---------|
+| | | H/M/L | +/=/- |
+
+PATTERN IDENTIFIED: ___
+
+COMPARISON TO PAST:
+How does this setup compare to similar analyses?
+
+POST-ANALYSIS REVIEW DATE: {date}
+```
 
 ---
 
 ## Quality Checklist
 
 Before finalizing:
-□ Clear catalyst identified
-□ Market environment checked
+```
+DATA QUALITY:
+□ Price data verified
+□ Data limitations documented
+
+ANALYSIS:
+□ Clear catalyst identified with reasoning
+□ News age checked (priced in?)
+□ Market environment assessed
+□ Threat assessment (structural vs cyclical)
 □ Technical levels mapped
 □ Fundamentals verified (no red flags)
 □ Sentiment assessed
-□ Three scenarios with probabilities
-□ Position size calculated
-□ R:R ≥ 2:1
-□ Clear recommendation with score
+□ Expectations assessed ("priced for perfection"?)
+□ Four scenarios with probabilities summing to 100%
+
+DECISION:
+□ Bear case steel-manned
+□ All biases checked
+□ Do Nothing gate evaluated
+□ Position size calculated (if applicable)
+□ R:R ≥ 2:1 (if taking position)
+
+OUTPUT:
+□ Pass reasoning documented (if NO_POSITION)
+□ Alternative strategies listed (if NO_POSITION)
+□ Clear recommendation with confidence %
+□ Summary box completed
+□ Action items listed
+□ Post-event review scheduled
+```
+
+---
+
+## Template
+
+See `template.yaml` for the output format (v2.3).
+
+---
+
+*Skill Version: 2.3*
+*Updated: 2026-02-21*
