@@ -23,6 +23,7 @@ tradegent/
 └── trading/                 # Trading Knowledge System
     ├── skills/              # Agent skill definitions (SKILL.md + template.yaml)
     ├── knowledge/           # Trading data & analyses (YAML documents)
+    ├── examples/            # Sample configs and analyses for reference
     └── workflows/           # CI/CD & validation schemas
 ```
 
