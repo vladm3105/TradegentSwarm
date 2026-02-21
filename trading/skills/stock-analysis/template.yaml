@@ -1,5 +1,16 @@
-# Stock Analysis Template v2.3
+# Stock Analysis Template v2.5
 # Output: knowledge/analysis/stock/{TICKER}_{YYYYMMDDTHHMM}.yaml
+#
+# CHANGELOG v2.5 (3-regime coverage):
+# - Added base_case_analysis for range-bound/flat market regime
+# - Now covers all 3 market regimes: bull, base (flat), bear
+# - Base case includes trading_implications for range strategies
+# - Supports "do nothing" decisions when no directional edge exists
+#
+# CHANGELOG v2.4 (balanced analysis):
+# - Added bull_case_analysis with structured arguments (mirrors bear_case_analysis)
+# - Both bull and bear cases now have scored arguments with evidence/counters
+# - Enables balanced analysis with quantifiable argument strength
 #
 # CHANGELOG v2.3 (from loss-aversion learning):
 # - Added pre_exit_gate in loss_aversion bias
@@ -38,13 +49,15 @@
 _meta:
   id: "{TICKER}_{YYYYMMDDTHHMM}"
   type: stock-analysis
-  version: 2.3
+  version: 2.5
   created: "{ISO_DATETIME}"
   status: "active"
 
   _indexing:
     rag_embed_fields:
       - "catalyst.reasoning"
+      - "bull_case_analysis.summary"
+      - "base_case_analysis.summary"
       - "bear_case_analysis.summary"
       - "bias_check.bias_summary"
       - "rationale"
@@ -57,6 +70,8 @@ _meta:
       - "ticker"
       - "catalyst.type"
       - "market_environment.sector"
+      - "bull_case_analysis.arguments[].argument"
+      - "base_case_analysis.arguments[].argument"
       - "bear_case_analysis.arguments[].argument"
       - "falsification.criteria[].condition"
       - "threat_assessment.primary_concern"
@@ -468,7 +483,100 @@ scenarios:
     EV = {result}%
 
 # ============================================================
-# PHASE 7: STEEL-MAN BEAR CASE (v2.0)
+# PHASE 7A: STEEL-MAN BULL CASE (v2.4)
+# ============================================================
+bull_case_analysis:
+  strength: 0
+
+  arguments:
+    - argument: ""
+      score: 0
+      evidence: ""
+      counter: ""
+      counter_strength: 0
+
+    - argument: ""
+      score: 0
+      evidence: ""
+      counter: ""
+      counter_strength: 0
+
+    - argument: ""
+      score: 0
+      evidence: ""
+      counter: ""
+      counter_strength: 0
+
+    - argument: ""
+      score: 0
+      evidence: ""
+      counter: ""
+      counter_strength: 0
+
+    - argument: ""
+      score: 0
+      evidence: ""
+      counter: ""
+      counter_strength: 0
+
+  summary: |
+    {Steel-man the bull case - strongest arguments for going long}
+
+  strongest_argument: ""
+
+  bull_case_validity: |
+    {When would bulls be right? What conditions favor the bull thesis?}
+
+  conditions_where_bull_wins: |
+    {Specific conditions that would validate the bull case}
+
+# ============================================================
+# PHASE 7B: STEEL-MAN BASE CASE (v2.5 - Range-Bound/Flat)
+# ============================================================
+base_case_analysis:
+  strength: 0
+
+  arguments:
+    - argument: ""
+      score: 0
+      evidence: ""
+      counter: ""
+      counter_strength: 0
+
+    - argument: ""
+      score: 0
+      evidence: ""
+      counter: ""
+      counter_strength: 0
+
+    - argument: ""
+      score: 0
+      evidence: ""
+      counter: ""
+      counter_strength: 0
+
+    - argument: ""
+      score: 0
+      evidence: ""
+      counter: ""
+      counter_strength: 0
+
+  summary: |
+    {Steel-man the base case - strongest arguments for sideways/range-bound action}
+
+  strongest_argument: ""
+
+  base_case_validity: |
+    {When would neither bulls nor bears win? What conditions favor consolidation?}
+
+  conditions_where_flat_wins: |
+    {Specific conditions that would keep price range-bound}
+
+  trading_implications: |
+    {How to trade (or not trade) if base case plays out - range strategies, avoid directional bets}
+
+# ============================================================
+# PHASE 7C: STEEL-MAN BEAR CASE (v2.0)
 # ============================================================
 bear_case_analysis:
   strength: 0

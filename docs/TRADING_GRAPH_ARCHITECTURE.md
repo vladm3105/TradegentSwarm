@@ -2,7 +2,7 @@
 
 > **Status**: Implemented
 > **Last updated**: 2026-02-21
-> **Skills Version**: v2.3 (stock-analysis, earnings-analysis), v2.1 (other skills)
+> **Skills Version**: v2.5 (stock-analysis, earnings-analysis), v2.1 (other skills)
 > **Replaces**: LightRAG (extraction timeouts with local Ollama models)
 > **Companions**: [TRADING_RAG_ARCHITECTURE.md](TRADING_RAG_ARCHITECTURE.md) (semantic search), [SCANNER_ARCHITECTURE.md](SCANNER_ARCHITECTURE.md) (opportunity finding)
 

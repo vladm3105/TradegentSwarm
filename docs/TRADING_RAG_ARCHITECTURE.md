@@ -2,7 +2,7 @@
 
 > **Status**: Implemented
 > **Last updated**: 2026-02-21
-> **Skills Version**: v2.3 (stock-analysis, earnings-analysis), v2.1 (other skills)
+> **Skills Version**: v2.5 (stock-analysis, earnings-analysis), v2.1 (other skills)
 > **Replaces**: LightRAG vector search component
 > **Companions**: [TRADING_GRAPH_ARCHITECTURE.md](TRADING_GRAPH_ARCHITECTURE.md) (knowledge graph), [SCANNER_ARCHITECTURE.md](SCANNER_ARCHITECTURE.md) (opportunity finding)
 

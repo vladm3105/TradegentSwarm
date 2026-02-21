@@ -1,5 +1,11 @@
-# Earnings Analysis Template v2.3
+# Earnings Analysis Template v2.5
 # Output: knowledge/analysis/earnings/{TICKER}_{YYYYMMDDTHHMM}.yaml
+#
+# CHANGELOG v2.5 (3-regime coverage):
+# - Added bull_case_analysis with structured arguments
+# - Added base_case_analysis for range-bound/muted reaction scenarios
+# - Now covers all 3 outcomes: beat (bull), miss (bear), in-line (base)
+# - Base case includes trading_implications for non-directional strategies
 #
 # CHANGELOG v2.3 (from loss-aversion learning):
 # - Added pre_exit_gate in loss_aversion bias
@@ -34,13 +40,15 @@
 _meta:
   id: "{TICKER}_{YYYYMMDDTHHMM}"
   type: earnings-analysis
-  version: 2.3
+  version: 2.5
   created: "{ISO_DATETIME}"
   status: "active"
 
   _indexing:
     rag_embed_fields:
       - "customer_demand.summary"
+      - "bull_case_analysis.summary"
+      - "base_case_analysis.summary"
       - "bear_case_analysis.summary"
       - "decision.rationale"
       - "summary.narrative"
@@ -50,6 +58,8 @@ _meta:
       - "ticker"
       - "earnings_date"
       - "decision.recommendation"
+      - "bull_case_analysis.arguments[].argument"
+      - "base_case_analysis.arguments[].argument"
       - "bear_case_analysis.arguments[].argument"
       - "meta_learning.new_rule.rule"
 
@@ -421,6 +431,70 @@ probability:
 
   confidence: "high|medium|low"
   confidence_pct: 0
+
+# ============================================================
+# STEEL-MAN BULL CASE (v2.5)
+# ============================================================
+bull_case_analysis:
+  strength: 0
+
+  arguments:
+    - argument: ""
+      score: 0
+      evidence: ""
+      counter: ""
+      counter_strength: 0
+
+    - argument: ""
+      score: 0
+      evidence: ""
+      counter: ""
+      counter_strength: 0
+
+    - argument: ""
+      score: 0
+      evidence: ""
+      counter: ""
+      counter_strength: 0
+
+  summary: |
+    {Steel-man bull case - strongest arguments for going long into earnings}
+
+  strongest_argument: ""
+  conditions_where_bull_wins: ""
+
+# ============================================================
+# STEEL-MAN BASE CASE (v2.5 - Range-Bound/Flat)
+# ============================================================
+base_case_analysis:
+  strength: 0
+
+  arguments:
+    - argument: ""
+      score: 0
+      evidence: ""
+      counter: ""
+      counter_strength: 0
+
+    - argument: ""
+      score: 0
+      evidence: ""
+      counter: ""
+      counter_strength: 0
+
+    - argument: ""
+      score: 0
+      evidence: ""
+      counter: ""
+      counter_strength: 0
+
+  summary: |
+    {Steel-man base case - strongest arguments for muted reaction / no clear edge}
+
+  strongest_argument: ""
+  conditions_where_flat_wins: ""
+  trading_implications: |
+    {How to trade if base case - avoid directional bets, consider straddles/strangles}
 
 # ============================================================
 # STEEL-MAN BEAR CASE (v2.0)

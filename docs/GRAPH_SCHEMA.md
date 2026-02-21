@@ -2,7 +2,7 @@
 
 > **Last Updated**: 2026-02-21
 > **Neo4j Version**: 5.x Community Edition
-> **Skills Version**: v2.3
+> **Skills Version**: v2.5
 
 TradegentSwarm uses Neo4j for the knowledge graph, storing entities and relationships extracted from trading analyses.
 
@@ -449,20 +449,35 @@ CALL db.index.fulltext.createNodeIndex(
 
 ---
 
-## v2.3 Entity Extraction
+## v2.5 Entity Extraction
 
-Entities extracted from v2.3 skill sections:
+Entities extracted from v2.5 skill sections (3-regime case analysis):
 
-| Section | Entity Types |
-|---------|--------------|
-| `bear_case_analysis` | Risk, Catalyst, Pattern |
-| `bias_check.biases_detected` | Bias |
-| `bias_check.countermeasures_applied` | Learning |
-| `threat_assessment.structural_threats` | Risk |
-| `threat_assessment.cyclical_risks` | Risk |
-| `meta_learning.patterns_applied` | Pattern |
-| `meta_learning.rules_tested` | Learning |
-| `falsification.conditions` | Signal |
+| Section | Entity Types | Description |
+|---------|--------------|-------------|
+| `bull_case_analysis` | Catalyst, Pattern, Strategy | Arguments for upside scenario |
+| `base_case_analysis` | Pattern, Risk | Arguments for range-bound/flat scenario |
+| `bear_case_analysis` | Risk, Catalyst, Pattern | Arguments for downside scenario |
+| `bias_check.biases_detected` | Bias | Detected trading biases |
+| `bias_check.countermeasures_applied` | Learning | Rules to counter biases |
+| `threat_assessment.structural_threats` | Risk | Long-term structural risks |
+| `threat_assessment.cyclical_risks` | Risk | Short-term cyclical risks |
+| `meta_learning.patterns_applied` | Pattern | Patterns being tested |
+| `meta_learning.rules_tested` | Learning | Rules being validated |
+| `falsification.conditions` | Signal | Thesis invalidation triggers |
+
+### 3-Regime Argument Extraction
+
+Each case (bull/base/bear) extracts structured arguments:
+
+```yaml
+# Example extraction from bull_case_analysis.arguments[]
+- argument: "Best-in-class business at multi-year low valuation"
+  score: 8
+  evidence: "28.5x P/E vs 5-year avg 33x"
+  → Creates: Pattern node "low_valuation_opportunity"
+  → Creates: SUPPORTS edge to bull thesis
+```
 
 ---
 

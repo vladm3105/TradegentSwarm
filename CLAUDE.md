@@ -1,6 +1,6 @@
 # TradegentSwarm - Claude Code Instructions
 
-> **Skills Version**: v2.3 (stock-analysis, earnings-analysis), v2.1 (other skills)
+> **Skills Version**: v2.5 (stock-analysis, earnings-analysis), v2.1 (other skills)
 > **Last Updated**: 2026-02-21
 
 **Tradegent** — AI-driven trading platform using Claude Code CLI, Interactive Brokers, and a hybrid RAG+Graph knowledge system. A multi-agent swarm for market analysis, trade execution, and knowledge persistence.
@@ -39,8 +39,8 @@ Skills in `.claude/skills/` auto-invoke based on context. Each skill has:
 
 | Skill                 | Version | Triggers                                                 | Category   |
 | --------------------- | ------- | -------------------------------------------------------- | ---------- |
-| **stock-analysis**    | v2.3    | "stock analysis", "technical analysis", "value analysis" | Analysis   |
-| **earnings-analysis** | v2.3    | "earnings analysis", "pre-earnings", "before earnings"   | Analysis   |
+| **stock-analysis**    | v2.5    | "stock analysis", "technical analysis", "value analysis" | Analysis   |
+| **earnings-analysis** | v2.5    | "earnings analysis", "pre-earnings", "before earnings"   | Analysis   |
 | **research-analysis** | v2.1    | "research", "macro analysis", "sector analysis"          | Research   |
 | **ticker-profile**    | v2.1    | "ticker profile", "what do I know about"                 | Knowledge  |
 | **trade-journal**     | v2.1    | "log trade", "bought", "sold", "entered position"        | Trade Mgmt |
@@ -489,11 +489,24 @@ Parameters:
 | `mcp__github-vl__get_file_contents` | Read file from repo |
 | `mcp__github-vl__list_commits` | View commit history |
 
-## Trading RAG MCP Server (Primary)
+## Trading RAG MCP Server
 
-Semantic search and embedding for trading knowledge. **Use MCP tools as the primary interface** for all RAG operations.
+Semantic search and embedding for trading knowledge.
 
-**Server**: `trading-rag` | **Location**: `tradegent/rag/mcp_server.py`
+**Server**: `trading-rag` | **Location**: `tradegent/rag/mcp_server.py` | **Transport**: stdio
+
+> **Note**: This MCP server must be configured in Claude Code settings to be available. See [MCP Configuration](#mcp-configuration) below.
+
+### Prerequisites
+
+```bash
+# 1. Start Docker services (PostgreSQL with pgvector)
+cd tradegent && docker compose up -d postgres
+
+# 2. Set environment variables
+export PG_USER=lightrag PG_PASS=<password> PG_DB=lightrag PG_HOST=localhost PG_PORT=5433
+export EMBED_PROVIDER=openai OPENAI_API_KEY=<key>
+```
 
 ### Available Tools
 
@@ -526,11 +539,24 @@ Tool: rag_status
 Input: {}
 ```
 
-## Trading Graph MCP Server (Primary)
+## Trading Graph MCP Server
 
-Knowledge graph for entities, relationships, and trading patterns. **Use MCP tools as the primary interface** for all graph operations.
+Knowledge graph for entities, relationships, and trading patterns.
 
-**Server**: `trading-graph` | **Location**: `tradegent/graph/mcp_server.py`
+**Server**: `trading-graph` | **Location**: `tradegent/graph/mcp_server.py` | **Transport**: stdio
+
+> **Note**: This MCP server must be configured in Claude Code settings to be available. See [MCP Configuration](#mcp-configuration) below.
+
+### Prerequisites
+
+```bash
+# 1. Start Docker services (Neo4j)
+cd tradegent && docker compose up -d neo4j
+
+# 2. Set environment variables
+export NEO4J_URI=bolt://localhost:7688 NEO4J_USER=neo4j NEO4J_PASS=<password>
+export EXTRACT_PROVIDER=openai OPENAI_API_KEY=<key>
+```
 
 ### Available Tools
 
@@ -572,6 +598,63 @@ Input: {}
 # Custom Cypher query
 Tool: graph_query
 Input: {"cypher": "MATCH (t:Ticker {symbol: $ticker})-[r]->(n) RETURN type(r), n.name LIMIT 10", "params": {"ticker": "NVDA"}}
+```
+
+## MCP Configuration
+
+To use the Trading RAG and Graph MCP servers, add them to your Claude Code MCP settings (`~/.claude/mcp_settings.json`):
+
+```json
+{
+  "mcpServers": {
+    "trading-rag": {
+      "command": "python",
+      "args": ["-m", "tradegent.rag.mcp_server"],
+      "cwd": "/opt/data/tradegent_swarm",
+      "env": {
+        "PG_HOST": "localhost",
+        "PG_PORT": "5433",
+        "PG_USER": "lightrag",
+        "PG_PASS": "<password>",
+        "PG_DB": "lightrag",
+        "EMBED_PROVIDER": "openai",
+        "OPENAI_API_KEY": "<key>"
+      }
+    },
+    "trading-graph": {
+      "command": "python",
+      "args": ["-m", "tradegent.graph.mcp_server"],
+      "cwd": "/opt/data/tradegent_swarm",
+      "env": {
+        "NEO4J_URI": "bolt://localhost:7688",
+        "NEO4J_USER": "neo4j",
+        "NEO4J_PASS": "<password>",
+        "EXTRACT_PROVIDER": "openai",
+        "OPENAI_API_KEY": "<key>"
+      }
+    }
+  }
+}
+```
+
+### Direct Python Usage (Alternative)
+
+If MCP servers are not configured, use Python directly:
+
+```bash
+# RAG Embedding
+cd tradegent && python -c "
+from rag.embed import embed_document
+result = embed_document('trading/knowledge/analysis/stock/MSFT_20260221T1145.yaml')
+print(f'Embedded: {result.doc_id}, Chunks: {result.chunks_created}')
+"
+
+# Graph Extraction
+cd tradegent && python -c "
+from graph.extract import extract_document
+result = extract_document('trading/knowledge/analysis/stock/MSFT_20260221T1145.yaml')
+print(f'Extracted: {result.doc_id}, Entities: {result.entities_extracted}')
+"
 ```
 
 ## IB MCP Server (Interactive Brokers)

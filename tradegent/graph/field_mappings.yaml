@@ -1,6 +1,6 @@
 # Fields to extract entities from, by document type
 # Each field path supports dot notation for nested keys
-# Updated for v2.3 skill templates with enhanced reasoning fields
+# Updated for v2.5 skill templates with 3-regime case analysis (bull/base/bear)
 
 earnings-analysis:
   extract_fields:
@@ -25,6 +25,18 @@ earnings-analysis:
     # v2.3: Expectations Assessment
     - "expectations_assessment.bar_level"
     - "expectations_assessment.reasoning"
+    # v2.4: Bull Case Analysis (steel-manned)
+    - "bull_case_analysis.summary"
+    - "bull_case_analysis.arguments[].argument"
+    - "bull_case_analysis.arguments[].evidence"
+    - "bull_case_analysis.strongest_argument"
+    - "bull_case_analysis.conditions_where_bull_wins"
+    # v2.5: Base Case Analysis (range-bound/flat)
+    - "base_case_analysis.summary"
+    - "base_case_analysis.arguments[].argument"
+    - "base_case_analysis.arguments[].evidence"
+    - "base_case_analysis.strongest_argument"
+    - "base_case_analysis.trading_implications"
     # v2.3: Bear Case Analysis (steel-manned)
     - "bear_case_analysis.summary"
     - "bear_case_analysis.arguments[].argument"
@@ -79,6 +91,18 @@ stock-analysis:
     # Phase 5.5: Expectations Assessment
     - "expectations_assessment.bar_level"
     - "expectations_assessment.reasoning"
+    # v2.4: Bull Case Analysis (steel-manned)
+    - "bull_case_analysis.summary"
+    - "bull_case_analysis.arguments[].argument"
+    - "bull_case_analysis.arguments[].evidence"
+    - "bull_case_analysis.strongest_argument"
+    - "bull_case_analysis.conditions_where_bull_wins"
+    # v2.5: Base Case Analysis (range-bound/flat)
+    - "base_case_analysis.summary"
+    - "base_case_analysis.arguments[].argument"
+    - "base_case_analysis.arguments[].evidence"
+    - "base_case_analysis.strongest_argument"
+    - "base_case_analysis.trading_implications"
     # v2.3: Bear Case Analysis (steel-manned)
     - "bear_case_analysis.summary"
     - "bear_case_analysis.arguments[].argument"

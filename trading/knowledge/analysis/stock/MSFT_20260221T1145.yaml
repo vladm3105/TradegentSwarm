@@ -1,0 +1,775 @@
+# Stock Analysis v2.5 - MSFT
+# 3-Regime Case Analysis: Bull / Base / Bear
+
+_meta:
+  id: "MSFT_20260221T1145"
+  type: stock-analysis
+  version: "2.5"
+  created: "2026-02-21T11:45:00-05:00"
+  status: active
+  prior_analysis: "MSFT_20260221T1130"
+
+# ============================================================
+# DATA QUALITY
+# ============================================================
+data_quality:
+  price_data_source: ib_gateway
+  price_data_verified: true
+  price_data_timestamp: "2026-02-21T11:45:00-05:00"
+  limitations: []
+  warning: ""
+
+# ============================================================
+# NEWS AGE CHECK
+# ============================================================
+news_age_check:
+  items:
+    - news_item: "Stock bounced from $392.32 low on Feb 5"
+      date: "2026-02-05"
+      age_weeks: 2
+      priced_in: fully
+      reasoning: "Price has stabilized in $395-405 range since then"
+
+    - news_item: "Q2 earnings miss - Azure growth 31%"
+      date: "2026-01-29"
+      age_weeks: 3
+      priced_in: fully
+      reasoning: "Stock dropped 10% on day, another 12% in following week"
+
+  stale_news_risk: false
+  fresh_catalyst_exists: false
+  news_summary: |
+    No fresh catalyst. Stock consolidating after Jan 29 earnings drop.
+    Next catalyst: Q3 earnings (late April).
+
+# ============================================================
+# POST-MORTEM (Follow-up from prior analysis)
+# ============================================================
+post_mortem:
+  is_follow_up: true
+  prior_analysis:
+    file: "MSFT_20260221T1130.yaml"
+    date: "2026-02-21"
+    recommendation: "WATCH"
+    confidence: 50
+    target_price: 410.0
+
+  prediction_vs_actual:
+    - element: "Price Direction"
+      predicted: "Sideways consolidation"
+      actual: "Up $2.39 (+0.6%) to $399.62"
+      correct: true
+    - element: "Support Hold"
+      predicted: "$392-395 support holds"
+      actual: "Low $395.16 on Feb 20, held"
+      correct: true
+
+  error_analysis:
+    what_we_got_right:
+      - "Sideways consolidation thesis correct"
+      - "Support identification accurate"
+      - "WATCH recommendation appropriate - no clear entry yet"
+    what_we_got_wrong:
+      - "Slight bullish bias emerging that we didn't capture"
+
+  biases_that_impacted: []
+  framework_lesson: |
+    Base case (consolidation) playing out as expected. No action was the correct
+    decision. Continue waiting for breakout above $405 or breakdown below $392.
+
+# ============================================================
+# CORE ANALYSIS
+# ============================================================
+ticker: MSFT
+current_price: 399.62
+analysis_date: "2026-02-21"
+analysis_type: technical
+grade: B
+
+catalyst:
+  type: technical
+  description: |
+    Testing upper end of consolidation range ($392-405). Slight bounce from
+    yesterday's $397.23 close. Still no hard catalyst until Q3 earnings.
+  specificity: low
+  timing: near_term
+  catalyst_score: 5
+
+market_environment:
+  regime: consolidation
+  sector: Technology
+  sector_trend: neutral
+  vix_level: 18.0
+  vix_environment: normal
+  environment_score: 5
+
+# ============================================================
+# EXPECTATIONS ASSESSMENT
+# ============================================================
+expectations_assessment:
+  bar_level: low
+  reasoning: |
+    After 27% decline, expectations are reset. Stock no longer priced for
+    perfection. Any stabilization in Azure would be a positive surprise.
+  what_beats_expectations:
+    - "Azure growth stabilizes at 30%+"
+    - "Copilot revenue acceleration"
+    - "Buyback increase"
+  what_disappoints:
+    - "Azure growth below 30%"
+    - "Capex continues rising without revenue"
+
+# ============================================================
+# TECHNICAL ANALYSIS
+# ============================================================
+technical:
+  trend:
+    primary_weekly: down
+    intermediate_daily: sideways
+    short_term: up
+
+  moving_averages:
+    ma_20d: 404.50
+    ma_50d: 435.00
+    ma_200d: 460.00
+    vs_20d: below
+    vs_50d: below
+    vs_200d: below
+    alignment: bearish
+
+  patterns:
+    pattern_identified: "Range consolidation $392-$405"
+    completion_status: forming
+    measured_target: 420.0
+
+  key_levels:
+    immediate_support: 395.00
+    immediate_resistance: 405.00
+    major_support: 392.00
+    major_resistance: 420.00
+
+  volume:
+    trend: declining
+    vs_average: below
+    interpretation: "Declining volume in consolidation - typical base-building"
+
+  momentum:
+    rsi: 38
+    rsi_trend: rising
+    relative_strength_vs_spy: neutral
+
+  technical_score: 5
+
+# ============================================================
+# FUNDAMENTALS
+# ============================================================
+fundamentals:
+  valuation:
+    pe_ratio: 28.0
+    pe_vs_peers: fair
+    pe_vs_history: cheap
+    forward_pe: 25.5
+
+  growth:
+    revenue_growth_yoy: 17.0
+    earnings_growth_yoy: 15.0
+    azure_growth: 31.0
+    trajectory: decelerating
+
+  quality:
+    profit_margin: 36.0
+    roe: 38.0
+    free_cash_flow: 22000000000
+    debt_to_equity: 0.35
+    cash_position: 80000000000
+
+  fundamental_score: 7
+
+# ============================================================
+# SENTIMENT
+# ============================================================
+sentiment:
+  analyst:
+    buy: 35
+    hold: 8
+    sell: 2
+    avg_target: 600.0
+    recent_changes: "No changes this week"
+
+  short_interest:
+    pct_float: 0.8
+    days_to_cover: 1.5
+    trend: stable
+
+  options:
+    put_call_ratio: 1.15
+    unusual_flow: "Slight call buying emerging at $420 strike"
+    iv_percentile: 60
+
+  sentiment_score: 6
+
+# ============================================================
+# PHASE 7A: STEEL-MAN BULL CASE (v2.5)
+# ============================================================
+bull_case_analysis:
+  summary: |
+    MSFT is a best-in-class business trading at multi-year low valuation after
+    a 27% decline. Azure still growing 31% at scale. $80B cash provides downside
+    protection. The selloff has priced in worst-case scenarios - any stabilization
+    triggers significant re-rating. Technical base forming at $392-405.
+
+  strength: moderate
+
+  arguments:
+    - argument: "Best-in-class business at cheapest valuation since 2022"
+      score: 8
+      evidence: "28x P/E vs 5-year avg 33x. 36% margins, 38% ROE, $80B cash."
+      counter: "Cheap can get cheaper if growth continues decelerating."
+
+    - argument: "Azure 31% growth remains exceptional for $100B+ business"
+      score: 7
+      evidence: "AWS 19%, GCP 26%. MSFT maintaining cloud leadership."
+      counter: "Deceleration from 35% is the concern, not absolute level."
+
+    - argument: "Copilot monetization inflection beginning"
+      score: 6
+      evidence: "90% Fortune 500 adoption. Enterprise deals accelerating."
+      counter: "Revenue contribution still immaterial to $200B+ base."
+
+    - argument: "Technical base forming - declining volume in consolidation"
+      score: 7
+      evidence: "Volume declining from 40M+ to 18M. Classic accumulation pattern."
+      counter: "Could also be disinterest, not accumulation."
+
+    - argument: "$80B cash provides strategic optionality"
+      score: 8
+      evidence: "Can accelerate buybacks, M&A, or dividend growth anytime."
+      counter: "Management hasn't deployed aggressively despite stock weakness."
+
+    - argument: "RSI improving from oversold levels"
+      score: 6
+      evidence: "RSI rose from 31 to 38. Momentum turning less negative."
+      counter: "RSI can stay oversold in downtrends for extended periods."
+
+  strongest_argument: "Best-in-class business at multi-year low valuation with $80B cash"
+
+  bull_case_validity: |
+    Bulls win if: Azure stabilizes, Copilot monetizes, technical breakout above $405.
+
+  conditions_where_bull_wins: |
+    - Break above $405 with volume >15M
+    - RSI crosses above 50
+    - Relative strength vs SPY turns positive
+    - Any positive management commentary on Azure
+
+# ============================================================
+# PHASE 7B: STEEL-MAN BASE CASE (v2.5 - Range-Bound/Flat)
+# ============================================================
+base_case_analysis:
+  summary: |
+    MSFT consolidates in $392-$420 range until Q3 earnings (late April). Bull and
+    bear arguments are evenly matched. Without a fresh catalyst, neither side has
+    enough conviction to break the range. Time decay favors options sellers.
+
+  strength: strong
+
+  arguments:
+    - argument: "Bull/bear arguments evenly balanced - equilibrium state"
+      score: 8
+      evidence: "Bull case avg 7.0, bear case avg 6.8. No decisive advantage."
+      counter: "External catalyst could break equilibrium anytime."
+
+    - argument: "No catalyst until Q3 earnings (2+ months away)"
+      score: 9
+      evidence: "No conferences, product launches, or data releases scheduled."
+      counter: "Surprise news always possible but not plannable."
+
+    - argument: "Clear technical range established and holding"
+      score: 8
+      evidence: "$392 tested twice and held. $405 resistance clear. Range defined."
+      counter: "Ranges eventually break - question is timing."
+
+    - argument: "Declining volume indicates reduced conviction on both sides"
+      score: 7
+      evidence: "Volume dropped from 40M+ to 18M. Neither bulls nor bears aggressive."
+      counter: "Low volume breakouts can be false signals."
+
+  strongest_argument: "No catalyst for 2+ months and clear range boundaries"
+
+  base_case_validity: |
+    Base case wins if: No surprise news, VIX stays 15-22, range holds.
+
+  conditions_where_flat_wins: |
+    - Stock stays in $392-$420 range for 4-6 weeks
+    - Volume continues declining
+    - No macro shocks or company-specific news
+    - Tech sector remains in consolidation mode
+
+  trading_implications: |
+    If base case plays out (50% probability):
+    - AVOID: Directional stock bets (long or short)
+    - CONSIDER: Iron condor ($385 put / $420 call) - collect theta decay
+    - CONSIDER: Cash-secured put at $385 - get paid to wait for better entry
+    - SET ALERTS: $392 (support break), $405 (resistance break)
+    - WAIT: For Q3 earnings for next decision point
+
+# ============================================================
+# PHASE 7C: STEEL-MAN BEAR CASE (v2.0)
+# ============================================================
+bear_case_analysis:
+  summary: |
+    Azure deceleration from 35% to 31% may be structural, not cyclical. AI capex
+    of $50B+ annually has unclear ROI timeline. Technical damage is severe - below
+    all moving averages with broken uptrend. Analyst targets ($600) are stale and
+    will be cut, removing the "value" narrative.
+
+  strength: moderate
+
+  arguments:
+    - argument: "Azure deceleration may be structural, not cyclical"
+      score: 8
+      evidence: "Growth slowed from 35% to 31% despite massive AI investments."
+      counter: "31% at scale is still exceptional. Deceleration was expected."
+
+    - argument: "AI capex ($50B+) without clear ROI visibility"
+      score: 7
+      evidence: "Massive infrastructure spend. Copilot adoption high but monetization unclear."
+      counter: "MSFT has history of monetizing infrastructure. Patience required."
+
+    - argument: "Technical damage severe - below all MAs"
+      score: 7
+      evidence: "Below 20D, 50D, 200D MAs. Broken uptrend. No relative strength."
+      counter: "Oversold conditions. Technical base forming."
+
+    - argument: "Analyst targets ($600) are stale and will be cut"
+      score: 6
+      evidence: "Only 3 downgrades despite 27% decline. Targets lag reality."
+      counter: "Analysts see through short-term noise. 12-18 month view."
+
+    - argument: "No insider buying despite 27% decline"
+      score: 6
+      evidence: "Executives not stepping up to buy at 'cheap' levels."
+      counter: "Insider buying restrictions around earnings. Not unusual."
+
+    - argument: "Institutional rotation out of AI beneficiaries ongoing"
+      score: 6
+      evidence: "MSFT, GOOGL, META all underperforming in 2026."
+      counter: "Rotation is temporary. AI infrastructure is strategic necessity."
+
+  strongest_argument: "Azure deceleration may be structural, requiring further multiple compression"
+
+  why_bull_wins: |
+    Bull wins if Azure stabilizes, Copilot monetizes, or buyback accelerates.
+
+  conditions_where_bear_wins: |
+    - Azure growth decelerates below 30% in Q3
+    - Break below $392 with volume >25M
+    - Broad tech sector selloff
+    - Major analyst downgrade wave
+
+# ============================================================
+# THREAT ASSESSMENT
+# ============================================================
+threat_assessment:
+  structural_threats:
+    - threat: "AI infrastructure commoditization"
+      probability: 0.25
+      timeline: "2-3 years"
+    - threat: "Cloud market maturation"
+      probability: 0.40
+      timeline: "ongoing"
+
+  cyclical_risks:
+    - risk: "Enterprise IT spending slowdown"
+      current_severity: medium
+      trend: stable
+    - risk: "AI capex digestion period"
+      current_severity: high
+      trend: stable
+
+  primary_concern: "AI capex ROI uncertainty"
+
+  summary: |
+    Primary risk is cyclical (AI capex digestion), not structural. Microsoft's
+    competitive position remains strong. Stock trading as if structural concerns
+    exist when evidence points to cyclical headwinds.
+
+# ============================================================
+# THESIS REVERSAL
+# ============================================================
+thesis_reversal:
+  current_thesis_direction: neutral
+
+  would_change_thesis: |
+    BULLISH if: Break above $405 with volume, RSI >50, RS vs SPY positive
+    BEARISH if: Break below $392 with volume, new analyst downgrades
+
+  reversal_triggers:
+    upside: "$405 breakout with volume >15M"
+    downside: "$392 break with volume >25M"
+
+# ============================================================
+# BIAS CHECK (v2.3)
+# ============================================================
+bias_check:
+  biases_detected:
+    - bias: anchoring
+      severity: medium
+      manifestation: "Still tempted to reference $600 analyst targets"
+      mitigation: "Focus on price action, not stale targets"
+
+    - bias: recency_bias
+      severity: low
+      manifestation: "Today's bounce might not mean trend change"
+      mitigation: "Wait for multi-day confirmation"
+
+  pre_exit_gate:
+    thesis_intact: true
+    catalyst_pending: false
+    exit_reason: null
+    gate_result: "N/A - no position"
+
+  countermeasures_applied:
+    - bias: anchoring
+      rule: "Ignore analyst price targets for stocks in downtrends"
+      implementation: "Do not reference $600 target in decision-making"
+      checklist:
+        - "Is my thesis based on price action or 'value gap'?"
+      mantra: "Price targets follow price, not the other way around"
+
+  estimated_cost_total: 0.0
+
+# ============================================================
+# DO NOTHING GATE (v2.0)
+# ============================================================
+do_nothing_gate:
+  criteria:
+    ev_positive:
+      required: ">5%"
+      actual: "3.5%"
+      pass: false
+      notes: "Expected value still below 5% threshold"
+
+    confidence_above_60:
+      required: ">60%"
+      actual: "50%"
+      pass: false
+      notes: "Base case (consolidation) is highest probability at 50%"
+
+    rr_above_2:
+      required: ">2:1"
+      actual: "2.0:1"
+      pass: true
+      notes: "Entry $405, stop $392, target $420 = 2:1"
+
+    edge_exists:
+      required: "identifiable edge"
+      actual: "no clear edge"
+      pass: false
+      notes: "No catalyst, no confirmation, no relative strength"
+
+  pass: false
+  criteria_met: 1
+  criteria_total: 4
+
+  pass_reasoning: |
+    DO NOTHING remains correct. Only 1/4 criteria met:
+    - EV 3.5% < 5% required ❌
+    - Confidence 50% < 60% required ❌
+    - R:R 2.0:1 = 2:1 required ✓ (barely)
+    - Edge: None ❌
+
+    Wait for $405 breakout or $392 breakdown.
+
+# ============================================================
+# FALSIFICATION
+# ============================================================
+falsification:
+  thesis_invalid_if: |
+    Current WATCH thesis invalidated by:
+    1. Break above $405 with volume >15M → Upgrade to BUY
+    2. Break below $392 with volume >25M → Remove from watchlist
+
+  conditions:
+    - condition: "Break above $405 with volume"
+      would_prove: "Buyers stepping in, range breakout"
+      action: "Upgrade to BUY"
+
+    - condition: "Break below $392 with volume"
+      would_prove: "Support failed, downtrend resuming"
+      action: "Remove from watchlist"
+
+# ============================================================
+# ALERT LEVELS
+# ============================================================
+alert_levels:
+  warning_triggers:
+    - level: 392.00
+      direction: below
+      action: "Review thesis immediately"
+
+  opportunity_triggers:
+    - level: 405.00
+      direction: above
+      action: "Watch for volume confirmation"
+    - level: 420.00
+      direction: above
+      action: "Potential trend change - evaluate entry"
+
+# ============================================================
+# SCENARIOS
+# ============================================================
+scenarios:
+  bull_case:
+    probability: 0.25
+    description: "Breakout above $405, rally to $440"
+    target_price: 440.00
+    return_pct: 10.1
+    timeline_days: 45
+    key_driver: "Technical breakout, improved sentiment"
+
+  base_case:
+    probability: 0.50
+    description: "Consolidation continues $392-$420"
+    target_price: 405.00
+    return_pct: 1.3
+    timeline_days: 60
+    key_driver: "No catalyst, range-bound"
+
+  bear_case:
+    probability: 0.20
+    description: "Support breaks, retest $370-380"
+    target_price: 375.00
+    return_pct: -6.2
+    timeline_days: 30
+    key_driver: "Broad tech selloff or negative news"
+
+  black_swan:
+    probability: 0.05
+    description: "Major negative event"
+    target_price: 340.00
+    return_pct: -14.9
+    timeline_days: 30
+    key_driver: "Unexpected material negative"
+
+  expected_value: 3.48
+  ev_calculation: "(0.25 × 10.1) + (0.50 × 1.3) + (0.20 × -6.2) + (0.05 × -14.9) = 3.48%"
+
+# ============================================================
+# ALTERNATIVE STRATEGIES
+# ============================================================
+alternative_strategies:
+  - strategy: "Wait for $405 breakout"
+    description: "Buy on confirmed breakout with volume >15M"
+    risk_level: lower
+    why_better: "Higher probability entry, confirmation before commitment"
+
+  - strategy: "Iron condor $385p/$420c"
+    description: "Sell puts at $385, sell calls at $420, collect premium"
+    risk_level: similar
+    why_better: "Profits from base case (consolidation). Time decay works for you."
+
+  - strategy: "Cash-secured put at $385"
+    description: "Sell $385 put, get paid to wait for lower entry"
+    risk_level: lower
+    why_better: "Collect premium. If assigned, buy at $385 (3.7% lower)."
+
+# ============================================================
+# PASS REASONING
+# ============================================================
+pass_reasoning:
+  summary: |
+    PASSING because Do Nothing Gate failed (1/4). Base case (consolidation)
+    is highest probability. No edge exists until breakout confirmation.
+
+  what_would_need_to_change:
+    - "Break above $405 with volume >15M"
+    - "RSI crosses above 50"
+    - "Relative strength vs SPY turns positive"
+    - "Any positive catalyst"
+
+  opportunity_cost_assessment: |
+    If wrong and MSFT rallies to $440: miss 10% upside
+    If right and support breaks: avoid 6% downside
+    Expected value of waiting: positive given 50% base case probability
+
+# ============================================================
+# RISK MANAGEMENT
+# ============================================================
+risk_management:
+  entry:
+    trigger: "Break above $405 with volume >15M"
+    price: 405.00
+    order_type: stop_limit
+
+  stop_loss:
+    price: 392.00
+    basis: technical_level
+    type: hard
+    distance_pct: 3.2
+
+  position_size:
+    account_risk_pct: 1.0
+    dollar_risk: 1000.00
+    shares: 77
+    position_value: 31185.00
+    portfolio_pct: 3.0
+
+  risk_reward:
+    risk_dollars: 1001.00
+    risk_pct: 3.2
+    reward_dollars: 1155.00
+    reward_pct: 3.7
+    ratio: 1.2
+
+  targets:
+    target_1:
+      price: 420.00
+      sell_pct: 50
+      basis: "Prior resistance, 20D MA area"
+    target_2:
+      price: 440.00
+      sell_pct: 50
+      basis: "50D MA recovery"
+
+  time_stop:
+    days: 30
+    action: "Reassess thesis"
+
+# ============================================================
+# TRADE PLAN
+# ============================================================
+trade_plan:
+  entry_criteria: |
+    WAIT for: Break above $405 with volume >15M
+    OR: 5 consecutive days above $400 with improving RS
+
+  entry_price: 405.00
+  position_size_pct: 3.0
+  position_sizing_rationale: "Standard position given moderate conviction"
+
+  stop_loss: 392.00
+  target_1: 420.00
+  target_2: 440.00
+
+  exit_criteria: |
+    - Stop at $392
+    - Time stop: 30 days no movement
+    - Thesis invalidated: Azure <30%
+
+  max_holding_days: 60
+
+# ============================================================
+# SCORING
+# ============================================================
+scoring:
+  catalyst_score:
+    raw: 5
+    weight: 0.25
+    weighted: 1.25
+  environment_score:
+    raw: 5
+    weight: 0.15
+    weighted: 0.75
+  technical_score:
+    raw: 5
+    weight: 0.25
+    weighted: 1.25
+  fundamental_score:
+    raw: 7
+    weight: 0.20
+    weighted: 1.40
+  sentiment_score:
+    raw: 6
+    weight: 0.15
+    weighted: 0.90
+
+  weighted_total: 5.55
+
+# ============================================================
+# RECOMMENDATION & SUMMARY
+# ============================================================
+recommendation: WATCH
+
+rationale: |
+  MSFT showing early signs of stabilization (+0.6% today) but not enough for
+  entry. Do Nothing Gate still fails (1/4 criteria). Base case (consolidation)
+  remains highest probability at 50%. Wait for $405 breakout confirmation.
+
+watchlist_trigger: |
+  BUY: Break above $405 with volume >15M
+  REMOVE: Break below $392 with volume >25M
+
+# ============================================================
+# SUMMARY BOX
+# ============================================================
+summary:
+  thesis_summary: "Stabilizing in range, but no edge yet. Wait for breakout."
+  key_risk: "Support failure at $392 resumes downtrend"
+  action: "WATCH - Wait for $405 breakout"
+  next_review: "2026-02-24 or on trigger"
+
+  quick_reference: |
+    ┌─────────────────────────────────────────────────────────────┐
+    │  MSFT: $399.62  │  WATCH  │  Score: 5.55  │  EV: 3.48%     │
+    ├─────────────────────────────────────────────────────────────┤
+    │  Support: $392  │  Resist: $405  │  20D MA: $404.50        │
+    │  RSI: 38 (↑)    │  R:R: 2.0:1    │  Vol: Below avg         │
+    ├─────────────────────────────────────────────────────────────┤
+    │  BULL: 25% → $440  │  BASE: 50% → $405  │  BEAR: 20% → $375│
+    ├─────────────────────────────────────────────────────────────┤
+    │  BUY if: >$405 on volume >15M                              │
+    │  STOP if: <$392 on volume >25M                             │
+    │  Do Nothing Gate: FAILED (1/4)                             │
+    └─────────────────────────────────────────────────────────────┘
+
+# ============================================================
+# META-LEARNING
+# ============================================================
+meta_learning:
+  patterns_applied:
+    - pattern: "Range consolidation after sharp decline"
+      source: "Technical analysis principles"
+      expected_outcome: "Base formation before next move"
+      actual_outcome: "pending"
+      validation_status: "testing"
+
+  rules_tested:
+    - rule: "Wait for breakout confirmation before entry"
+      rule_id: "TECH-005"
+      test_condition: "MSFT in $392-$405 range"
+      validation_status: "testing"
+      preliminary_result: "Holding - no entry yet"
+
+  new_learning:
+    learning: |
+      When base case (consolidation) has highest probability, the opportunity
+      cost of waiting is low. Patience pays when there's no edge.
+    learning_type: "decision_framework"
+    validation_criteria: "Track next 5 instances - does waiting outperform early entry?"
+    creates_rule: false
+    creates_learning_file: false
+
+# ============================================================
+# LINKS & INDEXING
+# ============================================================
+_links:
+  prior_analysis: "MSFT_20260221T1130.yaml"
+  trade_journal: ""
+  post_review: ""
+  ticker_profile: "MSFT"
+
+_indexing:
+  rag_embed_fields:
+    - "bull_case_analysis.summary"
+    - "base_case_analysis.summary"
+    - "bear_case_analysis.summary"
+    - "rationale"
+    - "summary.thesis_summary"
+    - "meta_learning.new_learning.learning"
+  graph_extract_fields:
+    - "ticker"
+    - "bull_case_analysis.arguments[].argument"
+    - "base_case_analysis.arguments[].argument"
+    - "bear_case_analysis.arguments[].argument"
+    - "threat_assessment.primary_concern"

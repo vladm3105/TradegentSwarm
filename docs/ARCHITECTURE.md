@@ -1,7 +1,7 @@
 # TradegentSwarm Architecture
 
 > **Last Updated**: 2026-02-21
-> **Skills Version**: v2.3 (stock-analysis, earnings-analysis), v2.1 (other skills)
+> **Skills Version**: v2.5 (stock-analysis, earnings-analysis), v2.1 (other skills)
 
 ## System Overview
 
@@ -235,18 +235,24 @@ The skills system provides structured YAML templates for consistent AI analysis 
 
 | Skill | Version | Key Features |
 |-------|---------|--------------|
-| **stock-analysis** | v2.3 | 12-phase workflow, steel-man bear case, bias countermeasures, pre-exit gate, do-nothing gate, falsification criteria, 4-scenario framework, meta-learning |
-| **earnings-analysis** | v2.3 | 14-phase workflow, historical moves, expectations assessment, bear case analysis, bias tracking |
+| **stock-analysis** | v2.5 | 12-phase workflow, 3-regime case analysis (bull/base/bear), bias countermeasures, pre-exit gate, do-nothing gate, falsification criteria, 4-scenario framework, meta-learning |
+| **earnings-analysis** | v2.5 | 14-phase workflow, 3-regime case analysis, historical moves, expectations assessment, bias tracking |
 | **research-analysis** | v2.1 | Counter-thesis (steel-manned), bias check, confidence tracking |
 | **trade-journal** | v2.1 | Pre-trade checklist, psychological state, decision quality, loss aversion check |
 | **post-trade-review** | v2.1 | Data source effectiveness, countermeasures, rule validation, comparison to similar trades |
 | **ticker-profile** | v2.1 | Analysis track record, bias history, learned patterns, known risks |
 | **watchlist** | v2.1 | Conviction levels, thesis reasoning, analysis quality check |
 
-### v2.3 Key Enhancements
+### v2.5 Key Enhancements
+
+**3-Regime Case Analysis** (bull/base/bear):
+- Steel-man bull case with scored arguments (6 args)
+- Steel-man base case for range-bound/flat scenarios (4 args)
+- Steel-man bear case with scored arguments (6 args)
+- Each argument has: score (1-10), evidence, counter-argument
+- Base case includes `trading_implications` for non-directional strategies
 
 **Reasoning Sections** (using YAML multi-line `|` blocks):
-- Steel-man bear case with scored arguments
 - Bias countermeasure structure: rule + implementation + checklist + mantra
 - Pre-exit gate for loss aversion prevention
 - Do Nothing gate with 4 criteria (EV >5%, Confidence >60%, R:R >2:1, Edge exists)
