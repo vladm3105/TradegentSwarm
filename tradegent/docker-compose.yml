@@ -16,14 +16,15 @@
 #   Live:  localhost:5901 (password: VNC_LIVE_PASS)
 
 services:
-  # ─── Paper Trading Gateway (Port 4002) ──────────────────────
+  # ─── Paper Trading Gateway (Port 4002 external) ─────────────
+  # Note: gnzsnz/ib-gateway uses port 4004 internally for paper trading
   paper-ib-gateway:
     image: ghcr.io/gnzsnz/ib-gateway:stable
     container_name: paper-ib-gateway
     hostname: paper-ib-gateway
     restart: unless-stopped
     ports:
-      - "4002:4002"      # Paper trading API
+      - "4002:4004"      # Paper trading: external 4002 -> internal 4004
       - "5902:5900"      # VNC for paper
     environment:
       TWS_USERID: ${IB_PAPER_USER}
@@ -35,17 +36,19 @@ services:
     volumes:
       - paper_ib_data:/root/Jts
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "4002"]
+      test: ["CMD-SHELL", "timeout 5 bash -c '</dev/tcp/localhost/4004'"]
       interval: 30s
       timeout: 10s
       retries: 5
+      start_period: 120s  # Give time for login
     networks:
       - nexus-net
     labels:
       - "com.tradegent.mode=paper"
       - "com.tradegent.description=Paper trading gateway (simulated)"
 
-  # ─── Live Trading Gateway (Port 4001) ───────────────────────
+  # ─── Live Trading Gateway (Port 4001 external) ──────────────
+  # Note: gnzsnz/ib-gateway uses port 4003 internally for live trading
   live-ib-gateway:
     image: ghcr.io/gnzsnz/ib-gateway:stable
     container_name: live-ib-gateway
@@ -54,7 +57,7 @@ services:
     profiles:
       - live  # Only starts when: docker compose --profile live up
     ports:
-      - "4001:4001"      # Live trading API
+      - "4001:4003"      # Live trading: external 4001 -> internal 4003
       - "5901:5900"      # VNC for live
     environment:
       TWS_USERID: ${IB_LIVE_USER}
@@ -66,10 +69,11 @@ services:
     volumes:
       - live_ib_data:/root/Jts
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "4001"]
+      test: ["CMD-SHELL", "timeout 5 bash -c '</dev/tcp/localhost/4003'"]
       interval: 30s
       timeout: 10s
       retries: 5
+      start_period: 120s  # Give time for login
     networks:
       - nexus-net
     labels:
