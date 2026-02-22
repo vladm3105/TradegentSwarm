@@ -4,8 +4,17 @@ Provides two check levels:
 - Full check: Run at start of session (first analysis of day)
 - Quick check: Run before each analysis
 
+Trading Mode:
+- Set IB_MODE=paper or IB_MODE=live in .env
+- Paper: Port 4002, simulated trading
+- Live: Port 4001, REAL MONEY
+
 Usage:
-    from tradegent.preflight import run_full_preflight, run_quick_preflight
+    from tradegent.preflight import run_full_preflight, run_quick_preflight, get_trading_mode
+
+    # Check current trading mode
+    mode = get_trading_mode()
+    print(f"Trading mode: {mode.mode} on port {mode.port}")
 
     # First run of day
     status = run_full_preflight()
@@ -18,6 +27,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -28,6 +38,65 @@ if _env_path.exists():
     load_dotenv(_env_path)
 
 log = logging.getLogger(__name__)
+
+
+class TradingModeType(Enum):
+    """Trading mode enumeration."""
+    PAPER = "paper"
+    LIVE = "live"
+
+
+@dataclass
+class TradingModeConfig:
+    """Trading mode configuration."""
+    mode: TradingModeType
+    port: int
+    container_name: str
+    account: str
+    is_readonly: bool
+
+    @property
+    def is_paper(self) -> bool:
+        return self.mode == TradingModeType.PAPER
+
+    @property
+    def is_live(self) -> bool:
+        return self.mode == TradingModeType.LIVE
+
+    @property
+    def mode_banner(self) -> str:
+        """Get a prominent banner for the current mode."""
+        if self.is_paper:
+            return "📋 PAPER TRADING (Simulated)"
+        else:
+            return "🔴 LIVE TRADING (REAL MONEY)"
+
+
+def get_trading_mode() -> TradingModeConfig:
+    """
+    Get the current trading mode configuration.
+
+    Returns:
+        TradingModeConfig with mode, port, container, and account info
+    """
+    mode_str = os.getenv("IB_MODE", "paper").lower()
+
+    if mode_str == "live":
+        return TradingModeConfig(
+            mode=TradingModeType.LIVE,
+            port=4001,
+            container_name="live-ib-gateway",
+            account=os.getenv("IB_LIVE_ACCOUNT", ""),
+            is_readonly=True,  # Safety default for live
+        )
+    else:
+        return TradingModeConfig(
+            mode=TradingModeType.PAPER,
+            port=4002,
+            container_name="paper-ib-gateway",
+            account=os.getenv("IB_PAPER_ACCOUNT", ""),
+            is_readonly=False,
+        )
 
 
 @dataclass
@@ -48,6 +117,7 @@ class PreflightResult:
     """Result of preflight checks."""
     timestamp: datetime
     check_type: str  # "full" or "quick"
+    trading_mode: TradingModeConfig = field(default_factory=get_trading_mode)
     services: dict[str, ServiceStatus] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
@@ -68,7 +138,17 @@ class PreflightResult:
 
     def summary(self) -> str:
         """Human-readable summary."""
-        lines = [f"Preflight Check ({self.check_type}) - {self.timestamp.strftime('%Y-%m-%d %H:%M:%S')}"]
+        lines = []
+
+        # Trading mode banner (prominent!)
+        lines.append("=" * 60)
+        lines.append(f"  {self.trading_mode.mode_banner}")
+        lines.append(f"  Account: {self.trading_mode.account or 'Not configured'}")
+        lines.append(f"  Port: {self.trading_mode.port} | Container: {self.trading_mode.container_name}")
+        lines.append("=" * 60)
+        lines.append("")
+
+        lines.append(f"Preflight Check ({self.check_type}) - {self.timestamp.strftime('%Y-%m-%d %H:%M:%S')}")
         lines.append("-" * 60)
 
         for name, status in self.services.items():
@@ -142,6 +222,9 @@ def check_neo4j() -> ServiceStatus:
 
 def check_ib_mcp() -> ServiceStatus:
     """Check IB MCP server connection."""
+    mode = get_trading_mode()
+    mode_label = mode.mode.value.upper()
+
     try:
         import httpx
 
@@ -157,42 +240,46 @@ def check_ib_mcp() -> ServiceStatus:
                 return ServiceStatus(
                     name="ib_mcp",
                     status="healthy",
-                    message=f"Connected to IB Gateway v{data.get('server_version', '?')}",
-                    details=data
+                    message=f"{mode_label}: Connected to IB Gateway v{data.get('server_version', '?')}",
+                    details={**data, "mode": mode.mode.value, "port": mode.port}
                 )
             else:
                 return ServiceStatus(
                     name="ib_mcp",
                     status="degraded",
-                    message="MCP server up, IB Gateway not connected",
-                    details=data
+                    message=f"{mode_label}: MCP server up, IB Gateway not connected",
+                    details={**data, "mode": mode.mode.value, "port": mode.port}
                 )
         else:
             return ServiceStatus(
                 name="ib_mcp",
                 status="unhealthy",
-                message=f"HTTP {response.status_code}"
+                message=f"{mode_label}: HTTP {response.status_code}"
             )
     except httpx.ConnectError:
         return ServiceStatus(
             name="ib_mcp",
             status="unhealthy",
-            message="Cannot connect to IB MCP server"
+            message=f"{mode_label}: Cannot connect to IB MCP server (port {mode.port})"
         )
     except Exception as e:
         return ServiceStatus(
             name="ib_mcp",
             status="unhealthy",
-            message=str(e)
+            message=f"{mode_label}: {str(e)}"
         )
 
 
 def check_ib_gateway_docker() -> ServiceStatus:
-    """Check IB Gateway Docker container status."""
+    """Check IB Gateway Docker container status based on current trading mode."""
+    mode = get_trading_mode()
+    container_name = mode.container_name
+    mode_label = mode.mode.value.upper()
+
     try:
         import subprocess
         result = subprocess.run(
-            ["docker", "inspect", "--format", "{{.State.Health.Status}}", "nexus-ib-gateway"],
+            ["docker", "inspect", "--format", "{{.State.Health.Status}}", container_name],
             capture_output=True,
             text=True,
             timeout=5
@@ -204,25 +291,29 @@ def check_ib_gateway_docker() -> ServiceStatus:
                 return ServiceStatus(
                     name="ib_gateway",
                     status="healthy",
-                    message="Container healthy"
+                    message=f"{mode_label} container healthy ({container_name})",
+                    details={"container": container_name, "mode": mode.mode.value}
                 )
             elif health == "starting":
                 return ServiceStatus(
                     name="ib_gateway",
                     status="degraded",
-                    message="Container starting, may need time to connect"
+                    message=f"{mode_label} container starting ({container_name})",
+                    details={"container": container_name, "mode": mode.mode.value}
                 )
             else:
                 return ServiceStatus(
                     name="ib_gateway",
                     status="unhealthy",
-                    message=f"Container health: {health}"
+                    message=f"{mode_label} container: {health} ({container_name})",
+                    details={"container": container_name, "mode": mode.mode.value}
                 )
         else:
             return ServiceStatus(
                 name="ib_gateway",
                 status="unhealthy",
-                message="Container not found"
+                message=f"{mode_label} container not found ({container_name})",
+                details={"container": container_name, "mode": mode.mode.value}
             )
     except Exception as e:
         return ServiceStatus(
