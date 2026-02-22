@@ -5,11 +5,17 @@ import os
 from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
 from neo4j import GraphDatabase
 from neo4j.exceptions import AuthError, ServiceUnavailable
 
 from .exceptions import GraphUnavailableError, SchemaError
 from .models import GraphStats
+
+# Load .env file for credentials
+_env_path = Path(__file__).parent.parent / ".env"
+if _env_path.exists():
+    load_dotenv(_env_path)
 
 log = logging.getLogger(__name__)
 

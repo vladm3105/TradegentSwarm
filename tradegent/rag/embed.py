@@ -8,8 +8,14 @@ import time
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+from dotenv import load_dotenv
 import psycopg
 import yaml
+
+# Load .env file for credentials
+_env_path = Path(__file__).parent.parent / ".env"
+if _env_path.exists():
+    load_dotenv(_env_path)
 
 try:
     from trader.utils import is_real_document

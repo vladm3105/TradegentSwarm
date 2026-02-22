@@ -11,11 +11,18 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
+from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from dotenv import load_dotenv
 import psycopg
 from psycopg.rows import dict_row
+
+# Load .env file for credentials
+_env_path = Path(__file__).parent / ".env"
+if _env_path.exists():
+    load_dotenv(_env_path)
 
 log = logging.getLogger("nexus-light.db")
 

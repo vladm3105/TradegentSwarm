@@ -3,8 +3,15 @@
 import logging
 import time
 from datetime import date
+from pathlib import Path
 
+from dotenv import load_dotenv
 import psycopg
+
+# Load .env file for credentials
+_env_path = Path(__file__).parent.parent / ".env"
+if _env_path.exists():
+    load_dotenv(_env_path)
 
 from .embedding_client import get_embed_dimensions, get_embedding
 from .exceptions import RAGUnavailableError
