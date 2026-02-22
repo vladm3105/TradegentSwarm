@@ -58,12 +58,10 @@ tar -czf ~/backups/knowledge_$(date +%Y%m%d).tar.gz \
 ```bash
 # 1. Add stock with details
 python orchestrator.py stock add PLTR \
-  --name "Palantir Technologies" \
   --priority 7 \
-  --tags "ai,defense,gov"
-
-# 2. Set earnings date (if known)
-python orchestrator.py stock set-earnings PLTR 2025-02-15
+  --tags ai defense gov \
+  --earnings-date "2025-02-15" \
+  --comment "Palantir Technologies - AI/defense"
 
 # 3. Run initial analysis
 python orchestrator.py analyze PLTR --type stock

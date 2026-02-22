@@ -412,7 +412,7 @@ Stocks are stored in `nexus.stocks` table with state machine: `analysis` → `pa
 python orchestrator.py stock list
 
 # Add a stock
-python orchestrator.py stock add PLTR --name "Palantir" --priority 6 --tags ai,defense
+python orchestrator.py stock add PLTR --priority 6 --tags ai defense --comment "Palantir"
 
 # Enable/disable for automated runs
 python orchestrator.py stock enable NVDA

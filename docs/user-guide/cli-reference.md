@@ -159,10 +159,11 @@ python orchestrator.py stock add <TICKER> [options]
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--name` | — | Company name |
 | `--priority` | 5 | Priority (1-10) |
-| `--tags` | — | Comma-separated tags |
-| `--earnings` | — | Next earnings date |
+| `--tags` | — | Space-separated tags |
+| `--earnings-date` | — | Next earnings date (YYYY-MM-DD) |
+| `--comment` | — | Description or notes |
+| `--state` | analysis | Initial state |
 
 **Examples:**
 
@@ -170,12 +171,15 @@ python orchestrator.py stock add <TICKER> [options]
 # Basic add
 python orchestrator.py stock add PLTR
 
+# With priority and comment
+python orchestrator.py stock add DOCU --priority 5 --comment "DocuSign - e-signature"
+
 # Full details
 python orchestrator.py stock add PLTR \
-  --name "Palantir" \
   --priority 8 \
-  --tags "ai,defense,gov" \
-  --earnings "2025-02-15"
+  --tags ai defense gov \
+  --earnings-date "2025-02-15" \
+  --comment "Palantir - AI/defense contractor"
 ```
 
 ### stock remove
@@ -322,7 +326,7 @@ python orchestrator.py status
 python orchestrator.py settings set dry_run_mode false
 
 # 2. Add stock
-python orchestrator.py stock add NVDA --name "NVIDIA" --priority 10
+python orchestrator.py stock add NVDA --priority 10 --comment "NVIDIA - AI/GPU leader"
 
 # 3. Run analysis
 python orchestrator.py analyze NVDA --type stock
