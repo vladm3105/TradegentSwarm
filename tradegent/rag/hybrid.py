@@ -482,8 +482,15 @@ def get_bias_warnings(ticker: str) -> list[dict]:
         except ImportError:
             from graph.layer import TradingGraph
         with TradingGraph() as graph:
-            # Skip queries on empty graph to avoid label warnings
+            # Skip queries if no Trade nodes exist (avoid label warnings on sparse graph)
             if graph.health_check() and graph.is_populated():
+                # Check if Trade nodes exist before querying
+                trade_check = graph.run_cypher(
+                    "MATCH (t:Trade) RETURN count(t) AS cnt LIMIT 1", {}, _internal=True
+                )
+                if not trade_check or trade_check[0].get("cnt", 0) == 0:
+                    return warnings  # No trades yet, return empty
+
                 # Get biases detected in trades for this ticker
                 bias_history = graph.run_cypher(
                     """

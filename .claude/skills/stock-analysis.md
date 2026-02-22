@@ -139,6 +139,26 @@ TOTAL SCORE:                ___/10
 
 Use `tradegent_knowledge/skills/stock-analysis/template.yaml` structure.
 
+**CRITICAL: End your analysis with a JSON block for machine parsing:**
+
+```json
+{
+    "ticker": "SYMBOL",
+    "gate_passed": true/false,
+    "recommendation": "BULLISH/BEARISH/NEUTRAL/WAIT",
+    "confidence": 0-100,
+    "expected_value_pct": 0.0,
+    "entry_price": null or price,
+    "stop_loss": null or price,
+    "target": null or price,
+    "position_size_pct": 0.0,
+    "structure": "shares/calls/puts/spread/none",
+    "rationale_summary": "One sentence summary of recommendation"
+}
+```
+
+This JSON block is REQUIRED for the orchestrator to parse your analysis. Without it, the analysis will show 0% confidence.
+
 ### Step 8: Save Analysis
 
 Save to `tradegent_knowledge/knowledge/analysis/stock/{TICKER}_{YYYYMMDDTHHMM}.yaml`

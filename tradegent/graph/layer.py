@@ -323,14 +323,24 @@ class TradingGraph:
         """Get all risks threatening this ticker."""
         query = """
         MATCH (r:Risk)-[:THREATENS]->(t:Ticker {symbol: $symbol})
-        RETURN r.name AS risk, r.description AS description
+        RETURN r.name AS risk, COALESCE(r.description, '') AS description
         """
         with self._driver.session(database=self.database) as session:
             result = session.run(query, symbol=symbol)
             return [dict(r) for r in result]
 
     def get_bias_history(self, bias_name: str | None = None) -> list[dict]:
-        """Get bias occurrences across trades."""
+        """Get bias occurrences across trades.
+
+        Returns empty list if no Trade nodes exist (sparse graph).
+        """
+        # Check if Trade nodes exist to avoid warning spam
+        with self._driver.session(database=self.database) as session:
+            check = session.run("MATCH (t:Trade) RETURN count(t) AS cnt LIMIT 1")
+            record = check.single()
+            if not record or record["cnt"] == 0:
+                return []
+
         if bias_name:
             query = """
             MATCH (b:Bias {name: $bias_name})-[:DETECTED_IN]->(t:Trade)
@@ -371,7 +381,17 @@ class TradingGraph:
             return [dict(r) for r in result]
 
     def get_learning_loop(self, bias_name: str) -> list[dict]:
-        """Bias → Trade → Learning path."""
+        """Bias → Trade → Learning path.
+
+        Returns empty list if no Trade or Learning nodes exist (sparse graph).
+        """
+        # Check if Trade nodes exist to avoid warning spam
+        with self._driver.session(database=self.database) as session:
+            check = session.run("MATCH (t:Trade) RETURN count(t) AS cnt LIMIT 1")
+            record = check.single()
+            if not record or record["cnt"] == 0:
+                return []
+
         query = """
         MATCH path = (b:Bias {name: $bias_name})-[:DETECTED_IN]->(t:Trade)<-[:DERIVED_FROM]-(l:Learning)
         RETURN b.name AS bias, t.id AS trade, l.id AS learning_id, l.rule AS lesson
@@ -542,9 +562,10 @@ class TradingGraph:
         ORDER BY count DESC
         """
         # Last extraction
+        # Use Document label (actual label used) instead of Analysis
         last_extract_query = """
-        MATCH (a:Analysis)
-        RETURN max(a.created_at) AS last_extraction
+        MATCH (d:Document)
+        RETURN max(d.created_at) AS last_extraction
         """
 
         with self._driver.session(database=self.database) as session:
