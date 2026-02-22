@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../trading/mcp_brave-browser"
+		},
+		{
+			"path": "../trading/mcp_ib"
+		},
+		{
+			"path": "../trading/ib-gateway-docker"
+		}
+	],
+	"settings": {}
+}
