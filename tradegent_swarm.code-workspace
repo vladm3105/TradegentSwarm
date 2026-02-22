@@ -8,9 +8,6 @@
 		},
 		{
 			"path": "../trading/mcp_ib"
-		},
-		{
-			"path": "../trading/ib-gateway-docker"
 		}
 	],
 	"settings": {}
