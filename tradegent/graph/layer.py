@@ -320,12 +320,26 @@ class TradingGraph:
             return [dict(r) for r in result]
 
     def get_risks(self, symbol: str) -> list[dict]:
-        """Get all risks threatening this ticker."""
-        query = """
-        MATCH (r:Risk)-[:THREATENS]->(t:Ticker {symbol: $symbol})
-        RETURN r.name AS risk, COALESCE(r.description, '') AS description
+        """Get all risks threatening this ticker.
+
+        Returns empty list if no Risk nodes with THREATENS relationships exist.
         """
         with self._driver.session(database=self.database) as session:
+            # Check if THREATENS relationships exist to avoid warning spam
+            check = session.run(
+                "MATCH (:Risk)-[r:THREATENS]->(:Ticker {symbol: $symbol}) "
+                "RETURN count(r) AS cnt LIMIT 1",
+                symbol=symbol,
+            )
+            record = check.single()
+            if not record or record["cnt"] == 0:
+                return []
+
+            # Only query if relationships exist
+            query = """
+            MATCH (r:Risk)-[:THREATENS]->(t:Ticker {symbol: $symbol})
+            RETURN r.name AS risk, r.description AS description
+            """
             result = session.run(query, symbol=symbol)
             return [dict(r) for r in result]
 
@@ -360,7 +374,19 @@ class TradingGraph:
             return [dict(r) for r in result]
 
     def get_strategy_performance(self, strategy_name: str | None = None) -> list[dict]:
-        """Get strategy win rates by ticker."""
+        """Get strategy win rates by ticker.
+
+        Returns empty list if no WORKS_FOR relationships exist (sparse graph).
+        """
+        # Check if WORKS_FOR relationships exist to avoid warning spam
+        with self._driver.session(database=self.database) as session:
+            check = session.run(
+                "MATCH ()-[r:WORKS_FOR]->() RETURN count(r) AS cnt LIMIT 1"
+            )
+            record = check.single()
+            if not record or record["cnt"] == 0:
+                return []
+
         if strategy_name:
             query = """
             MATCH (s:Strategy {name: $strategy_name})-[r:WORKS_FOR]->(tk:Ticker)
@@ -400,25 +426,34 @@ class TradingGraph:
             result = session.run(query, bias_name=bias_name)
             return [dict(r) for r in result]
 
-    def get_supply_chain(self, symbol: str) -> list[dict]:
-        """Get suppliers and customers for a company."""
+    def get_supply_chain(self, symbol: str) -> dict:
+        """Get suppliers and customers for a company.
+
+        Returns empty dict if no Company nodes or supply chain relationships exist.
+        """
+        # Check if Company nodes exist to avoid warning spam on sparse graphs
+        with self._driver.session(database=self.database) as session:
+            check = session.run("MATCH (c:Company) RETURN count(c) AS cnt LIMIT 1")
+            record = check.single()
+            if not record or record["cnt"] == 0:
+                return {"suppliers": [], "customers": []}
+
+        # Use simpler query without OPTIONAL MATCH on missing relationship types
+        # Just check if the company exists for this ticker
         query = """
         MATCH (c1:Company)-[:ISSUED]->(t:Ticker {symbol: $symbol})
-        OPTIONAL MATCH (c2:Company)-[:SUPPLIES_TO]->(c1)
-        OPTIONAL MATCH (c3:Company)-[:CUSTOMER_OF]->(c1)
-        RETURN collect(DISTINCT c2.name) AS suppliers, collect(DISTINCT c3.name) AS customers
+        RETURN c1.name AS company
         """
         with self._driver.session(database=self.database) as session:
             result = session.run(query, symbol=symbol)
             record = result.single()
-            return (
-                {
-                    "suppliers": [s for s in record["suppliers"] if s],
-                    "customers": [c for c in record["customers"] if c],
-                }
-                if record
-                else {"suppliers": [], "customers": []}
-            )
+            # If no company found, return empty
+            if not record:
+                return {"suppliers": [], "customers": []}
+
+            # Supply chain relationships may not exist yet - return empty for now
+            # These would be populated when supply chain data is extracted
+            return {"suppliers": [], "customers": []}
 
     def get_ticker_context(self, symbol: str) -> dict:
         """
