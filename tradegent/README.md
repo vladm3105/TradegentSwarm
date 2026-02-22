@@ -750,8 +750,8 @@ Skills in `tradegent_knowledge/skills/` provide agent-agnostic frameworks for tr
 
 | Skill | Version | Phases | Purpose |
 |-------|---------|--------|---------|
-| `earnings-analysis` | v2.5 | 14 | Pre-earnings systematic analysis |
-| `stock-analysis` | v2.5 | 13 | Technical/value/catalyst analysis |
+| `earnings-analysis` | v2.4 | 14 | Pre-earnings systematic analysis |
+| `stock-analysis` | v2.4 | 13 | Technical/value/catalyst analysis |
 | `research-analysis` | v2.1 | 8 | Macro/sector/thematic research |
 | `ticker-profile` | v2.1 | 10 | Persistent ticker knowledge |
 | `trade-journal` | v2.1 | 7 | Record executed trades |
@@ -759,13 +759,17 @@ Skills in `tradegent_knowledge/skills/` provide agent-agnostic frameworks for tr
 | `post-trade-review` | v2.1 | 10 | Analyze completed trades |
 | `market-scanning` | v1.0 | — | Find trading opportunities |
 
-### v2.5 Features (Analysis Skills)
+### v2.4 Features (Analysis Skills)
 
+- **Phase 0: Time Validation** - Validates system/IB MCP time sync (ERROR if >1hr discrepancy)
+- **Market status awareness** - Detects weekend/holiday/pre-market/after-hours conditions
 - Steel-man bear case with scored arguments
 - Bias countermeasures (rule + implementation + checklist + mantra)
 - Pre-exit gate for loss aversion prevention
 - Do Nothing gate (EV >5%, Confidence >60%, R:R >2:1)
 - 4-scenario framework (bull, base, bear, disaster)
+- Meta-learning with validation tracking
+- Data quality and news age checks
 - Post-save indexing to RAG + Graph
 
 ### Post-Save Indexing

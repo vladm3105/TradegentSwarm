@@ -128,7 +128,7 @@ PRE-ANALYSIS          EXECUTE            POST-SAVE
 | Component | Version |
 |-----------|---------|
 | Platform | v2.2 |
-| Skills | v2.5 (analysis), v2.1 (other) |
+| Skills | v2.4 (analysis), v2.1 (other) |
 | RAG | v2.0 |
 | Graph | v1.0 |
 

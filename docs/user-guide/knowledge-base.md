@@ -74,7 +74,7 @@ Example: `NVDA_20250120T0900.yaml`
 
 ```yaml
 _meta:
-  version: "2.5"
+  version: "2.4"
   doc_type: "stock-analysis"
   ticker: "NVDA"
   created: "2025-01-20T09:00:00-05:00"

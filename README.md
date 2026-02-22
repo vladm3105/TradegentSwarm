@@ -82,7 +82,7 @@ TradegentSwarm/
 
 ## Key Features
 
-### Trading Skills (v2.5)
+### Trading Skills (v2.4)
 - **Stock Analysis**: 13-phase framework with bias countermeasures
 - **Earnings Analysis**: Pre-earnings IV and catalyst analysis
 - **Do Nothing Gate**: EV >5%, Confidence >60%, R:R >2:1

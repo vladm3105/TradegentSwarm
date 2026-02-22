@@ -3,7 +3,7 @@
 > **Status**: Active
 > **Last updated**: 2026-02-21
 > **Location**: `tradegent_knowledge/knowledge/scanners/`
-> **Skills Version**: v2.3 (stock-analysis, earnings-analysis), v2.1 (other skills)
+> **Skills Version**: v2.4 (stock-analysis, earnings-analysis), v2.1 (other skills)
 > **Companion**: [TRADING_RAG_ARCHITECTURE.md](TRADING_RAG_ARCHITECTURE.md), [TRADING_GRAPH_ARCHITECTURE.md](TRADING_GRAPH_ARCHITECTURE.md)
 
 ## Overview
@@ -415,9 +415,9 @@ scan → earnings-analysis → watchlist → trade-journal → post-trade-review
       research
 ```
 
-### 5.3 v2.3 Skill Features
+### 5.3 v2.4 Skill Features
 
-When scanners trigger analysis skills (v2.3), the following enhanced features are applied:
+When scanners trigger analysis skills (v2.4), the following enhanced features are applied:
 
 | Feature | stock-analysis | earnings-analysis |
 |---------|---------------|-------------------|

@@ -1,7 +1,7 @@
 # Testing Guide
 
-> **Last Updated**: 2026-02-21
-> **Skills Version**: v2.3
+> **Last Updated**: 2026-02-22
+> **Skills Version**: v2.4
 
 This guide covers the test structure, fixtures, mocking patterns, and best practices for TradegentSwarm.
 
@@ -593,14 +593,14 @@ python -m pytest -v --tb=short
 
 ---
 
-## Skills Testing (v2.3)
+## Skills Testing (v2.4)
 
 ### Testing Skill Templates
 
 Skill templates (`tradegent_knowledge/skills/*/template.yaml`) should be validated for:
 
 1. **YAML Syntax** - Valid YAML structure
-2. **Required Sections** - All v2.3 sections present
+2. **Required Sections** - All v2.4 sections present
 3. **Field Types** - Correct data types per schema
 4. **`_indexing` Hints** - RAG/Graph field mappings valid
 
@@ -628,7 +628,7 @@ def stock_analysis_template():
 
 @pytest.fixture
 def v23_required_sections():
-    """v2.3 required sections for stock-analysis."""
+    """v2.4 required sections for stock-analysis."""
     return [
         "data_quality",
         "catalyst",
@@ -648,14 +648,14 @@ def v23_required_sections():
 
 ```python
 class TestStockAnalysisTemplate:
-    """Test stock-analysis template v2.3 structure."""
+    """Test stock-analysis template v2.4 structure."""
 
     def test_has_v23_version(self, stock_analysis_template):
-        """Template declares v2.3."""
+        """Template declares v2.4."""
         assert stock_analysis_template["_meta"]["version"] == "2.3"
 
     def test_has_required_sections(self, stock_analysis_template, v23_required_sections):
-        """All v2.3 sections present."""
+        """All v2.4 sections present."""
         for section in v23_required_sections:
             assert section in stock_analysis_template, f"Missing: {section}"
 
@@ -698,7 +698,7 @@ class TestStockAnalysisTemplate:
 
 ```python
 class TestMigrationScript:
-    """Test v1 → v2.3 migration."""
+    """Test v1 → v2.4 migration."""
 
     def test_detects_document_type(self, sample_v1_document):
         """Migration detects document type correctly."""
@@ -708,7 +708,7 @@ class TestMigrationScript:
         assert doc_type == "stock-analysis"
 
     def test_adds_missing_sections(self, sample_v1_document):
-        """Migration adds v2.3 sections."""
+        """Migration adds v2.4 sections."""
         from scripts.migrate_skills_v23 import migrate_document
 
         migrated, changes = migrate_document(sample_v1_document, "stock-analysis")
@@ -757,7 +757,7 @@ class TestFieldMappings:
             assert doc_type in field_mappings
 
     def test_v23_fields_included(self, field_mappings):
-        """v2.3 fields are in extraction list."""
+        """v2.4 fields are in extraction list."""
         stock = field_mappings["stock-analysis"]["extract_fields"]
 
         v23_fields = [
