@@ -81,6 +81,47 @@ Skills in `.claude/skills/` auto-invoke based on context. Each skill has:
 - **Falsification criteria** (conditions that break thesis)
 - **Data quality** and news age checks
 
+### Pre-Flight Checks
+
+Before running analysis, use preflight checks to verify system status:
+
+**Full Check** (first run of session):
+```bash
+cd tradegent && python preflight.py --full
+```
+
+**Quick Check** (before each analysis):
+```bash
+cd tradegent && python preflight.py
+```
+
+| Check Type | Services Verified | When to Use |
+|------------|-------------------|-------------|
+| **Full** | RAG, Graph, IB Gateway, IB MCP, Market Status | Start of trading day/session |
+| **Quick** | RAG, IB MCP, Market Status | Before each analysis |
+
+**Status Meanings:**
+- `healthy` - Service fully operational
+- `degraded` - Service available but with limitations (e.g., weekend, after-hours)
+- `unhealthy` - Service unavailable
+- `READY` - Minimum requirements met (RAG working), can proceed with analysis
+- `NOT READY` - Cannot proceed, RAG unavailable
+
+**Programmatic Usage:**
+```python
+from tradegent.preflight import run_full_preflight, run_quick_preflight
+
+# First analysis of day
+status = run_full_preflight()
+if not status.can_analyze:
+    print("Cannot proceed:", status.errors)
+
+# Before each subsequent analysis
+status = run_quick_preflight()
+for warning in status.warnings:
+    print(f"Warning: {warning}")
+```
+
 ### Skill Workflow Pattern
 
 Every skill follows this integrated pattern:

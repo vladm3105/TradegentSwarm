@@ -563,9 +563,10 @@ class TradingGraph:
         """
         # Last extraction
         # Use Document label (actual label used) instead of Analysis
+        # Property is extracted_at (not created_at)
         last_extract_query = """
         MATCH (d:Document)
-        RETURN max(d.created_at) AS last_extraction
+        RETURN max(d.extracted_at) AS last_extraction
         """
 
         with self._driver.session(database=self.database) as session:
@@ -588,13 +589,13 @@ class TradingGraph:
         )
 
     def prune_old(self, days: int = 365) -> int:
-        """Archive nodes older than N days (relabel to :Archived)."""
+        """Archive Document nodes older than N days (relabel to :Archived)."""
         query = """
-        MATCH (a:Analysis)
-        WHERE a.created_at < datetime() - duration({days: $days})
-        SET a:Archived
-        REMOVE a:Analysis
-        RETURN count(a) AS archived
+        MATCH (d:Document)
+        WHERE d.extracted_at < datetime() - duration({days: $days})
+        SET d:Archived
+        REMOVE d:Document
+        RETURN count(d) AS archived
         """
         with self._driver.session(database=self.database) as session:
             result = session.run(query, days=days)
