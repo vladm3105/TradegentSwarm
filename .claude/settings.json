@@ -3,5 +3,19 @@
     "allow": [
       "Bash(unzip:*)"
     ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/post-write-ingest.sh",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
   }
 }
