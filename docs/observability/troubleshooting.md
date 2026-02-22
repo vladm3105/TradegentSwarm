@@ -170,12 +170,12 @@ docker compose -f docker-compose.observability.yml logs -f otel-collector
 
 **Solutions:**
 
-1. **Reduce retention**
+1. **Reduce Tempo ingestion**
    ```yaml
    # tempo.yaml
-   compactor:
-     compaction:
-       block_retention: 24h  # Reduce from 48h
+   ingester:
+     max_block_bytes: 500_000  # Reduce from 1_000_000
+     max_block_duration: 2m    # Reduce from 5m
    ```
 
 2. **Limit ingestion rate**

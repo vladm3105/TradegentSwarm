@@ -136,9 +136,9 @@ Input: {"symbol": "NVDA"}
 Tool: mcp__ib-mcp__get_historical_data
 Input: {"symbol": "NVDA", "duration": "3 M", "bar_size": "1 day"}
 
-# News/catalyst
-Tool: mcp__brave-search__brave_web_search
-Input: {"query": "NVDA news catalyst"}
+# News/catalyst (use built-in WebSearch)
+Tool: WebSearch
+Input: {"query": "NVDA news catalyst 2026"}
 ```
 
 ### 4. Scenario Modeling

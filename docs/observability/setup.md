@@ -206,31 +206,26 @@ Default retention settings:
 
 | Service | Retention | Configuration |
 |---------|-----------|---------------|
-| Tempo | 48 hours | `tempo.yaml: block_retention` |
-| Loki | 7 days | `loki.yaml: retention_period` |
+| Tempo | Default (no limit) | `tempo.yaml` storage config |
+| Loki | 7 days | `loki.yaml: limits_config` |
 | Prometheus | 15 days | `prometheus.yaml: --storage.tsdb.retention.time` |
 
 ### Adjusting Retention
 
-**Tempo** (`config/tempo.yaml`):
-```yaml
-compactor:
-  compaction:
-    block_retention: 168h  # 7 days
-```
-
 **Loki** (`config/loki.yaml`):
 ```yaml
-table_manager:
-  retention_deletes_enabled: true
-  retention_period: 336h  # 14 days
+limits_config:
+  reject_old_samples: true
+  reject_old_samples_max_age: 336h  # 14 days
 ```
 
-**Prometheus** (command line):
+**Prometheus** (command line in docker-compose):
 ```yaml
 command:
   - "--storage.tsdb.retention.time=30d"
 ```
+
+**Tempo**: Uses local filesystem storage with automatic cleanup based on disk space.
 
 ---
 

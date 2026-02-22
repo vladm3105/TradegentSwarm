@@ -287,7 +287,7 @@ _links:
 ┌─────────────────────────────────────────────────────────────────┐
 │ STEP 4: GATHER ADDITIONAL DATA                                  │
 │ • mcp__ib-mcp__get_quotes_batch (prices, volume, IV)           │
-│ • mcp__brave-search__brave_web_search (catalysts, news)        │
+│ • WebSearch (catalysts, news)                                  │
 │ • rag_search (prior context for tickers)                        │
 └───────────────────────────┬─────────────────────────────────────┘
                             ▼
@@ -330,7 +330,7 @@ _links:
 | `mcp__ib-mcp__get_quotes_batch` | Batch quotes for candidates | Step 4 |
 | `mcp__ib-mcp__get_news_headlines` | News headlines per ticker | Step 4 |
 | `mcp__ib-mcp__get_historical_data` | Price history for technicals | Step 4 |
-| `mcp__brave-search__brave_web_search` | Catalyst and sentiment search | Step 4 |
+| `WebSearch` | Catalyst and sentiment search | Step 4 |
 | `rag_search` | Prior analyses and context | Step 4 |
 | `graph_context` | Entity relationships | Step 4 |
 | `graph_extract` | Index scan results | Step 8 |

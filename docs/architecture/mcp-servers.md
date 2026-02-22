@@ -1,6 +1,6 @@
 # MCP Server Configuration
 
-MCP (Model Context Protocol) servers provide tool access for Claude Code. TradegentSwarm uses four MCP servers for trading operations.
+MCP (Model Context Protocol) servers provide tool access for Claude Code. TradegentSwarm uses five MCP servers for trading operations.
 
 ---
 
@@ -22,7 +22,10 @@ MCP (Model Context Protocol) servers provide tool access for Claude Code. Tradeg
 │       ├──▶ trading-graph (stdio) ────▶ Neo4j                   │
 │       │                                :7688                    │
 │       │                                                         │
-│       └──▶ brave-search (stdio) ────▶ Brave API                │
+│       ├──▶ brave-browser (stdio) ────▶ Playwright/Chromium     │
+│       │                                 (persistent profile)    │
+│       │                                                         │
+│       └──▶ github-vl (stdio) ────▶ GitHub API                  │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -36,7 +39,7 @@ MCP (Model Context Protocol) servers provide tool access for Claude Code. Tradeg
 | `ib-mcp` | SSE | 8100 | Market data, orders |
 | `trading-rag` | stdio | — | Semantic search |
 | `trading-graph` | stdio | — | Entity queries |
-| `brave-search` | stdio | — | Web research |
+| `brave-browser` | stdio | — | Web scraping (protected content) |
 | `github-vl` | stdio | — | Knowledge repo |
 
 ---
@@ -229,30 +232,54 @@ Knowledge graph for entities and relationships.
 
 ---
 
-## Brave Search Server
+## Brave Browser Server
 
-Web research for news and analyst reports.
+Browser automation for accessing protected content (Seeking Alpha, Medium, analyst reports). Uses Playwright with a persistent profile for session management.
 
 ### Configuration
 
 ```json
 {
   "mcpServers": {
-    "brave-search": {
-      "command": "npx",
-      "args": ["-y", "@anthropic-ai/mcp-server-brave-search"],
+    "brave-browser": {
+      "command": "python",
+      "args": ["-m", "app.main"],
+      "cwd": "/opt/data/trading/mcp_brave-browser",
       "env": {
-        "BRAVE_API_KEY": "<key>"
+        "MODE": "stdio",
+        "BROWSER_PROFILE": "/opt/data/trading/mcp_brave-browser/brave-profile-browser-mcp/data",
+        "HEADLESS": "true",
+        "PAGE_TIMEOUT": "30000",
+        "LOG_LEVEL": "INFO"
       }
     }
   }
 }
 ```
 
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MODE` | http | `stdio` for MCP, `http` for API server |
+| `BROWSER_PROFILE` | /app/profile | Path to persistent browser profile |
+| `HEADLESS` | true | Run browser in headless mode |
+| `PAGE_TIMEOUT` | 30000 | Page load timeout (ms) |
+| `LOG_LEVEL` | INFO | Logging level |
+
 ### Available Tools
 
-- `brave_web_search` — Web search
-- `brave_local_search` — Local search
+- `fetch_protected_article` — Fetch paywalled/protected content
+- `take_screenshot` — Capture page screenshot (base64 PNG)
+- `extract_structured_data` — Extract data via CSS selectors
+- `search_and_extract` — Search and extract results
+
+### Features
+
+- **Persistent Profile**: Maintains login sessions across restarts
+- **Article Caching**: SHA-256 keyed cache with TTL support
+- **SSRF Protection**: Blocks access to internal networks
+- **Headless Mode**: Runs without display for server environments
 
 ---
 
@@ -287,7 +314,7 @@ Knowledge repository management.
 
 ## Full Configuration
 
-Complete `~/.claude/mcp_settings.json`:
+Complete `~/.claude/mcp.json`:
 
 ```json
 {
@@ -321,11 +348,16 @@ Complete `~/.claude/mcp_settings.json`:
         "OPENAI_API_KEY": "<key>"
       }
     },
-    "brave-search": {
-      "command": "npx",
-      "args": ["-y", "@anthropic-ai/mcp-server-brave-search"],
+    "brave-browser": {
+      "command": "python",
+      "args": ["-m", "app.main"],
+      "cwd": "/opt/data/trading/mcp_brave-browser",
       "env": {
-        "BRAVE_API_KEY": "<key>"
+        "MODE": "stdio",
+        "BROWSER_PROFILE": "/opt/data/trading/mcp_brave-browser/brave-profile-browser-mcp/data",
+        "HEADLESS": "true",
+        "PAGE_TIMEOUT": "30000",
+        "LOG_LEVEL": "INFO"
       }
     },
     "github-vl": {

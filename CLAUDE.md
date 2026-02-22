@@ -1,6 +1,6 @@
 # TradegentSwarm - Claude Code Instructions
 
-> **Skills Version**: v2.5 (stock-analysis, earnings-analysis), v2.1 (other skills)
+> **Skills Version**: v2.4 (stock-analysis, earnings-analysis), v2.1 (other skills)
 > **Last Updated**: 2026-02-22
 
 **Tradegent** — AI-driven trading platform using Claude Code CLI, Interactive Brokers, and a hybrid RAG+Graph knowledge system. A multi-agent swarm for market analysis, trade execution, and knowledge persistence.
@@ -59,8 +59,8 @@ Skills in `.claude/skills/` auto-invoke based on context. Each skill has:
 
 | Skill                 | Version | Triggers                                                 | Category   |
 | --------------------- | ------- | -------------------------------------------------------- | ---------- |
-| **stock-analysis**    | v2.5    | "stock analysis", "technical analysis", "value analysis" | Analysis   |
-| **earnings-analysis** | v2.5    | "earnings analysis", "pre-earnings", "before earnings"   | Analysis   |
+| **stock-analysis**    | v2.4    | "stock analysis", "technical analysis", "value analysis" | Analysis   |
+| **earnings-analysis** | v2.4    | "earnings analysis", "pre-earnings", "before earnings"   | Analysis   |
 | **research-analysis** | v2.1    | "research", "macro analysis", "sector analysis"          | Research   |
 | **ticker-profile**    | v2.1    | "ticker profile", "what do I know about"                 | Knowledge  |
 | **trade-journal**     | v2.1    | "log trade", "bought", "sold", "entered position"        | Trade Mgmt |
@@ -68,8 +68,10 @@ Skills in `.claude/skills/` auto-invoke based on context. Each skill has:
 | **post-trade-review** | v2.1    | "review trade", "closed trade", "what did I learn"       | Learning   |
 | **scan**              | v1.0    | "scan", "find opportunities", "what should I trade"      | Scanning   |
 
-### v2.3 Key Features (stock-analysis, earnings-analysis)
+### v2.4 Key Features (stock-analysis, earnings-analysis)
 
+- **Phase 0: Time Validation** - Validates system/IB MCP time sync before analysis (ERROR if >1hr discrepancy)
+- **Market status awareness** - Detects weekend/holiday/pre-market/after-hours conditions
 - **Steel-man bear case** with scored arguments
 - **Bias countermeasures** (rule + implementation + checklist + mantra)
 - **Pre-exit gate** for loss aversion prevention
@@ -875,58 +877,6 @@ Input: {"pattern": "NVDA"}
 | `IB_READONLY` | true | Read-only mode (blocks order placement) |
 | `IB_RATE_LIMIT` | 45 | Requests per second limit |
 
-## Brave Browser MCP (Web Scraping)
-
-Browser automation for accessing protected content (Medium, Seeking Alpha, analyst reports).
-
-**Source**: `/opt/data/trading/mcp_brave-browser`
-
-### MCP Tools (stdio mode)
-
-| Tool | Purpose |
-|------|----------|
-| `fetch_protected_article` | Fetch paywalled/protected article content |
-| `take_screenshot` | Take page screenshot (base64 PNG) |
-| `extract_structured_data` | Extract data using CSS selectors |
-| `search_and_extract` | Search and extract results |
-
-### HTTP API Endpoints
-
-| Endpoint | Method | Purpose |
-|----------|--------|----------|
-| `/health` | GET | Health check (no auth) |
-| `/api/fetch_article` | POST | Fetch article content |
-| `/api/screenshot` | POST | Take screenshot |
-| `/api/extract_data` | POST | Extract structured data |
-| `/api/search` | POST | Search and extract |
-| `/api/cache/clear` | POST | Clear article cache |
-
-### Usage Examples
-
-```yaml
-# Fetch article content (MCP)
-Tool: fetch_protected_article
-Input: {"url": "https://seekingalpha.com/article/...", "wait_for_selector": "article"}
-
-# Take screenshot (MCP)
-Tool: take_screenshot
-Input: {"url": "https://finviz.com/chart.ashx?t=NVDA", "full_page": true}
-
-# Extract consensus data
-Tool: extract_data
-Input: {
-  "url": "https://seekingalpha.com/symbol/NVDA/earnings",
-  "selectors": {"eps": "[data-test-id='eps']", "revenue": "[data-test-id='revenue']"}
-}
-```
-
-### Features
-
-- Profile persistence (maintains login sessions)
-- Article caching (SHA-256 keyed, TTL support)
-- SSRF protection (blocks internal networks)
-- API key authentication
-
 ## Git Workflow (Fallback)
 
 ### Pushing Changes
@@ -984,4 +934,4 @@ Host github.com
 - Scanner configs in `knowledge/scanners/` encode trading edge - treat as sensitive
 - Skills auto-invoke based on conversation context - no manual `/command` needed
 - Always use the SSH git push command with `LD_LIBRARY_PATH=` fix when in conda environment
-- Set all PG_* and NEO4J_* environment variables before running orchestrator
+- Set all `PG_*` and `NEO4J_*` environment variables before running orchestrator

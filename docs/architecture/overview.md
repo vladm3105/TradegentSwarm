@@ -22,7 +22,7 @@ TradegentSwarm is a multi-agent trading platform that combines Claude Code CLI, 
 │  │         │        ├─ mcp__ib-mcp (market data)                       │   │
 │  │         │        ├─ trading-rag (semantic search)                   │   │
 │  │         │        ├─ trading-graph (entity queries)                  │   │
-│  │         │        └─ brave-search (web research)                     │   │
+│  │         │        └─ WebSearch / brave-browser (web research)        │   │
 │  │         │                                                           │   │
 │  │         ├─ Gate: Do Nothing? (EV >5%, confidence >60%, R:R >2:1)   │   │
 │  │         │                                                           │   │
@@ -204,8 +204,10 @@ Claude Code uses MCP (Model Context Protocol) servers for tool access:
 | `ib-mcp` | SSE (http://localhost:8100) | Market data, orders |
 | `trading-rag` | stdio | Semantic search |
 | `trading-graph` | stdio | Entity queries |
-| `brave-search` | stdio | Web research |
+| `brave-browser` | stdio | Web scraping (protected content) |
 | `github-vl` | stdio | Knowledge repo commits |
+
+> **Note**: For general web search, use Claude Code's built-in `WebSearch` tool. The `brave-browser` MCP is for scraping protected content (Seeking Alpha, Medium, etc.) with persistent login sessions.
 
 See [MCP Servers](mcp-servers.md) for configuration details.
 

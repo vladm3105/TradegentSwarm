@@ -166,9 +166,9 @@ Input: {"scan_code": "TOP_OPEN_PERC_GAIN", "max_results": 50}
 Tool: mcp__ib-mcp__get_quotes_batch
 Input: {"symbols": ["NVDA", "AAPL", "..."]}
 
-# 4. Search for catalysts
-Tool: mcp__brave-search__brave_web_search
-Input: {"query": "NVDA earnings preview analyst"}
+# 4. Search for catalysts (use built-in WebSearch)
+Tool: WebSearch
+Input: {"query": "NVDA earnings preview analyst 2026"}
 
 # 5. Apply filters and scoring
 # 6. Route results
