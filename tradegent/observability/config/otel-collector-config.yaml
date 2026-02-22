@@ -21,32 +21,12 @@ processors:
         value: tradegent
         action: upsert
 
-  # Filter out noisy spans (optional)
-  filter:
-    error_mode: ignore
-    traces:
-      span:
-        # Keep all spans for now
-        - 'true'
-
 exporters:
   # Export traces to Tempo
   otlp/tempo:
     endpoint: tempo:4317
     tls:
       insecure: true
-
-  # Export logs to Loki
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
-    labels:
-      resource:
-        service.name: "service_name"
-        service.namespace: "service_namespace"
-      attributes:
-        tradegent.ticker: "ticker"
-        tradegent.analysis_type: "analysis_type"
-        gen_ai.system: "llm_system"
 
   # Export metrics to Prometheus
   prometheusremotewrite:
@@ -74,8 +54,3 @@ service:
       receivers: [otlp]
       processors: [batch, resource]
       exporters: [prometheusremotewrite]
-
-    logs:
-      receivers: [otlp]
-      processors: [batch, resource]
-      exporters: [loki]
