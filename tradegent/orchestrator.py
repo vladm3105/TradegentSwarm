@@ -57,6 +57,31 @@ logging.basicConfig(
 )
 log = logging.getLogger("nexus-light")
 
+# ─── Observability (OpenTelemetry) ────────────────────────────────────────────
+# Initialize tracing with GenAI semantic conventions
+# See: docs/observability/ for full documentation
+
+try:
+    from observability import (
+        init_tracing,
+        LLMSpan,
+        PipelineSpan,
+        ToolCallSpan,
+        GenAISystem,
+        FinishReason,
+        TradegentMetrics,
+    )
+
+    # Initialize tracing (reads OTEL_* env vars)
+    init_tracing()
+    _otel_metrics = TradegentMetrics()
+    _otel_enabled = True
+    log.info("OpenTelemetry tracing initialized")
+except ImportError:
+    _otel_enabled = False
+    _otel_metrics = None
+    log.debug("Observability module not available, tracing disabled")
+
 
 class Settings:
     """
@@ -516,15 +541,118 @@ End with JSON:
 
 
 def call_claude_code(
-    prompt: str, allowed_tools: str, label: str, timeout: int | None = None
+    prompt: str,
+    allowed_tools: str,
+    label: str,
+    timeout: int | None = None,
+    phase: int | None = None,
+    phase_name: str | None = None,
+    analysis_type: str | None = None,
 ) -> str:
-    """Execute a Claude Code CLI call."""
+    """
+    Execute a Claude Code CLI call with OpenTelemetry tracing.
+
+    Traces include GenAI semantic conventions for LLM observability.
+    """
     timeout = timeout or cfg.claude_timeout
+
+    # Extract ticker from label (e.g., "ANALYZE-NVDA" -> "NVDA")
+    ticker = label.split("-")[1] if "-" in label else "UNKNOWN"
 
     if cfg.dry_run_mode:
         log.info(f"[{label}] DRY RUN — would call Claude Code ({len(prompt)} char prompt)")
         return ""
 
+    # Create LLM span if observability is enabled
+    if _otel_enabled:
+        return _call_claude_code_traced(
+            prompt, allowed_tools, label, timeout, ticker, phase, phase_name, analysis_type
+        )
+    else:
+        return _call_claude_code_untraced(prompt, allowed_tools, label, timeout)
+
+
+def _call_claude_code_traced(
+    prompt: str,
+    allowed_tools: str,
+    label: str,
+    timeout: int,
+    ticker: str,
+    phase: int | None,
+    phase_name: str | None,
+    analysis_type: str | None,
+) -> str:
+    """Execute Claude Code call with OpenTelemetry tracing."""
+    with LLMSpan(
+        operation="chat",
+        system=GenAISystem.CLAUDE_CODE,
+        model="claude-sonnet-4-20250514",
+        ticker=ticker,
+        analysis_type=analysis_type,
+        phase=phase,
+        phase_name=phase_name,
+        allowed_tools=allowed_tools,
+    ) as span:
+        log.info(f"[{label}] Calling Claude Code...")
+
+        cmd = [
+            cfg.claude_cmd,
+            "--print",
+            "--dangerously-skip-permissions",
+            "--allowedTools",
+            allowed_tools,
+            "-p",
+            prompt,
+        ]
+        span.set_subprocess_cmd(cmd)
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                cwd=str(BASE_DIR),
+            )
+
+            if result.returncode != 0:
+                log.error(f"[{label}] Error (rc={result.returncode}): {result.stderr[:500]}")
+                span.set_finish_reason(FinishReason.ERROR)
+                return ""
+
+            # Record metrics
+            span.set_output_length(len(result.stdout))
+            span.set_finish_reason(FinishReason.STOP)
+
+            # Record to Prometheus metrics
+            if _otel_metrics and phase is not None:
+                _otel_metrics.record_llm_call(
+                    duration_ms=span.metrics.duration_ms,
+                    input_tokens=span.metrics.input_tokens,
+                    output_tokens=span.metrics.output_tokens,
+                    ticker=ticker,
+                    analysis_type=analysis_type or "unknown",
+                    phase=phase,
+                )
+
+            log.info(f"[{label}] Completed ({len(result.stdout)} chars)")
+            return result.stdout
+
+        except subprocess.TimeoutExpired:
+            log.error(f"[{label}] Timed out after {timeout}s")
+            span.set_finish_reason(FinishReason.ERROR)
+            return ""
+
+        except FileNotFoundError:
+            log.error(f"[{label}] 'claude' CLI not found in PATH")
+            span.set_finish_reason(FinishReason.ERROR)
+            return ""
+
+
+def _call_claude_code_untraced(
+    prompt: str, allowed_tools: str, label: str, timeout: int
+) -> str:
+    """Execute Claude Code call without tracing (fallback)."""
     log.info(f"[{label}] Calling Claude Code...")
     try:
         result = subprocess.run(
@@ -714,7 +842,14 @@ def _phase1_fresh_analysis(
 
     # KEY CHANGE: kb_enabled=False for unbiased analysis
     prompt = build_analysis_prompt(ticker, analysis_type, stock, kb_enabled=False)
-    output = call_claude_code(prompt, cfg.allowed_tools_analysis, f"ANALYZE-{ticker}")
+    output = call_claude_code(
+        prompt,
+        cfg.allowed_tools_analysis,
+        f"ANALYZE-{ticker}",
+        phase=1,
+        phase_name="Fresh_analysis",
+        analysis_type=analysis_type.value,
+    )
 
     if not output:
         return None
@@ -1368,12 +1503,197 @@ def _run_analysis_4phase(
     4-Phase analysis workflow: Fresh → Index → Retrieve → Synthesize
 
     This workflow produces unbiased analysis then compares with history.
+    Instrumented with OpenTelemetry PipelineSpan for trace visualization.
     """
     trace_id = f"{ticker}-{datetime.now().strftime('%H%M%S')}"
     run_id = db.mark_schedule_started(schedule_id) if schedule_id else None
 
     log.info(f"╔═══ 4-PHASE ANALYSIS ═══ {ticker} ({analysis_type.value}) [{trace_id}]")
 
+    # Use PipelineSpan for tracing if observability is enabled
+    if _otel_enabled:
+        return _run_analysis_4phase_traced(
+            db, ticker, analysis_type, schedule_id, trace_id, run_id
+        )
+    else:
+        return _run_analysis_4phase_untraced(
+            db, ticker, analysis_type, schedule_id, trace_id, run_id
+        )
+
+
+def _run_analysis_4phase_traced(
+    db: NexusDB,
+    ticker: str,
+    analysis_type: AnalysisType,
+    schedule_id: int | None,
+    trace_id: str,
+    run_id: int | None,
+) -> AnalysisResult | None:
+    """4-Phase workflow with OpenTelemetry tracing."""
+    import time
+
+    with PipelineSpan(
+        ticker=ticker,
+        analysis_type=analysis_type.value,
+        run_id=trace_id,
+    ) as pipeline:
+        try:
+            # Phase 1: Fresh analysis (no KB context)
+            with pipeline.phase(1, "Fresh_analysis") as phase1_span:
+                log.info(f"[{trace_id}] Phase 1: Fresh analysis")
+                p1_start = time.perf_counter()
+                result = _phase1_fresh_analysis(db, ticker, analysis_type, schedule_id)
+                p1_duration = (time.perf_counter() - p1_start) * 1000
+
+                if _otel_metrics:
+                    _otel_metrics.record_phase(1, "Fresh_analysis", p1_duration, ticker)
+
+                if not result:
+                    if run_id and schedule_id:
+                        db.mark_schedule_completed(
+                            schedule_id, run_id, "failed", error="Phase 1 failed: empty output"
+                        )
+                    log.error(f"[{trace_id}] Phase 1 failed: empty output")
+                    return None
+
+            # Phase 2: Dual ingest (Graph + RAG) WITH TIMEOUT
+            with pipeline.phase(2, "Dual_ingest") as phase2_span:
+                log.info(f"[{trace_id}] Phase 2: Dual ingest")
+                p2_start = time.perf_counter()
+                ingest_result, p2_error = _run_with_timeout(
+                    _phase2_dual_ingest,
+                    cfg.phase2_timeout,
+                    f"{trace_id}/P2",
+                    result.filepath,
+                )
+                p2_duration = (time.perf_counter() - p2_start) * 1000
+
+                if _otel_metrics:
+                    _otel_metrics.record_phase(2, "Dual_ingest", p2_duration, ticker)
+
+                if p2_error:
+                    log.warning(f"[{trace_id}] Phase 2 failed: {p2_error}, continuing...")
+                    ingest_result = {"doc_id": None, "errors": [p2_error]}
+
+            # Phase 3: Retrieve history WITH TIMEOUT
+            with pipeline.phase(3, "Retrieve_history") as phase3_span:
+                log.info(f"[{trace_id}] Phase 3: Retrieve history")
+                p3_start = time.perf_counter()
+                historical_context, p3_error = _run_with_timeout(
+                    _phase3_retrieve_history,
+                    cfg.phase3_timeout,
+                    f"{trace_id}/P3",
+                    ticker,
+                    analysis_type,
+                    ingest_result.get("doc_id") if ingest_result else None,
+                    db,
+                )
+                p3_duration = (time.perf_counter() - p3_start) * 1000
+
+                if _otel_metrics:
+                    _otel_metrics.record_phase(3, "Retrieve_history", p3_duration, ticker)
+
+                if p3_error:
+                    log.warning(f"[{trace_id}] Phase 3 failed: {p3_error}, using empty context")
+                    historical_context = SynthesisContext(
+                        ticker=ticker,
+                        past_analyses=[],
+                        graph_context={},
+                        bias_warnings=[],
+                        strategy_recommendations=[],
+                        has_history=False,
+                        history_count=0,
+                        has_graph_data=False,
+                    )
+
+            # Phase 4: Synthesize WITH TIMEOUT
+            with pipeline.phase(4, "Synthesize") as phase4_span:
+                log.info(f"[{trace_id}] Phase 4: Synthesize")
+                p4_start = time.perf_counter()
+                _, p4_error = _run_with_timeout(
+                    _phase4_synthesize,
+                    cfg.phase4_timeout,
+                    f"{trace_id}/P4",
+                    result,
+                    historical_context,
+                    db,
+                    run_id,
+                )
+                p4_duration = (time.perf_counter() - p4_start) * 1000
+
+                if _otel_metrics:
+                    _otel_metrics.record_phase(4, "Synthesize", p4_duration, ticker)
+
+                if p4_error:
+                    log.warning(f"[{trace_id}] Phase 4 failed: {p4_error}, skipping synthesis")
+
+            # Set pipeline result for trace attributes
+            pipeline.set_result(
+                gate_passed=result.gate_passed,
+                recommendation=result.recommendation,
+                confidence=result.confidence,
+            )
+
+            # Record analysis metrics
+            if _otel_metrics:
+                _otel_metrics.record_analysis_result(
+                    ticker=ticker,
+                    analysis_type=analysis_type.value,
+                    gate_passed=result.gate_passed,
+                    recommendation=result.recommendation,
+                    confidence=result.confidence,
+                )
+
+            # Persist to DB
+            if run_id and schedule_id:
+                db.mark_schedule_completed(
+                    schedule_id,
+                    run_id,
+                    "completed",
+                    gate_passed=result.gate_passed,
+                    recommendation=result.recommendation,
+                    confidence=result.confidence,
+                    expected_value=result.expected_value,
+                    analysis_file=str(result.filepath),
+                )
+
+            if result.parsed_json and ticker not in ("PORTFOLIO", "SCAN"):
+                try:
+                    db.save_analysis_result(run_id, ticker, analysis_type.value, result.parsed_json)
+                except Exception as e:
+                    log.warning(f"Save analysis result failed: {e}")
+
+            # Increment service counters
+            try:
+                db.increment_service_counter("analyses_total")
+                db.increment_service_counter("today_analyses")
+            except Exception:
+                pass
+
+            log.info(
+                f"╚═══ 4-PHASE COMPLETE ═══ {ticker} | Gate: {'PASS' if result.gate_passed else 'FAIL'} | "
+                f"Rec: {result.recommendation} | Conf: {result.confidence}% [{trace_id}]"
+            )
+            return result
+
+        except Exception as e:
+            log.error(f"[{trace_id}] 4-phase workflow failed: {e}")
+            if run_id and schedule_id:
+                db.mark_schedule_completed(
+                    schedule_id, run_id, "failed", error=str(e)
+                )
+            raise
+
+
+def _run_analysis_4phase_untraced(
+    db: NexusDB,
+    ticker: str,
+    analysis_type: AnalysisType,
+    schedule_id: int | None,
+    trace_id: str,
+    run_id: int | None,
+) -> AnalysisResult | None:
+    """4-Phase workflow without tracing (fallback)."""
     try:
         # Phase 1: Fresh analysis (no KB context)
         log.info(f"[{trace_id}] Phase 1: Fresh analysis")

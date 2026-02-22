@@ -1,0 +1,58 @@
+# Promtail Configuration
+# Ships logs to Loki
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # Scrape tradegent logs from journald
+  - job_name: journal
+    journal:
+      max_age: 12h
+      labels:
+        job: systemd-journal
+    relabel_configs:
+      - source_labels: ['__journal__systemd_unit']
+        target_label: 'unit'
+      - source_labels: ['__journal__hostname']
+        target_label: 'hostname'
+    pipeline_stages:
+      - match:
+          selector: '{unit="tradegent.service"}'
+          stages:
+            - json:
+                expressions:
+                  ticker: ticker
+                  phase: phase
+                  duration: duration_sec
+                  event: event
+            - labels:
+                ticker:
+                phase:
+                event:
+
+  # Scrape log files (alternative)
+  # - job_name: tradegent-files
+  #   static_configs:
+  #     - targets:
+  #         - localhost
+  #       labels:
+  #         job: tradegent
+  #         __path__: /var/log/tradegent/*.log
+  #   pipeline_stages:
+  #     - json:
+  #         expressions:
+  #           level: level
+  #           ticker: ticker
+  #           phase: phase
+  #     - labels:
+  #         level:
+  #         ticker:
+  #         phase:

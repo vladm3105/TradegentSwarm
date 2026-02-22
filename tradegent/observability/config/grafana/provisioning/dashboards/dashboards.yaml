@@ -1,0 +1,16 @@
+# Grafana Dashboard Provisioning
+# Auto-loads dashboards from directory
+
+apiVersion: 1
+
+providers:
+  - name: "Tradegent Dashboards"
+    orgId: 1
+    folder: "Tradegent"
+    folderUid: tradegent
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

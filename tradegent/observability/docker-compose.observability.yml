@@ -1,0 +1,140 @@
+version: "3.8"
+
+# TradegentSwarm Observability Stack
+# Grafana + Tempo (traces) + Loki (logs) + Prometheus (metrics)
+#
+# Usage:
+#   docker compose -f docker-compose.observability.yml up -d
+#
+# Access:
+#   Grafana: http://localhost:3000 (admin/admin)
+#   Tempo: http://localhost:3200
+#   Loki: http://localhost:3100
+#   Prometheus: http://localhost:9090
+
+services:
+  # ==========================================================================
+  # OpenTelemetry Collector
+  # Receives traces, metrics, logs and routes to backends
+  # ==========================================================================
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: tradegent-otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./config/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8888:8888"   # Collector metrics
+    depends_on:
+      - tempo
+      - loki
+    networks:
+      - observability
+
+  # ==========================================================================
+  # Tempo - Distributed Tracing
+  # Stores and queries traces (Jaeger-compatible)
+  # ==========================================================================
+  tempo:
+    image: grafana/tempo:latest
+    container_name: tradegent-tempo
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./config/tempo.yaml:/etc/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "3200:3200"   # Tempo API
+      - "9095:9095"   # Tempo gRPC
+    networks:
+      - observability
+
+  # ==========================================================================
+  # Loki - Log Aggregation
+  # Stores and queries logs (like Prometheus but for logs)
+  # ==========================================================================
+  loki:
+    image: grafana/loki:latest
+    container_name: tradegent-loki
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    volumes:
+      - ./config/loki.yaml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    ports:
+      - "3100:3100"
+    networks:
+      - observability
+
+  # ==========================================================================
+  # Prometheus - Metrics
+  # Scrapes and stores metrics
+  # ==========================================================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: tradegent-prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-remote-write-receiver"
+    volumes:
+      - ./config/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - observability
+
+  # ==========================================================================
+  # Grafana - Visualization
+  # Dashboards for traces, logs, metrics
+  # ==========================================================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: tradegent-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      - GF_FEATURE_TOGGLES_ENABLE=traceqlEditor
+    volumes:
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - tempo
+      - loki
+      - prometheus
+    networks:
+      - observability
+
+  # ==========================================================================
+  # Promtail - Log Shipper
+  # Ships logs from tradegent to Loki
+  # ==========================================================================
+  promtail:
+    image: grafana/promtail:latest
+    container_name: tradegent-promtail
+    volumes:
+      - ./config/promtail.yaml:/etc/promtail/config.yml:ro
+      - /var/log:/var/log:ro
+      # Mount tradegent logs if using file-based logging
+      # - ../logs:/var/log/tradegent:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+    networks:
+      - observability
+
+networks:
+  observability:
+    driver: bridge
+
+volumes:
+  tempo-data:
+  loki-data:
+  prometheus-data:
+  grafana-data:
