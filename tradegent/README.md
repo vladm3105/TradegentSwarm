@@ -963,6 +963,17 @@ Check next_run_at: `SELECT name, next_run_at FROM nexus.schedules WHERE is_enabl
 **High API costs:**
 Reduce `max_daily_analyses`. Use `dry_run_mode = true` when not actively monitoring. Set a spending cap in the Anthropic Console.
 
+**"Dimension mismatch: got 768, expected 1536"**
+This happens when switching embedding providers (e.g., from Ollama to OpenAI). Each provider uses different embedding dimensions:
+- OpenAI text-embedding-3-large: 1536 dimensions
+- Ollama nomic-embed-text: 768 dimensions
+
+**Solution:** Stay consistent with one provider. If you need to switch:
+1. Re-embed ALL documents with the new provider, OR
+2. Reset the RAG database and re-index
+
+Check your provider setting: `echo $EMBED_PROVIDER` should match what was used to create existing embeddings.
+
 **Git push fails with `OpenSSL version mismatch`:**
 If you use conda, its `LD_LIBRARY_PATH` loads a newer OpenSSL that conflicts with system SSH. Fix:
 
@@ -994,6 +1005,70 @@ Host github.com
     IdentityFile ~/.ssh/your-github-key
     IdentitiesOnly yes
 ```
+
+---
+
+## Quick Verification: RAG + Graph
+
+After setup, verify the RAG and Graph modules are working:
+
+```bash
+cd tradegent
+
+# Set environment variables (or source .env)
+export PG_USER=lightrag
+export PG_PASS='<your-password>'
+export PG_DB=lightrag
+export PG_HOST=localhost
+export PG_PORT=5433
+export EMBED_PROVIDER=openai
+export OPENAI_API_KEY='<your-key>'
+export NEO4J_URI=bolt://localhost:7688
+export NEO4J_USER=neo4j
+export NEO4J_PASS='<your-password>'
+
+# 1. Test RAG embedding
+python -c "
+from rag.embed import embed_document
+result = embed_document('../tradegent_knowledge/knowledge/analysis/stock/MSFT_20260221T1715.yaml')
+print(f'Embedded: {result.doc_id}, Chunks: {result.chunk_count}, Status: {result.error_message or \"success\"}')
+"
+
+# 2. Test RAG search
+python -c "
+from rag.search import semantic_search, get_rag_stats
+stats = get_rag_stats()
+print(f'RAG Stats: {stats.document_count} docs, {stats.chunk_count} chunks')
+results = semantic_search('Microsoft Azure growth', ticker='MSFT', top_k=3)
+print(f'Search found {len(results)} results')
+for r in results:
+    print(f'  - {r.doc_id}: {r.content[:60]}...')
+"
+
+# 3. Test Graph extraction
+python -c "
+from graph.extract import extract_document
+result = extract_document('../tradegent_knowledge/knowledge/analysis/stock/MSFT_20260221T1715.yaml')
+print(f'Extracted: {len(result.entities)} entities, {len(result.relations)} relations')
+print(f'Committed: {result.committed}')
+"
+
+# 4. Test Graph queries
+python -c "
+from graph.layer import TradingGraph
+graph = TradingGraph()
+graph.connect()
+ctx = graph.get_ticker_context('MSFT')
+print(f'MSFT context: {ctx}')
+stats = graph.get_stats()
+print(f'Graph: {sum(stats.node_counts.values())} nodes, {sum(stats.edge_counts.values())} edges')
+graph.close()
+"
+```
+
+**Expected output:**
+- RAG: Documents embedded, search returns results
+- Graph: Entities extracted, context queries return data
 
 ---
 

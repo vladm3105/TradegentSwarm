@@ -72,11 +72,19 @@ Retrieval-Augmented Generation (RAG) system for trading knowledge. Embeds docume
 
 ```python
 from rag.embed import embed_document
-from rag.search import semantic_search, search_with_rerank
+from rag.search import semantic_search, get_rag_stats, search_with_rerank
+
+# Check RAG statistics
+stats = get_rag_stats()
+print(f"Documents: {stats.document_count}, Chunks: {stats.chunk_count}")
+print(f"Tickers: {stats.tickers}")
+print(f"Doc types: {stats.doc_types}")
 
 # Embed a document
 result = embed_document("tradegent_knowledge/knowledge/analysis/stock/NVDA_20250120.yaml")
-print(f"Stored {result.chunk_count} chunks")
+print(f"doc_id: {result.doc_id}")
+print(f"chunk_count: {result.chunk_count}")
+print(f"status: {result.error_message or 'success'}")  # 'unchanged' if already exists
 
 # Basic search
 results = semantic_search(
@@ -84,6 +92,8 @@ results = semantic_search(
     ticker="NVDA",
     top_k=5,
 )
+for r in results:
+    print(f"{r.score:.3f} | {r.doc_id} | {r.content[:80]}...")
 
 # Reranked search (higher relevance)
 results = search_with_rerank(
@@ -94,6 +104,23 @@ results = search_with_rerank(
 for r in results:
     print(f"{r.similarity:.3f} | rerank: {r.rerank_score:.3f} | {r.content[:80]}...")
 ```
+
+**EmbedResult attributes:**
+- `doc_id` - Document identifier
+- `file_path` - Source file path
+- `doc_type` - Document type (stock-analysis, earnings-analysis, etc.)
+- `ticker` - Ticker symbol (if applicable)
+- `chunk_count` - Number of chunks created
+- `embed_model` - Embedding model used
+- `error_message` - Error or "unchanged" if already embedded
+
+**RAGStats attributes:**
+- `document_count` - Total documents
+- `chunk_count` - Total chunks
+- `embed_model` - Current embedding model
+- `tickers` - List of indexed tickers
+- `doc_types` - Dict of document type counts
+- `last_embed` - Timestamp of last embedding
 
 ## Components
 

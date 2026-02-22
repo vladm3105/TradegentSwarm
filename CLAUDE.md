@@ -680,18 +680,45 @@ To use the Trading RAG and Graph MCP servers, add them to your Claude Code MCP s
 If MCP servers are not configured, use Python directly:
 
 ```bash
+# Set environment variables first
+export PG_USER=lightrag PG_PASS=<password> PG_DB=lightrag PG_HOST=localhost PG_PORT=5433
+export NEO4J_URI=bolt://localhost:7688 NEO4J_USER=neo4j NEO4J_PASS=<password>
+export EMBED_PROVIDER=openai EXTRACT_PROVIDER=openai OPENAI_API_KEY=<key>
+
 # RAG Embedding
 cd tradegent && python -c "
 from rag.embed import embed_document
-result = embed_document('tradegent_knowledge/knowledge/analysis/stock/MSFT_20260221T1145.yaml')
-print(f'Embedded: {result.doc_id}, Chunks: {result.chunks_created}')
+result = embed_document('../tradegent_knowledge/knowledge/analysis/stock/MSFT_20260221T1715.yaml')
+print(f'Embedded: {result.doc_id}, Chunks: {result.chunk_count}')
+"
+
+# RAG Search
+cd tradegent && python -c "
+from rag.search import semantic_search, get_rag_stats
+stats = get_rag_stats()
+print(f'RAG: {stats.document_count} docs, {stats.chunk_count} chunks')
+results = semantic_search('MSFT Azure analysis', ticker='MSFT', top_k=3)
+for r in results:
+    print(f'  {r.doc_id}: {r.content[:60]}...')
 "
 
 # Graph Extraction
 cd tradegent && python -c "
 from graph.extract import extract_document
-result = extract_document('tradegent_knowledge/knowledge/analysis/stock/MSFT_20260221T1145.yaml')
-print(f'Extracted: {result.doc_id}, Entities: {result.entities_extracted}')
+result = extract_document('../tradegent_knowledge/knowledge/analysis/stock/MSFT_20260221T1715.yaml')
+print(f'Extracted: {len(result.entities)} entities, {len(result.relations)} relations, Committed: {result.committed}')
+"
+
+# Graph Query
+cd tradegent && python -c "
+from graph.layer import TradingGraph
+graph = TradingGraph()
+graph.connect()
+ctx = graph.get_ticker_context('MSFT')
+print(f'MSFT peers: {ctx.get(\"peers\", [])}')
+stats = graph.get_stats()
+print(f'Graph: {sum(stats.node_counts.values())} nodes, {sum(stats.edge_counts.values())} edges')
+graph.close()
 "
 ```
 

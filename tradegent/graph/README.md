@@ -157,15 +157,27 @@ from graph.extract import extract_document
 
 result = extract_document(
     file_path="/path/to/earnings_analysis.yaml",
-    extractor="ollama",  # or "openrouter", "claude-api"
+    extractor="openai",  # recommended: openai, or "ollama", "openrouter", "claude_api"
     commit=True,
 )
 
 print(f"Entities: {len(result.entities)}")
 print(f"Relations: {len(result.relations)}")
-for e in result.entities:
-    print(f"  {e.type}: {e.name} ({e.confidence:.2f})")
+print(f"Fields processed: {result.fields_processed}")
+print(f"Committed: {result.committed}")
+for e in result.entities[:5]:
+    print(f"  {e.type}: {e.value} ({e.confidence:.2f})")
 ```
+
+**ExtractionResult attributes:**
+- `entities` - List of EntityExtraction objects
+- `relations` - List of RelationExtraction objects
+- `source_doc_id` - Document ID
+- `source_doc_type` - Document type (stock-analysis, earnings-analysis, etc.)
+- `fields_processed` - Number of fields extracted from
+- `fields_failed` - Number of fields that failed extraction
+- `committed` - Whether entities were stored in Neo4j
+- `extractor` - Which provider was used (openai, ollama, etc.)
 
 ### extract_text(text, doc_type, doc_id, ...)
 
@@ -206,8 +218,8 @@ with TradingGraph() as graph:
 
     # Get statistics
     stats = graph.get_stats()
-    print(f"Nodes: {stats.total_nodes}")
-    print(f"Edges: {stats.total_edges}")
+    print(f"Node counts: {stats.node_counts}")   # Dict: {'Ticker': 4, 'Company': 5, ...}
+    print(f"Edge counts: {stats.edge_counts}")   # Dict: {'ISSUED': 4, 'IN_SECTOR': 6, ...}
 ```
 
 ### Pre-built Queries
