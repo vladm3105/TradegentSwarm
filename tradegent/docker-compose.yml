@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════
-# Nexus Light Trading Platform v2.3 - Docker Stack
+# Nexus Light Trading Platform v2.4 - Docker Stack
 # Paper + Live IB Gateways + PostgreSQL (pgvector) + Neo4j
 # ═══════════════════════════════════════════════════════════════
 #
@@ -8,23 +8,28 @@
 # Usage:
 #   docker compose up -d                    # Start all services
 #   docker compose up -d paper-ib-gateway   # Start paper only
-#   docker compose up -d live-ib-gateway    # Start live only
+#   docker compose --profile live up -d     # Start with live gateway
 #   docker compose logs -f paper-ib-gateway # View paper gateway logs
 #
 # VNC Access:
 #   Paper: localhost:5902 (password: VNC_PAPER_PASS)
 #   Live:  localhost:5901 (password: VNC_LIVE_PASS)
+#
+# Port Mapping Note (gnzsnz/ib-gateway):
+#   The gnzsnz image uses internal ports 4003 (live) and 4004 (paper)
+#   via socat relay. We map to standard external ports:
+#   - Paper: external 4002 → internal 4004
+#   - Live:  external 4001 → internal 4003
 
 services:
-  # ─── Paper Trading Gateway (Port 4002 external) ─────────────
-  # Note: gnzsnz/ib-gateway uses port 4004 internally for paper trading
+  # ─── Paper Trading Gateway (Port 4002) ─────────────────────
   paper-ib-gateway:
     image: ghcr.io/gnzsnz/ib-gateway:stable
     container_name: paper-ib-gateway
     hostname: paper-ib-gateway
     restart: unless-stopped
     ports:
-      - "4002:4004"      # Paper trading: external 4002 -> internal 4004
+      - "4002:4004"      # Paper: external 4002 → internal 4004
       - "5902:5900"      # VNC for paper
     environment:
       TWS_USERID: ${IB_PAPER_USER}
@@ -33,22 +38,22 @@ services:
       TWS_ACCEPT_INCOMING: "true"
       READ_ONLY_API: "false"
       VNC_SERVER_PASSWORD: ${VNC_PAPER_PASS:-nexus123}
+      TZ: America/New_York
     volumes:
       - paper_ib_data:/root/Jts
     healthcheck:
-      test: ["CMD-SHELL", "timeout 5 bash -c '</dev/tcp/localhost/4004'"]
+      test: ["CMD-SHELL", "nc -z localhost 4004 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 120s  # Give time for login
+      start_period: 120s
     networks:
       - nexus-net
     labels:
       - "com.tradegent.mode=paper"
       - "com.tradegent.description=Paper trading gateway (simulated)"
 
-  # ─── Live Trading Gateway (Port 4001 external) ──────────────
-  # Note: gnzsnz/ib-gateway uses port 4003 internally for live trading
+  # ─── Live Trading Gateway (Port 4001) ──────────────────────
   live-ib-gateway:
     image: ghcr.io/gnzsnz/ib-gateway:stable
     container_name: live-ib-gateway
@@ -57,7 +62,7 @@ services:
     profiles:
       - live  # Only starts when: docker compose --profile live up
     ports:
-      - "4001:4003"      # Live trading: external 4001 -> internal 4003
+      - "4001:4003"      # Live: external 4001 → internal 4003
       - "5901:5900"      # VNC for live
     environment:
       TWS_USERID: ${IB_LIVE_USER}
@@ -66,14 +71,15 @@ services:
       TWS_ACCEPT_INCOMING: "true"
       READ_ONLY_API: "true"  # Safety: read-only by default for live
       VNC_SERVER_PASSWORD: ${VNC_LIVE_PASS:-nexuslive123}
+      TZ: America/New_York
     volumes:
       - live_ib_data:/root/Jts
     healthcheck:
-      test: ["CMD-SHELL", "timeout 5 bash -c '</dev/tcp/localhost/4003'"]
+      test: ["CMD-SHELL", "nc -z localhost 4003 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 120s  # Give time for login
+      start_period: 120s
     networks:
       - nexus-net
     labels:
