@@ -784,6 +784,130 @@ graph.close()
 "
 ```
 
+## IB Gateway Docker (gnzsnz/ib-gateway)
+
+The IB Gateway runs in Docker using the `gnzsnz/ib-gateway:stable` image - a well-maintained, feature-rich container for headless IB Gateway operation.
+
+### Architecture
+
+```
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐     ┌──────────────────┐
+│  Claude Code    │────▶│   IB MCP Server  │────▶│   IB Gateway    │────▶│  IB Servers      │
+│  (orchestrator) │ SSE │  (localhost:8100)│ API │  (localhost:4002)│ TLS │  (interactivebrokers.com)
+└─────────────────┘     └──────────────────┘     └─────────────────┘     └──────────────────┘
+```
+
+### Port Mapping
+
+The gnzsnz image uses internal ports 4003/4004 via socat relay. We map to standard external ports:
+
+| Mode | External Port | Internal Port | Container |
+|------|---------------|---------------|-----------|
+| Paper | 4002 | 4004 | paper-ib-gateway |
+| Live | 4001 | 4003 | live-ib-gateway |
+
+### Trading Mode Switch
+
+Set `IB_MODE` in `.env` to switch between paper and live:
+
+```bash
+# tradegent/.env
+IB_MODE=paper              # or "live"
+
+# Paper trading credentials
+IB_PAPER_USER=<username>
+IB_PAPER_PASS=<password>
+IB_PAPER_ACCOUNT=<account>
+
+# Live trading credentials (when ready)
+IB_LIVE_USER=<username>
+IB_LIVE_PASS=<password>
+IB_LIVE_ACCOUNT=<account>
+```
+
+### Starting the Gateways
+
+```bash
+cd tradegent
+
+# Start paper gateway (default)
+docker compose up -d paper-ib-gateway
+
+# Start live gateway (requires --profile)
+docker compose --profile live up -d live-ib-gateway
+
+# View logs
+docker compose logs -f paper-ib-gateway
+```
+
+### VNC Access
+
+For 2FA, troubleshooting, or manual configuration:
+
+| Mode | VNC Port | Password Variable |
+|------|----------|-------------------|
+| Paper | 5902 | `VNC_PAPER_PASS` (default: nexus123) |
+| Live | 5901 | `VNC_LIVE_PASS` (default: nexuslive123) |
+
+```bash
+vncviewer localhost:5902  # Paper gateway
+vncviewer localhost:5901  # Live gateway
+```
+
+### Environment Variables (gnzsnz image)
+
+**Core Authentication:**
+| Variable | Purpose |
+|----------|---------|
+| `TWS_USERID` | IB account username |
+| `TWS_PASSWORD` | IB account password |
+| `TRADING_MODE` | `paper`, `live`, or `both` |
+| `READ_ONLY_API` | `true`/`false` - block order placement |
+
+**2FA & Session:**
+| Variable | Purpose |
+|----------|---------|
+| `TWOFA_TIMEOUT_ACTION` | `exit` or `restart` on 2FA timeout |
+| `AUTO_RESTART_TIME` | Daily restart time (e.g., "11:59 PM") |
+| `EXISTING_SESSION_DETECTED_ACTION` | `primary` (default) |
+
+**Advanced:**
+| Variable | Purpose |
+|----------|---------|
+| `TWS_SETTINGS_PATH` | Persist settings across restarts |
+| `CUSTOM_CONFIG` | `yes` to mount custom config files |
+| `JAVA_HEAP_SIZE` | Memory in MB (default: 768) |
+| `SSH_TUNNEL` | Enable SSH tunneling |
+| `VNC_SERVER_PASSWORD` | VNC access password |
+
+**Custom Config Mode:**
+```yaml
+# Mount custom IBC/jts.ini files
+paper-ib-gateway:
+  environment:
+    CUSTOM_CONFIG: "yes"
+  volumes:
+    - ./config/jts.ini:/home/ibgateway/Jts/jts.ini:ro
+    - ./config/config.ini:/home/ibgateway/ibc/config.ini:ro
+```
+
+### Preflight Checks
+
+The preflight system verifies IB Gateway connectivity:
+
+```python
+from tradegent.preflight import run_full_preflight, get_trading_mode
+
+# Check current mode
+mode = get_trading_mode()
+print(f"Mode: {mode.mode_banner}")  # "📋 PAPER TRADING (Simulated)"
+print(f"Port: {mode.port}")          # 4002
+
+# Run checks
+status = run_full_preflight()
+print(status.summary())
+```
+
 ## IB MCP Server (Interactive Brokers)
 
 Access Interactive Brokers TWS/Gateway for market data, portfolio, and trading.
@@ -807,35 +931,6 @@ python -m ibmcp --transport sse --port 8100
 Server URL: `http://localhost:8100/sse`
 
 > **Note**: Port 8100 is used when running IB MCP directly. The README.md shows Docker deployment using port 8002. Either works - use whatever matches your setup.
-
-### Architecture: IB Gateway as Proxy
-
-```
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐     ┌──────────────────┐
-│  Claude Code    │────▶│   IB MCP Server  │────▶│   IB Gateway    │────▶│  IB Servers      │
-│  (orchestrator) │ SSE │  (localhost:8100)│ API │  (localhost:4002)│ TLS │  (interactivebrokers.com)
-└─────────────────┘     └──────────────────┘     └─────────────────┘     └──────────────────┘
-```
-
-**IB Gateway Docker container** (`nexus-ib-gateway`) acts as a proxy:
-
-1. **Runs headless** in Docker with VNC access (port 5900) for initial login/2FA
-2. **Maintains persistent connection** to Interactive Brokers servers
-3. **Exposes local API** on ports 4001 (live) / 4002 (paper)
-4. **Handles authentication** - stores credentials, manages session renewal
-5. **Rate limiting** - IB enforces 50 requests/second; Gateway handles throttling
-
-**Connection flow:**
-- IB MCP Server connects to IB Gateway via TCP (port 4002)
-- IB Gateway proxies requests to IB servers over TLS
-- Market data, account info, and orders flow through this chain
-
-**VNC Access** (for 2FA or troubleshooting):
-```bash
-# Connect to IB Gateway UI
-vncviewer localhost:5900
-# Password: nexus123 (from VNC_PASS in .env)
-```
 
 ### Available Tools (22 total)
 
