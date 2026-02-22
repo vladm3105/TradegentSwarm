@@ -1,9 +1,28 @@
 # TradegentSwarm - Claude Code Instructions
 
 > **Skills Version**: v2.5 (stock-analysis, earnings-analysis), v2.1 (other skills)
-> **Last Updated**: 2026-02-21
+> **Last Updated**: 2026-02-22
 
 **Tradegent** — AI-driven trading platform using Claude Code CLI, Interactive Brokers, and a hybrid RAG+Graph knowledge system. A multi-agent swarm for market analysis, trade execution, and knowledge persistence.
+
+## Temporary Files and Implementation Plans
+
+Use the `tmp/` directory for ephemeral content that should not be committed:
+
+| Directory | Purpose |
+|-----------|---------|
+| `tmp/` | One-time scripts, temporary docs, scratch files |
+| `tmp/IPLAN/` | Implementation plans (session-based execution plans) |
+
+**IPLAN Format**: `IPLAN-NNN_{descriptive_slug}.md`
+- Session-based execution plans with bash commands
+- Not committed to git (ephemeral)
+- Example: `tmp/IPLAN/IPLAN-001_observability_integration.md`
+
+```bash
+# Create tmp directories if needed
+mkdir -p tmp/IPLAN
+```
 
 ## Project Structure
 
