@@ -165,9 +165,22 @@ Input: {"symbol": "NVDA", "duration": "3 M", "bar_size": "1 day"}
 
 **Step 4: Save Output** (to `tradegent_knowledge/knowledge/`)
 
-**Step 5: Post-Save Indexing** (REQUIRED for all skills)
+**Step 5: Post-Save Indexing** (AUTO or MANUAL)
 
-Every skill MUST complete these steps after saving output:
+When files are written to `tradegent_knowledge/knowledge/`, they need to be indexed in RAG and Graph.
+
+**Automatic Ingestion (if hook configured):**
+
+A Claude Code hook automatically triggers after Write tool completes:
+- Embeds document in RAG (pgvector) for semantic search
+- Extracts entities to Graph (Neo4j) for relationship queries
+- Returns feedback: "Auto-ingested to knowledge base: RAG: 3 chunks, Graph: 5 entities"
+
+See [Auto-Ingest Hook](#auto-ingest-hook) section for setup.
+
+**Manual Ingestion (fallback):**
+
+If hook is not configured or for explicit control:
 
 ```yaml
 # 1. Index in Graph (entity extraction)
@@ -188,7 +201,7 @@ Parameters:
   message: "Add {skill_name} for {TICKER}"
 ```
 
-**Why this matters:**
+**Why indexing matters:**
 - Without indexing, documents are invisible to RAG search and Graph queries
 - Pre-analysis context retrieval (Step 1) depends on previous documents being indexed
 - The learning loop requires indexed post-trade reviews and learnings
@@ -1013,6 +1026,67 @@ Input: {"pattern": "NVDA"}
 | `IB_READONLY` | true | Read-only mode (blocks order placement) |
 | `IB_RATE_LIMIT` | 45 | Requests per second limit |
 
+## Auto-Ingest Hook
+
+Automatically indexes documents to RAG and Graph when files are written to `tradegent_knowledge/knowledge/`.
+
+### How It Works
+
+```
+Write tool → knowledge/*.yaml → Hook triggers → ingest.py runs
+                                                    ├── RAG embed (pgvector)
+                                                    └── Graph extract (Neo4j)
+```
+
+### Setup
+
+Add to `.claude/settings.json` (project) or `~/.claude/settings.json` (global):
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/tradegent/hooks/post-write-ingest.sh",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### Components
+
+| File | Purpose |
+|------|---------|
+| `tradegent/hooks/post-write-ingest.sh` | Hook script triggered after Write tool |
+| `tradegent/scripts/ingest.py` | Ingest script (RAG embed + Graph extract) |
+| `tradegent/hooks/README.md` | Detailed setup instructions |
+
+### Manual Ingest (CLI)
+
+If hook is not configured, ingest manually:
+
+```bash
+cd tradegent
+python scripts/ingest.py ../tradegent_knowledge/knowledge/analysis/stock/ORCL_20260222T1600.yaml
+
+# With JSON output
+python scripts/ingest.py --json <file_path>
+```
+
+### Notes
+
+- Hook triggers on **new Claude sessions** (hooks loaded at session start)
+- RAG/Graph modules filter out template/test files automatically
+- GitHub push still requires manual step (MCP tool or git)
+
 ## Git Workflow (Fallback)
 
 ### Pushing Changes
@@ -1064,6 +1138,7 @@ Host github.com
 
 - **Use MCP servers as primary interface** for IB (`ib-mcp`), RAG (`trading-rag`), and Graph (`trading-graph`) operations
 - **IB MCP runs via SSE** at `http://localhost:8100/sse` - start it before running analyses
+- **Auto-ingest hook** indexes knowledge files automatically (configure in `.claude/settings.json`)
 - Do not commit `.env` files (contains credentials)
 - IB Gateway requires valid paper trading account
 - RAG (pgvector) handles semantic search, Graph (Neo4j) handles entity relationships
