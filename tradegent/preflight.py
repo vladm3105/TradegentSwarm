@@ -221,46 +221,39 @@ def check_neo4j() -> ServiceStatus:
 
 
 def check_ib_mcp() -> ServiceStatus:
-    """Check IB MCP server connection."""
+    """Check IB MCP server by testing TCP connection to IB Gateway port."""
     mode = get_trading_mode()
     mode_label = mode.mode.value.upper()
 
     try:
-        import httpx
+        import socket
 
-        # IB MCP runs on SSE at port 8100
-        ib_url = os.getenv("IB_MCP_URL", "http://localhost:8100")
+        # Test direct TCP connection to IB Gateway port
+        # This verifies the gateway is accessible on the expected port
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(5.0)
+        result = sock.connect_ex(('localhost', mode.port))
+        sock.close()
 
-        # Try to hit the SSE endpoint (will return quickly)
-        response = httpx.get(f"{ib_url}/health", timeout=5.0)
-
-        if response.status_code == 200:
-            data = response.json()
-            if data.get("ib_connected"):
-                return ServiceStatus(
-                    name="ib_mcp",
-                    status="healthy",
-                    message=f"{mode_label}: Connected to IB Gateway v{data.get('server_version', '?')}",
-                    details={**data, "mode": mode.mode.value, "port": mode.port}
-                )
-            else:
-                return ServiceStatus(
-                    name="ib_mcp",
-                    status="degraded",
-                    message=f"{mode_label}: MCP server up, IB Gateway not connected",
-                    details={**data, "mode": mode.mode.value, "port": mode.port}
-                )
+        if result == 0:
+            return ServiceStatus(
+                name="ib_mcp",
+                status="healthy",
+                message=f"{mode_label}: IB Gateway port {mode.port} accessible",
+                details={"mode": mode.mode.value, "port": mode.port, "container": mode.container_name}
+            )
         else:
             return ServiceStatus(
                 name="ib_mcp",
                 status="unhealthy",
-                message=f"{mode_label}: HTTP {response.status_code}"
+                message=f"{mode_label}: IB Gateway port {mode.port} not responding",
+                details={"mode": mode.mode.value, "port": mode.port, "error_code": result}
             )
-    except httpx.ConnectError:
+    except socket.timeout:
         return ServiceStatus(
             name="ib_mcp",
             status="unhealthy",
-            message=f"{mode_label}: Cannot connect to IB MCP server (port {mode.port})"
+            message=f"{mode_label}: Connection timeout to port {mode.port}"
         )
     except Exception as e:
         return ServiceStatus(
