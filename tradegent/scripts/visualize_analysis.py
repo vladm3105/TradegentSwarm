@@ -249,12 +249,37 @@ def generate_svg(data: dict) -> str:
     if not alternatives:
         alternatives = data.get('alternative_actions', summary.get('alternative_actions', []))
 
-    # Action items / Next steps
+    # Action items / Next steps (v2.6 structure)
     action_items = data.get('action_items', {})
-    meta_learning = data.get('meta_learning', {})
-    post_analysis_review = meta_learning.get('post_analysis_review', '')
-    falsification = data.get('falsification_criteria', {})
-    key_metrics_to_watch = falsification.get('key_metrics', [])
+    post_event_items = action_items.get('post_event', [])
+    # Extract review date from post_event (e.g., "Review analysis on 2026-03-10")
+    post_review_date = ''
+    for item in post_event_items:
+        if 'review' in str(item).lower() or '202' in str(item):
+            post_review_date = str(item)
+            break
+    if not post_review_date and post_event_items:
+        post_review_date = str(post_event_items[0])
+
+    # Falsification criteria (v2.6 uses 'falsification' not 'falsification_criteria')
+    falsification = data.get('falsification', data.get('falsification_criteria', {}))
+    falsification_criteria = falsification.get('criteria', [])
+
+    # Extract key metrics and invalidation conditions
+    key_metric = ''
+    invalidation_trigger = ''
+    if falsification_criteria:
+        # First criterion is usually the key metric
+        first_crit = falsification_criteria[0] if falsification_criteria else {}
+        key_metric = first_crit.get('condition', '')
+        # Build invalidation string from criteria
+        invalidation_parts = [c.get('condition', '')[:25] for c in falsification_criteria[:2]]
+        invalidation_trigger = ' | '.join(invalidation_parts)
+    else:
+        # Fallback to thesis_invalid_if
+        thesis_invalid = falsification.get('thesis_invalid_if', '')
+        if thesis_invalid:
+            invalidation_trigger = str(thesis_invalid).split('\n')[0][:50]
 
     # Recommendation colors
     rec_bg, rec_text = get_recommendation_color(recommendation)
@@ -559,17 +584,18 @@ def generate_svg(data: dict) -> str:
         svg += '''  <text x="500" y="815" font-size="11" fill="#51cf66">No significant biases detected</text>
 '''
 
-    # Next Steps box
-    key_metric = key_metrics_to_watch[0] if key_metrics_to_watch else 'See analysis'
-    falsification_trigger = falsification.get('price_invalidation', '')
+    # Next Steps box - use variables from extraction above
+    display_key_metric = key_metric if key_metric else 'See analysis'
+    display_invalidation = invalidation_trigger if invalidation_trigger else 'See analysis'
+    display_post_review = post_review_date if post_review_date else 'TBD'
 
     svg += f'''
   <!-- Next Steps -->
   <rect x="780" y="760" width="380" height="100" rx="10" fill="#fff" filter="url(#shadow)"/>
   <text x="800" y="790" font-size="14" font-weight="bold" fill="#212529">Next Steps</text>
-  <text x="800" y="815" font-size="12" fill="#495057">Post-Review: <tspan font-weight="bold">{escape_xml(str(post_analysis_review)[:15])}</tspan></text>
-  <text x="800" y="838" font-size="12" fill="#495057">Key Metric: <tspan font-weight="bold">{escape_xml(str(key_metric)[:30])}</tspan></text>
-  <text x="800" y="851" font-size="11" fill="#868e96">Invalidation: {escape_xml(str(falsification_trigger)[:40])}</text>
+  <text x="800" y="815" font-size="12" fill="#495057">Post-Review: <tspan font-weight="bold">{escape_xml(str(display_post_review)[:35])}</tspan></text>
+  <text x="800" y="838" font-size="12" fill="#495057">Key Metric: <tspan font-weight="bold">{escape_xml(str(display_key_metric)[:30])}</tspan></text>
+  <text x="800" y="851" font-size="11" fill="#868e96">Invalidation: {escape_xml(str(display_invalidation)[:45])}</text>
 
   <!-- Footer -->
   <rect x="0" y="880" width="1200" height="20" fill="#1a1a2e"/>
