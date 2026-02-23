@@ -42,7 +42,7 @@ services:
     volumes:
       - paper_ib_data:/root/Jts
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 4004 || exit 1"]
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/4004' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -75,7 +75,7 @@ services:
     volumes:
       - live_ib_data:/root/Jts
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 4003 || exit 1"]
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/4003' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -128,7 +128,7 @@ services:
       - neo4j_logs:/logs
       - ./db/neo4j_schema.cypher:/docker-entrypoint-initdb.d/schema.cypher:ro
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7474"]
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
