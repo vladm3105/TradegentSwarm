@@ -317,7 +317,7 @@ def generate_svg(data: dict) -> str:
   </defs>
 
   <!-- Background -->
-  <rect width="1200" height="900" fill="#f8f9fa"/>
+  <rect width="1200" height="1020" fill="#f8f9fa"/>
 
   <!-- Header -->
   <rect x="0" y="0" width="1200" height="100" fill="url(#headerGrad)"/>
