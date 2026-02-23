@@ -339,9 +339,9 @@ def generate_svg(data: dict) -> str:
   <rect x="60" y="230" width="310" height="12" rx="6" fill="#e9ecef"/>
   <rect x="60" y="230" width="{price_pct * 3.1:.0f}" height="12" rx="6" fill="#ff6b6b"/>
   <circle cx="{60 + price_pct * 3.1:.0f}" cy="236" r="8" fill="#228be6" stroke="#fff" stroke-width="2"/>
+  <text x="{max(100, 60 + price_pct * 3.1):.0f}" y="222" font-size="10" fill="#228be6" text-anchor="middle">{pct_from_low:.0f}% from low</text>
   <text x="60" y="260" font-size="12" fill="#868e96">${low_52w:.2f}</text>
   <text x="330" y="260" font-size="12" fill="#868e96" text-anchor="end">${high_52w:.2f}</text>
-  <text x="{60 + price_pct * 3.1:.0f}" y="260" font-size="11" fill="#228be6" text-anchor="middle">{pct_from_low:.0f}% from low</text>
 
   <!-- Key Metrics Box -->
   <rect x="410" y="120" width="350" height="160" rx="10" fill="#fff" filter="url(#shadow)"/>
