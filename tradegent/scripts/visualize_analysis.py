@@ -196,11 +196,25 @@ def generate_svg(data: dict) -> str:
     bear_strength = bear_case.get('strength', bear_case.get('overall_strength', 5))
     base_strength = base_case.get('strength', base_case.get('overall_strength', 6))
 
-    # Threats
+    # Threats (v2.6 structure)
     threats = data.get('threat_assessment', {})
-    threat_level = threats.get('threat_level', 'MODERATE')
-    primary_threat = threats.get('primary_threat', threats.get('primary_threats', [''])[0] if isinstance(threats.get('primary_threats', []), list) else '')
-    threat_details = threats.get('threat_details', [])
+    # v2.6 uses primary_concern (structural/cyclical/moderate) as threat level
+    primary_concern = threats.get('primary_concern', '').upper()
+    threat_level = primary_concern if primary_concern in ['STRUCTURAL', 'CYCLICAL', 'ELEVATED'] else threats.get('threat_level', 'MODERATE')
+
+    # Extract threat details from structural_threat or cyclical_weakness
+    structural = threats.get('structural_threat', {})
+    cyclical = threats.get('cyclical_weakness', {})
+
+    if structural.get('exists', False):
+        primary_threat = structural.get('description', '')
+        threat_details = structural.get('moat_erosion_evidence', [])
+    elif cyclical.get('exists', False):
+        primary_threat = cyclical.get('description', f"Cyclical weakness - {cyclical.get('cycle_phase', '')}")
+        threat_details = cyclical.get('recovery_catalysts', [])
+    else:
+        primary_threat = threats.get('primary_threat', threats.get('threat_summary', '')[:60])
+        threat_details = threats.get('threat_details', [])
 
     # Liquidity
     liquidity = data.get('liquidity_analysis', {})
