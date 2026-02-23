@@ -1,9 +1,28 @@
 # TradegentSwarm - Claude Code Instructions
 
-> **Skills Version**: v2.4 (stock-analysis, earnings-analysis), v2.1 (other skills)
-> **Last Updated**: 2026-02-22
+> **Skills Version**: v2.6 (stock-analysis), v2.4 (earnings-analysis), v2.1 (other skills)
+> **Last Updated**: 2026-02-23
+> **PRODUCTION START**: 2026-02-23
 
 **Tradegent** — AI-driven trading platform using Claude Code CLI, Interactive Brokers, and a hybrid RAG+Graph knowledge system. A multi-agent swarm for market analysis, trade execution, and knowledge persistence.
+
+## Schema Validation (v2.6)
+
+All stock analyses MUST pass validation before commit:
+
+```bash
+python scripts/validate_analysis.py <file.yaml>
+python scripts/validate_analysis.py --all  # Validate all
+```
+
+**v2.6 Requirements:**
+- `comparable_companies` section (min 3 peers with P/E, P/S, EV/EBITDA)
+- `liquidity_analysis` section (ADV, bid-ask spread, slippage estimates)
+- Enhanced `insider_activity` with transaction details
+- Minimum 3 arguments in bull/bear case analysis
+- Normalized Do Nothing gate thresholds (EV>5%, Confidence>60%, R:R>2:1)
+
+**DEPRECATED**: Versions <2.6 are read-only. New analyses require v2.6.
 
 ## Temporary Files and Implementation Plans
 
@@ -59,7 +78,7 @@ Skills in `.claude/skills/` auto-invoke based on context. Each skill has:
 
 | Skill                 | Version | Triggers                                                 | Category   |
 | --------------------- | ------- | -------------------------------------------------------- | ---------- |
-| **stock-analysis**    | v2.4    | "stock analysis", "technical analysis", "value analysis" | Analysis   |
+| **stock-analysis**    | v2.6    | "stock analysis", "technical analysis", "value analysis" | Analysis   |
 | **earnings-analysis** | v2.4    | "earnings analysis", "pre-earnings", "before earnings"   | Analysis   |
 | **research-analysis** | v2.1    | "research", "macro analysis", "sector analysis"          | Research   |
 | **ticker-profile**    | v2.1    | "ticker profile", "what do I know about"                 | Knowledge  |
@@ -67,8 +86,18 @@ Skills in `.claude/skills/` auto-invoke based on context. Each skill has:
 | **watchlist**         | v2.1    | "watchlist", "add to watchlist", "watch this"            | Trade Mgmt |
 | **post-trade-review** | v2.1    | "review trade", "closed trade", "what did I learn"       | Learning   |
 | **scan**              | v1.0    | "scan", "find opportunities", "what should I trade"      | Scanning   |
+| **visualize-analysis**| v1.0    | "visualize", "create svg", "visual dashboard"            | Utility    |
 
-### v2.4 Key Features (stock-analysis, earnings-analysis)
+### v2.6 Key Features (stock-analysis) - PRODUCTION
+
+- **Phase 4.5: Comparable Companies** - Peer valuation table (min 3 peers)
+- **Phase 4.6: Liquidity Analysis** - ADV, bid-ask spread, slippage estimates
+- **Enhanced insider activity** - Transaction details with Form 4 summary
+- **Normalized Do Nothing gate** - Fixed thresholds (EV>5%, Confidence>60%, R:R>2:1)
+- **Gate result categories** - PASS (4/4), MARGINAL (3/4), FAIL (<3)
+- **Schema validation** - Reports failing validation are blocked
+
+### v2.4 Key Features (earnings-analysis)
 
 - **Phase 0: Time Validation** - Validates system/IB MCP time sync before analysis (ERROR if >1hr discrepancy)
 - **Market status awareness** - Detects weekend/holiday/pre-market/after-hours conditions
@@ -80,6 +109,30 @@ Skills in `.claude/skills/` auto-invoke based on context. Each skill has:
 - **Meta-learning** with validation tracking
 - **Falsification criteria** (conditions that break thesis)
 - **Data quality** and news age checks
+
+### Visualize Analysis Skill (v1.0)
+
+Generates professional SVG dashboard visualizations from v2.6 analysis YAML files.
+
+**Usage:**
+```bash
+cd tradegent && python scripts/visualize_analysis.py ../tradegent_knowledge/knowledge/analysis/stock/TICKER_DATE.yaml
+```
+
+**Dashboard includes:**
+- Recommendation badge with confidence and EV
+- Current price with 52-week range visualization
+- Key metrics (Forward P/E, Market Cap)
+- Do Nothing Gate results (4 criteria indicators)
+- Scenario probability bars with returns
+- Comparable companies table (up to 3 peers)
+- Bull/Bear case strength bars
+- Threat assessment level
+- Alternative strategies
+- Liquidity score and bias detection
+- Trade structure summary
+
+**Auto-chaining:** The stock-analysis skill automatically generates an SVG after saving the YAML.
 
 ### Pre-Flight Checks
 
