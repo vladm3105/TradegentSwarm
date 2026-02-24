@@ -118,9 +118,9 @@ def generate_svg(data: dict, source_file: str = '') -> str:
     bull_strength = bull_case.get('strength', 5)
     bear_strength = bear_case.get('strength', 5)
 
-    # Do Nothing Gate
-    do_nothing = decision.get('do_nothing_gate', {})
-    gate_result = do_nothing.get('result', 'FAIL')
+    # Do Nothing Gate - at root level, not under decision
+    do_nothing = data.get('do_nothing_gate', {})
+    gate_result = do_nothing.get('gate_result', 'FAIL')
     gate_passed = gate_result == 'PASS'
     gate_criteria = do_nothing.get('criteria', {})
 
@@ -278,7 +278,7 @@ def generate_svg(data: dict, source_file: str = '') -> str:
             bar_y = 375 - bar_height
         svg_parts.append(f'''
   <rect x="{bar_x}" y="{bar_y}" width="{bar_width - 5}" height="{bar_height}" fill="{bar_color}" rx="2"/>
-  <text x="{bar_x + (bar_width-5)/2}" y="395" text-anchor="middle" class="small">{q.get('quarter', '')[:6]}</text>
+  <text x="{bar_x + (bar_width-5)/2}" y="395" text-anchor="middle" class="small">{q.get('quarter', '')[:7]}</text>
   <text x="{bar_x + (bar_width-5)/2}" y="{bar_y - 3 if move >= 0 else bar_y + bar_height + 10}" text-anchor="middle" class="small">{'+' if move > 0 else ''}{move:.1f}%</text>''')
         bar_x += bar_width
 
@@ -297,13 +297,13 @@ def generate_svg(data: dict, source_file: str = '') -> str:
   <text x="167" y="441" text-anchor="middle" fill="#fff" font-size="10" font-weight="bold">{gate_result}</text>
 ''')
 
-    # Gate criteria
+    # Gate criteria - read directly from do_nothing_gate (not nested criteria)
     criteria_y = 460
     criteria_items = [
-        ('EV > 2%', gate_criteria.get('ev_positive', {}).get('passed', False)),
-        ('Conf > 60%', gate_criteria.get('confidence_sufficient', {}).get('passed', False)),
-        ('R:R > 1.5:1', gate_criteria.get('risk_reward', {}).get('passed', False)),
-        ('Edge exists', gate_criteria.get('edge_exists', {}).get('passed', False)),
+        ('EV > 5%', do_nothing.get('ev_passes', False)),
+        ('Conf > 60%', do_nothing.get('confidence_passes', False)),
+        ('R:R > 2:1', do_nothing.get('rr_passes', False)),
+        ('Edge exists', do_nothing.get('edge_exists', False)),
     ]
     for label, passed in criteria_items:
         icon = '✓' if passed else '✗'
