@@ -345,7 +345,7 @@ def generate_svg(data: dict, source_file: str = '') -> str:
 
   <!-- Technical & Sentiment -->
   <rect x="215" y="530" width="195" height="70" fill="#fff" rx="6" stroke="#dee2e6" stroke-width="1"/>
-  <text x="225" y="550" class="section-title">TECHNICALS & SENTIMENT</text>
+  <text x="225" y="550" class="section-title">TECHNICALS &amp; SENTIMENT</text>
   <text x="225" y="572" class="label">Technical Score:</text>
   <text x="330" y="572" class="value">{tech_score}/10</text>
   <text x="225" y="590" class="label">Sentiment:</text>
