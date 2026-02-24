@@ -287,46 +287,79 @@ def generate_svg(data: dict, source_file: str = '') -> str:
   <text x="380" y="380" text-anchor="end" class="value">{avg_move:.1f}%</text>
 ''')
 
-    # Do Nothing Gate
-    gate_color = '#51cf66' if gate_passed else '#ff6b6b'
+    # Gate section - match stock analysis approach
+    # Get actual values from do_nothing_gate
+    ev_actual = do_nothing.get('ev_actual', 0)
+    confidence_actual = do_nothing.get('confidence_actual', confidence_pct)
+    rr_actual = do_nothing.get('rr_actual', 0)
+    gates_passed = do_nothing.get('gates_passed', 0)
+
+    ev_check = do_nothing.get('ev_passes', False)
+    confidence_check = do_nothing.get('confidence_passes', False)
+    rr_check = do_nothing.get('rr_passes', False)
+    edge_check = do_nothing.get('edge_exists', False)
+
+    # Gate logic (same as stock analysis)
+    do_nothing_passes = gate_result != 'PASS'  # If trade criteria fail, "do nothing" is correct
+    open_trade_passes = gate_result == 'PASS'  # If trade criteria pass, "open trade" is correct
+
+    # Criteria badge color
+    criteria_color = '#51cf66' if gates_passed >= 4 else '#ffd43b' if gates_passed >= 3 else '#ff6b6b'
+
     svg_parts.append(f'''
-  <!-- Do Nothing Gate -->
-  <rect x="10" y="420" width="195" height="100" fill="#fff" rx="6" stroke="#dee2e6" stroke-width="1"/>
-  <text x="20" y="440" class="section-title">DO NOTHING GATE</text>
-  <rect x="140" y="428" width="55" height="18" fill="{gate_color}" rx="3"/>
-  <text x="167" y="441" text-anchor="middle" fill="#fff" font-size="10" font-weight="bold">{gate_result}</text>
+  <!-- Gate Section -->
+  <rect x="10" y="420" width="400" height="100" fill="#fff" rx="6" stroke="#dee2e6" stroke-width="1"/>
+
+  <!-- Gate badges row -->
+  <text x="20" y="438" class="small">Do Nothing Gate</text>
+  <rect x="20" y="442" width="55" height="18" fill="{get_gate_color(do_nothing_passes)}" rx="9"/>
+  <text x="47" y="455" text-anchor="middle" fill="#fff" font-size="9" font-weight="bold">{'PASS' if do_nothing_passes else 'FAIL'}</text>
+
+  <text x="90" y="438" class="small">Open Trade Gate</text>
+  <rect x="90" y="442" width="55" height="18" fill="{get_gate_color(open_trade_passes)}" rx="9"/>
+  <text x="117" y="455" text-anchor="middle" fill="#fff" font-size="9" font-weight="bold">{'PASS' if open_trade_passes else 'FAIL'}</text>
+
+  <text x="160" y="438" class="small">Criteria</text>
+  <rect x="160" y="442" width="40" height="18" fill="{criteria_color}" rx="9"/>
+  <text x="180" y="455" text-anchor="middle" fill="#fff" font-size="9" font-weight="bold">{gates_passed}/4</text>
+
+  <!-- Gate criteria details -->
+  <text x="220" y="445" class="small">EV &gt;5%</text>
+  <text x="280" y="445" class="value">{ev_actual:.1f}%</text>
+  <circle cx="320" cy="441" r="7" fill="{get_gate_color(ev_check)}"/>
+  <text x="320" y="445" font-size="9" fill="#fff" text-anchor="middle">{'✓' if ev_check else '✗'}</text>
+
+  <text x="340" y="445" class="small">Conf &gt;60%</text>
+  <text x="385" y="445" class="value">{confidence_actual}%</text>
+
+  <text x="220" y="465" class="small">R:R &gt;2:1</text>
+  <text x="280" y="465" class="value">{rr_actual:.1f}:1</text>
+  <circle cx="320" cy="461" r="7" fill="{get_gate_color(rr_check)}"/>
+  <text x="320" y="465" font-size="9" fill="#fff" text-anchor="middle">{'✓' if rr_check else '✗'}</text>
+
+  <text x="340" y="465" class="small">Edge</text>
+  <text x="375" y="465" class="value">{'Yes' if edge_check else 'No'}</text>
+
+  <!-- Confidence and Edge circles on right -->
+  <circle cx="395" cy="441" r="7" fill="{get_gate_color(confidence_check)}"/>
+  <text x="395" y="445" font-size="9" fill="#fff" text-anchor="middle">{'✓' if confidence_check else '✗'}</text>
+
+  <circle cx="395" cy="461" r="7" fill="{get_gate_color(edge_check)}"/>
+  <text x="395" y="465" font-size="9" fill="#fff" text-anchor="middle">{'✓' if edge_check else '✗'}</text>
 ''')
 
-    # Gate criteria - read directly from do_nothing_gate (not nested criteria)
-    criteria_y = 460
-    criteria_items = [
-        ('EV > 5%', do_nothing.get('ev_passes', False)),
-        ('Conf > 60%', do_nothing.get('confidence_passes', False)),
-        ('R:R > 2:1', do_nothing.get('rr_passes', False)),
-        ('Edge exists', do_nothing.get('edge_exists', False)),
-    ]
-    for label, passed in criteria_items:
-        icon = '✓' if passed else '✗'
-        color = '#51cf66' if passed else '#ff6b6b'
-        svg_parts.append(f'''  <text x="25" y="{criteria_y}" fill="{color}" font-size="12">{icon}</text>
-  <text x="40" y="{criteria_y}" class="label">{escape_xml(label)}</text>''')
-        criteria_y += 16
-
-    # Bull/Bear Strength
+    # Bull/Bear Strength - move down since gate section is now full width
     svg_parts.append(f'''
   <!-- Bull/Bear Strength -->
-  <rect x="215" y="420" width="195" height="100" fill="#fff" rx="6" stroke="#dee2e6" stroke-width="1"/>
-  <text x="225" y="440" class="section-title">CASE STRENGTH</text>
+  <text x="20" y="490" class="label">Bull Case</text>
+  <rect x="75" y="480" width="100" height="12" fill="#e9ecef" rx="2"/>
+  <rect x="75" y="480" width="{bull_strength * 10}" height="12" fill="#51cf66" rx="2"/>
+  <text x="180" y="490" class="small">{bull_strength}/10</text>
 
-  <text x="225" y="465" class="label">Bull Case</text>
-  <rect x="285" y="455" width="100" height="12" fill="#e9ecef" rx="2"/>
-  <rect x="285" y="455" width="{bull_strength * 10}" height="12" fill="#51cf66" rx="2"/>
-  <text x="390" y="465" class="small">{bull_strength}/10</text>
-
-  <text x="225" y="490" class="label">Bear Case</text>
-  <rect x="285" y="480" width="100" height="12" fill="#e9ecef" rx="2"/>
-  <rect x="285" y="480" width="{bear_strength * 10}" height="12" fill="#ff6b6b" rx="2"/>
-  <text x="390" y="490" class="small">{bear_strength}/10</text>
+  <text x="220" y="490" class="label">Bear Case</text>
+  <rect x="275" y="480" width="100" height="12" fill="#e9ecef" rx="2"/>
+  <rect x="275" y="480" width="{bear_strength * 10}" height="12" fill="#ff6b6b" rx="2"/>
+  <text x="380" y="490" class="small">{bear_strength}/10</text>
 ''')
 
     # Expectations & Sentiment
