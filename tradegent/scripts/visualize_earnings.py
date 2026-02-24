@@ -363,10 +363,11 @@ def generate_svg(data: dict, source_file: str = '') -> str:
   <text x="320" y="650" class="label">IV Rank: <tspan class="value">{prep.get('implied_move', {}).get('iv_rank', 'N/A')}</tspan></text>
 ''')
 
-    # Footer
+    # Footer - show just filename for cleaner display
+    source_name = Path(source_file).name if source_file else ''
     svg_parts.append(f'''
   <!-- Footer -->
-  <text x="210" y="685" text-anchor="middle" class="small">Source: {escape_xml(source_file[-50:] if len(source_file) > 50 else source_file)}</text>
+  <text x="210" y="685" text-anchor="middle" class="small">Source: {escape_xml(source_name)}</text>
 </svg>''')
 
     return '\n'.join(svg_parts)
