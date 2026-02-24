@@ -1,15 +1,15 @@
 ---
-title: Visualize Analysis v1.1
+title: Visualize Analysis v1.2
 tags:
   - trading-skill
   - visualization
   - utility
-  - v1.1-required
+  - v1.2-required
 custom_fields:
   skill_category: utility
   priority: secondary
   development_status: active
-  version: "1.1"
+  version: "1.2"
   upstream_artifacts:
     - stock-analysis
     - earnings-analysis
@@ -22,7 +22,7 @@ custom_fields:
   auto_invoke: false
 ---
 
-# Visualize Analysis Skill v1.1
+# Visualize Analysis Skill v1.2
 
 Generate professional SVG dashboard visualizations from v2.6 stock/earnings analysis YAML files.
 
@@ -48,13 +48,23 @@ If file path provided directly, use that.
 
 ### Step 2: Generate Visualization
 
+**For Stock Analysis** (files in `analysis/stock/`):
 ```bash
 cd /opt/data/tradegent_swarm/tradegent && python scripts/visualize_analysis.py <analysis.yaml>
+```
+
+**For Earnings Analysis** (files in `analysis/earnings/`):
+```bash
+cd /opt/data/tradegent_swarm/tradegent && python scripts/visualize_earnings.py <analysis.yaml>
 ```
 
 Options:
 - `--output custom.svg` - Custom output path
 - `--json` - Return result as JSON
+
+**Auto-detect**: Check file path to determine which script to use:
+- Path contains `/earnings/` → use `visualize_earnings.py`
+- Path contains `/stock/` → use `visualize_analysis.py`
 
 ### Step 3: Push SVG to Repository
 
@@ -130,14 +140,17 @@ See `tradegent_knowledge/skills/stock-analysis/svg-template.md` for:
 ## Examples
 
 ```bash
-# Visualize specific file
+# Stock analysis visualization
 python scripts/visualize_analysis.py ../tradegent_knowledge/knowledge/analysis/stock/DOCU_20260222T1730.yaml
 
-# Visualize with custom output
+# Earnings analysis visualization
+python scripts/visualize_earnings.py ../tradegent_knowledge/knowledge/analysis/earnings/NVDA_20260224T1430.yaml
+
+# Custom output path
 python scripts/visualize_analysis.py ../tradegent_knowledge/knowledge/analysis/stock/NVDA_20260220T0900.yaml --output /tmp/nvda_dashboard.svg
 
 # JSON output for programmatic use
-python scripts/visualize_analysis.py ../tradegent_knowledge/knowledge/analysis/stock/DOCU_20260222T1730.yaml --json
+python scripts/visualize_earnings.py ../tradegent_knowledge/knowledge/analysis/earnings/CRM_20260224T1200.yaml --json
 ```
 
 ## Supported Formats
