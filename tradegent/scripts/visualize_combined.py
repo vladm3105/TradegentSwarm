@@ -175,7 +175,7 @@ def generate_combined_svg(stock_data: dict, earnings_data: dict,
     sell_the_news_risk = expectations.get('sell_the_news_risk', 'medium')
 
     # ═══════════════════════════════════════════════════════════════════════════
-    # GENERATE COMBINED SVG (1200 x 800)
+    # GENERATE COMBINED SVG (1200 x 1400) - Expanded to fit both analyses
     # ═══════════════════════════════════════════════════════════════════════════
 
     s_rec_bg, s_rec_text = get_recommendation_color(s_recommendation)
@@ -187,10 +187,40 @@ def generate_combined_svg(stock_data: dict, earnings_data: dict,
     e_do_nothing_passes = e_gate_result != 'PASS'
     e_open_trade_passes = e_gate_result == 'PASS'
 
+    # Additional stock data
+    s_technical = stock_data.get('technical', {})
+    s_tech_score = s_technical.get('technical_score', 5)
+    s_rsi = s_technical.get('momentum', {}).get('rsi', 50)
+    s_trend = s_technical.get('trend', {}).get('ma_alignment', 'neutral')
+
+    s_threat = stock_data.get('threat_assessment', {})
+    s_threat_level = s_threat.get('threat_level', 'MODERATE')
+    s_threat_desc = s_threat.get('primary_threat', '')[:60]
+
+    s_comparables = stock_data.get('comparable_companies', {})
+    s_peers = s_comparables.get('peers', [])[:3]
+    s_discount = s_comparables.get('discount_to_median_pct', 0)
+
+    # Additional earnings data
+    e_bull_case = earnings_data.get('bull_case_analysis', {})
+    e_bear_case = earnings_data.get('bear_case_analysis', {})
+    e_bull_strength = e_bull_case.get('strength', 5)
+    e_bear_strength = e_bear_case.get('strength', 5)
+
+    e_consensus = prep.get('current_estimates', {})
+    e_consensus_eps = e_consensus.get('consensus_eps', 0)
+    e_consensus_rev = e_consensus.get('consensus_revenue_b', 0)
+
+    e_technical = earnings_data.get('technical', {})
+    e_tech_score = e_technical.get('technical_score', 5)
+    e_sentiment = earnings_data.get('sentiment', {})
+    e_sentiment_score = e_sentiment.get('sentiment_score', 5)
+    e_overall_sentiment = e_sentiment.get('overall_sentiment', 'neutral')
+
     svg_parts = []
 
     # ─── HEADER ────────────────────────────────────────────────────────────────
-    svg_parts.append(f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" width="1200" height="800">
+    svg_parts.append(f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1400" width="1200" height="1400">
   <defs>
     <style>
       .title {{ font: bold 24px system-ui, sans-serif; fill: #212529; }}
@@ -208,7 +238,7 @@ def generate_combined_svg(stock_data: dict, earnings_data: dict,
   </defs>
 
   <!-- Background -->
-  <rect width="1200" height="800" fill="#f8f9fa" rx="8"/>
+  <rect width="1200" height="1400" fill="#f8f9fa" rx="8"/>
 
   <!-- Header -->
   <rect x="20" y="20" width="1160" height="80" fill="#fff" rx="8" filter="url(#shadow)"/>
@@ -420,14 +450,191 @@ def generate_combined_svg(stock_data: dict, earnings_data: dict,
   <text x="840" y="595" class="small">Combined EV: {s_expected_value + e_ev:.2f}% | Risk overlap assessed</text>
 ''')
 
+    # ─── ROW 4: TECHNICAL & COMPARABLES ──────────────────────────────────────────
+    threat_colors = {'STRUCTURAL': '#c92a2a', 'ELEVATED': '#ff6b6b', 'MODERATE': '#ffd43b', 'LOW': '#51cf66', 'NONE': '#51cf66'}
+    threat_color = threat_colors.get(s_threat_level, '#868e96')
+
+    svg_parts.append(f'''
+  <!-- ROW 4: TECHNICAL & COMPARABLES -->
+  <rect x="20" y="620" width="380" height="160" fill="#fff" rx="8" filter="url(#shadow)"/>
+  <text x="40" y="645" class="section-title">STOCK TECHNICALS</text>
+
+  <text x="40" y="675" class="label">Technical Score:</text>
+  <text x="150" y="675" class="value">{s_tech_score}/10</text>
+
+  <text x="200" y="675" class="label">RSI:</text>
+  <text x="230" y="675" class="value">{s_rsi}</text>
+
+  <text x="280" y="675" class="label">Trend:</text>
+  <text x="320" y="675" class="value">{escape_xml(s_trend.title())}</text>
+
+  <text x="40" y="705" class="section-title">THREAT ASSESSMENT</text>
+  <rect x="180" y="692" width="80" height="20" fill="{threat_color}" rx="4"/>
+  <text x="220" y="706" text-anchor="middle" fill="#fff" font-size="10" font-weight="bold">{s_threat_level}</text>
+
+  <text x="40" y="735" class="small">{escape_xml(s_threat_desc)}...</text>
+
+  <text x="40" y="765" class="label">Discount to Peers:</text>
+  <text x="150" y="765" class="value" fill="{'#51cf66' if s_discount > 0 else '#ff6b6b'}">{s_discount:+.1f}%</text>
+
+  <!-- COMPARABLE COMPANIES -->
+  <rect x="420" y="620" width="380" height="160" fill="#fff" rx="8" filter="url(#shadow)"/>
+  <text x="440" y="645" class="section-title">COMPARABLE COMPANIES</text>
+
+  <text x="440" y="670" class="small" font-weight="bold">Company</text>
+  <text x="580" y="670" class="small" font-weight="bold">P/E</text>
+  <text x="640" y="670" class="small" font-weight="bold">P/S</text>
+  <text x="700" y="670" class="small" font-weight="bold">EV/EBITDA</text>
+''')
+
+    # Add peer rows
+    peer_y = 690
+    for peer in s_peers[:3]:
+        svg_parts.append(f'''
+  <text x="440" y="{peer_y}" class="small">{escape_xml(peer.get('ticker', 'N/A'))}</text>
+  <text x="580" y="{peer_y}" class="small">{peer.get('pe_forward', 'N/A')}</text>
+  <text x="640" y="{peer_y}" class="small">{peer.get('ps_ratio', 'N/A')}</text>
+  <text x="700" y="{peer_y}" class="small">{peer.get('ev_ebitda', 'N/A')}</text>''')
+        peer_y += 20
+
+    # Earnings consensus and sentiment
+    sentiment_colors = {'very_bullish': '#2f9e44', 'bullish': '#51cf66', 'neutral': '#868e96', 'bearish': '#ff8787', 'very_bearish': '#c92a2a'}
+    sent_color = sentiment_colors.get(e_overall_sentiment, '#868e96')
+
+    svg_parts.append(f'''
+  <!-- EARNINGS CONSENSUS & SENTIMENT -->
+  <rect x="820" y="620" width="360" height="160" fill="#fff" rx="8" filter="url(#shadow)"/>
+  <text x="840" y="645" class="section-title">CONSENSUS &amp; SENTIMENT</text>
+
+  <text x="840" y="675" class="label">Consensus EPS:</text>
+  <text x="950" y="675" class="value">${e_consensus_eps:.2f}</text>
+
+  <text x="1020" y="675" class="label">Revenue:</text>
+  <text x="1090" y="675" class="value">${e_consensus_rev:.1f}B</text>
+
+  <text x="840" y="705" class="label">Technical Score:</text>
+  <text x="950" y="705" class="value">{e_tech_score}/10</text>
+
+  <text x="1020" y="705" class="label">Sentiment:</text>
+  <text x="1090" y="705" class="value" fill="{sent_color}">{e_sentiment_score}/10</text>
+
+  <text x="840" y="735" class="label">Overall Sentiment:</text>
+  <rect x="960" y="722" width="100" height="18" fill="{sent_color}" rx="4"/>
+  <text x="1010" y="735" text-anchor="middle" fill="#fff" font-size="10">{escape_xml(e_overall_sentiment.replace('_', ' ').title())}</text>
+
+  <text x="840" y="765" class="label">Bull Case:</text>
+  <rect x="910" y="755" width="{e_bull_strength * 10}" height="12" fill="#51cf66" rx="2"/>
+  <text x="1020" y="765" class="small">{e_bull_strength}/10</text>
+
+  <text x="1050" y="765" class="label">Bear:</text>
+  <rect x="1090" y="755" width="{e_bear_strength * 10}" height="12" fill="#ff6b6b" rx="2"/>
+  <text x="1150" y="765" class="small">{e_bear_strength}/10</text>
+''')
+
+    # ─── ROW 5: COMBINED ANALYSIS SUMMARY ──────────────────────────────────────
+    svg_parts.append(f'''
+  <!-- ROW 5: COMBINED ANALYSIS -->
+  <rect x="20" y="800" width="1160" height="180" fill="#fff" rx="8" filter="url(#shadow)"/>
+  <text x="40" y="825" class="section-title">COMBINED ANALYSIS SUMMARY</text>
+
+  <!-- Combined Recommendation Box -->
+  <rect x="40" y="840" width="300" height="120" fill="{combined_color}" rx="8"/>
+  <text x="190" y="880" text-anchor="middle" fill="#fff" font-size="12">COMBINED RECOMMENDATION</text>
+  <text x="190" y="920" text-anchor="middle" fill="#fff" font-size="24" font-weight="bold">{combined_rec}</text>
+  <text x="190" y="945" text-anchor="middle" fill="#fff" font-size="11">Stock: {'PASS' if s_open_trade_passes else 'FAIL'} | Earnings: {'PASS' if e_open_trade_passes else 'FAIL'}</text>
+
+  <!-- Key Metrics Summary -->
+  <text x="380" y="860" class="label">Combined EV:</text>
+  <text x="480" y="860" class="metric-value" fill="{'#51cf66' if (s_expected_value + e_ev) > 0 else '#ff6b6b'}">{s_expected_value + e_ev:+.2f}%</text>
+
+  <text x="580" y="860" class="label">Stock EV:</text>
+  <text x="660" y="860" class="value">{s_expected_value:+.1f}%</text>
+
+  <text x="720" y="860" class="label">Earnings EV:</text>
+  <text x="810" y="860" class="value">{e_ev:+.2f}%</text>
+
+  <text x="380" y="890" class="label">Stock Confidence:</text>
+  <text x="500" y="890" class="value">{s_confidence}%</text>
+
+  <text x="580" y="890" class="label">Earnings Confidence:</text>
+  <text x="720" y="890" class="value">{e_confidence}%</text>
+
+  <text x="800" y="890" class="label">P(Beat):</text>
+  <text x="860" y="890" class="value">{p_beat:.0f}%</text>
+
+  <!-- Decision Matrix -->
+  <text x="380" y="930" class="section-title">DECISION MATRIX</text>
+
+  <text x="380" y="955" class="small">• Both gates PASS → Trade with full position</text>
+  <text x="700" y="955" class="small">• Stock PASS, Earnings FAIL → Wait post-earnings</text>
+  <text x="380" y="975" class="small">• Stock FAIL, Earnings PASS → Earnings play only</text>
+  <text x="700" y="975" class="small">• Both FAIL → No position recommended</text>
+''')
+
+    # ─── ROW 6: ALTERNATIVE STRATEGIES ─────────────────────────────────────────
+    s_alternatives = stock_data.get('alternative_strategies', {}).get('strategies', [])[:2]
+    e_alternatives = earnings_data.get('alternative_strategies', {}).get('strategies', [])[:2]
+
+    svg_parts.append(f'''
+  <!-- ROW 6: ALTERNATIVE STRATEGIES -->
+  <rect x="20" y="1000" width="570" height="140" fill="#fff" rx="8" filter="url(#shadow)"/>
+  <text x="40" y="1025" class="section-title">STOCK ALTERNATIVES</text>
+''')
+
+    alt_y = 1050
+    for alt in s_alternatives:
+        svg_parts.append(f'''
+  <text x="40" y="{alt_y}" class="label">• {escape_xml(alt.get('strategy', 'N/A')[:50])}</text>
+  <text x="40" y="{alt_y + 15}" class="small">  Trigger: {escape_xml(alt.get('trigger', 'N/A')[:60])}</text>''')
+        alt_y += 40
+
+    svg_parts.append(f'''
+  <rect x="610" y="1000" width="570" height="140" fill="#fff" rx="8" filter="url(#shadow)"/>
+  <text x="630" y="1025" class="section-title">EARNINGS ALTERNATIVES</text>
+''')
+
+    alt_y = 1050
+    for alt in e_alternatives:
+        svg_parts.append(f'''
+  <text x="630" y="{alt_y}" class="label">• {escape_xml(alt.get('strategy', 'N/A')[:50])}</text>
+  <text x="630" y="{alt_y + 15}" class="small">  {escape_xml(alt.get('rationale', alt.get('trigger', 'N/A'))[:60])}</text>''')
+        alt_y += 40
+
+    # ─── ROW 7: ACTION ITEMS ───────────────────────────────────────────────────
+    s_actions = stock_data.get('action_items', {}).get('immediate', [])[:3]
+    e_actions = earnings_data.get('action_items', {}).get('immediate', [])[:3]
+
+    svg_parts.append(f'''
+  <!-- ROW 7: ACTION ITEMS -->
+  <rect x="20" y="1160" width="1160" height="100" fill="#fff" rx="8" filter="url(#shadow)"/>
+  <text x="40" y="1185" class="section-title">IMMEDIATE ACTION ITEMS</text>
+
+  <text x="40" y="1210" class="small" font-weight="bold">Stock:</text>
+  <text x="640" y="1210" class="small" font-weight="bold">Earnings:</text>
+''')
+
+    action_y = 1225
+    for i, action in enumerate(s_actions):
+        svg_parts.append(f'''  <text x="40" y="{action_y + i*15}" class="small">• {escape_xml(str(action)[:70])}</text>''')
+
+    for i, action in enumerate(e_actions):
+        svg_parts.append(f'''  <text x="640" y="{action_y + i*15}" class="small">• {escape_xml(str(action)[:70])}</text>''')
+
     # ─── FOOTER ────────────────────────────────────────────────────────────────
     svg_parts.append(f'''
   <!-- Footer -->
-  <text x="20" y="620" class="small">Sources: {Path(stock_file).name if stock_file else 'stock'} + {Path(earnings_file).name if earnings_file else 'earnings'}</text>
-  <text x="1180" y="620" text-anchor="end" class="small">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}</text>
+  <rect x="20" y="1280" width="1160" height="100" fill="#fff" rx="8" filter="url(#shadow)"/>
+
+  <text x="40" y="1310" class="small">Stock Analysis: {Path(stock_file).name if stock_file else 'N/A'}</text>
+  <text x="40" y="1330" class="small">Earnings Analysis: {Path(earnings_file).name if earnings_file else 'N/A'}</text>
+
+  <text x="600" y="1320" text-anchor="middle" class="label">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M EST')}</text>
+
+  <text x="1160" y="1310" text-anchor="end" class="small">Stock v{s_version} | Earnings v{e_version}</text>
+  <text x="1160" y="1330" text-anchor="end" class="small">Tradegent Combined Analysis</text>
 
   <!-- Warning if gates conflict -->
-  {f'<rect x="20" y="630" width="1160" height="25" fill="#fff3cd" rx="4"/><text x="600" y="648" text-anchor="middle" font-size="11" fill="#856404">⚠️ Gates conflict: Review both analyses carefully before trading</text>' if (s_open_trade_passes != e_open_trade_passes) else ''}
+  {f'<rect x="40" y="1345" width="1120" height="25" fill="#fff3cd" rx="4"/><text x="600" y="1362" text-anchor="middle" font-size="11" fill="#856404">⚠️ Gates conflict: Review both analyses carefully before trading</text>' if (s_open_trade_passes != e_open_trade_passes) else ''}
 
 </svg>''')
 
