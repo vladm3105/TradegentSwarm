@@ -240,6 +240,16 @@ class Settings:
     def logs_dir(self) -> Path:
         return BASE_DIR / self._get("logs_dir", None, "logs")
 
+    @property
+    def git_push_enabled(self) -> bool:
+        """Enable automatic git push after saving analysis files."""
+        return self._get_bool("git_push_enabled", None, True)
+
+    @property
+    def knowledge_repo_path(self) -> Path:
+        """Path to the tradegent_knowledge repo."""
+        return Path(self._get("knowledge_repo_path", None, "/opt/data/tradegent_swarm/tradegent_knowledge"))
+
 
 # Module-level default (overridden when DB is available)
 cfg = Settings()
@@ -535,6 +545,93 @@ End with JSON:
 }}
 ```
 """
+
+
+# ─── Git Push ────────────────────────────────────────────────────────────────
+
+
+def git_push_analysis(filepath: Path, commit_message: str | None = None) -> bool:
+    """
+    Push analysis file to GitHub repository.
+
+    Args:
+        filepath: Path to the analysis file (should be in tradegent_knowledge)
+        commit_message: Optional custom commit message
+
+    Returns:
+        True if push succeeded, False otherwise
+    """
+    if not cfg.git_push_enabled:
+        log.debug("Git push disabled (git_push_enabled=false)")
+        return False
+
+    # Only push files in the knowledge repo
+    try:
+        rel_path = filepath.relative_to(cfg.knowledge_repo_path)
+    except ValueError:
+        log.debug(f"File not in knowledge repo, skipping git push: {filepath}")
+        return False
+
+    repo_path = cfg.knowledge_repo_path
+
+    if not commit_message:
+        # Generate commit message from filename
+        filename = filepath.stem
+        commit_message = f"Add analysis: {filename}"
+
+    try:
+        # Git add
+        result = subprocess.run(
+            ["git", "add", str(rel_path)],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            log.warning(f"Git add failed: {result.stderr}")
+            return False
+
+        # Git commit
+        result = subprocess.run(
+            ["git", "commit", "-m", commit_message],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            if "nothing to commit" in result.stdout or "nothing to commit" in result.stderr:
+                log.debug("Nothing to commit (file unchanged)")
+                return True
+            log.warning(f"Git commit failed: {result.stderr}")
+            return False
+
+        # Git push with SSH fix for conda environment
+        env = os.environ.copy()
+        env["GIT_SSH_COMMAND"] = "LD_LIBRARY_PATH= /usr/bin/ssh"
+
+        result = subprocess.run(
+            ["git", "push"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            env=env,
+        )
+        if result.returncode != 0:
+            log.warning(f"Git push failed: {result.stderr}")
+            return False
+
+        log.info(f"  ✓ Pushed to GitHub: {rel_path}")
+        return True
+
+    except subprocess.TimeoutExpired:
+        log.warning("Git operation timed out")
+        return False
+    except Exception as e:
+        log.warning(f"Git push error: {e}")
+        return False
 
 
 # ─── Core Functions ──────────────────────────────────────────────────────────
@@ -983,7 +1080,100 @@ def _phase2_dual_ingest(filepath: Path) -> dict:
             results["errors"].append(f"Graph: {e}")
             log.warning(f"[P2] Graph extraction failed: {e}")
 
+    # Push any pending changes to GitHub
+    if cfg.git_push_enabled:
+        git_push_knowledge_repo()
+
     return results
+
+
+def git_push_knowledge_repo(commit_message: str | None = None) -> bool:
+    """
+    Push all pending changes in the knowledge repo to GitHub.
+
+    This handles YAML files saved by Claude Code skills.
+    """
+    if not cfg.git_push_enabled:
+        return False
+
+    repo_path = cfg.knowledge_repo_path
+    if not repo_path.exists():
+        log.debug(f"Knowledge repo not found: {repo_path}")
+        return False
+
+    try:
+        # Check for changes
+        result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if not result.stdout.strip():
+            log.debug("[Git] No changes to push")
+            return True
+
+        # Count changes
+        changes = [l for l in result.stdout.strip().split("\n") if l.strip()]
+        log.info(f"[Git] {len(changes)} file(s) to push")
+
+        # Git add all changes
+        result = subprocess.run(
+            ["git", "add", "-A"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            log.warning(f"[Git] Add failed: {result.stderr}")
+            return False
+
+        # Generate commit message
+        if not commit_message:
+            ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+            commit_message = f"Auto-commit analyses ({ts})"
+
+        # Git commit
+        result = subprocess.run(
+            ["git", "commit", "-m", commit_message],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            if "nothing to commit" in result.stdout or "nothing to commit" in result.stderr:
+                return True
+            log.warning(f"[Git] Commit failed: {result.stderr}")
+            return False
+
+        # Git push with SSH fix
+        env = os.environ.copy()
+        env["GIT_SSH_COMMAND"] = "LD_LIBRARY_PATH= /usr/bin/ssh"
+
+        result = subprocess.run(
+            ["git", "push"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            env=env,
+        )
+        if result.returncode != 0:
+            log.warning(f"[Git] Push failed: {result.stderr}")
+            return False
+
+        log.info(f"  ✓ Pushed {len(changes)} file(s) to GitHub")
+        return True
+
+    except subprocess.TimeoutExpired:
+        log.warning("[Git] Operation timed out")
+        return False
+    except Exception as e:
+        log.warning(f"[Git] Error: {e}")
+        return False
 
 
 def _enrich_past_analyses(vector_results: list, db: "NexusDB") -> list[dict]:
@@ -1958,6 +2148,7 @@ def run_pipeline(
     analysis_type: AnalysisType,
     auto_execute: bool = True,
     schedule_id: int | None = None,
+    source_scanner: str | None = None,
 ):
     """Full two-stage pipeline."""
     log.info(f"╔═ PIPELINE: {ticker} ({analysis_type.value}) ═╗")
@@ -1965,6 +2156,28 @@ def run_pipeline(
     analysis = run_analysis(db, ticker, analysis_type, schedule_id)
     if not analysis:
         return
+
+    # Add to watchlist if gate passed and not already present
+    if analysis.gate_passed:
+        existing = db.get_stock(ticker)
+        if not existing:
+            # Build tags for new watchlist entry
+            tags = [f"gate_passed:{datetime.now().strftime('%Y%m%d')}"]
+            if source_scanner:
+                tags.append(f"scanner:{source_scanner}")
+            tags.append(f"type:{analysis_type.value}")
+            tags.append(f"rec:{analysis.recommendation}")
+
+            db.upsert_stock(
+                ticker,
+                is_enabled=True,
+                state="analysis",
+                default_analysis_type=analysis_type.value,
+                priority=5,  # Default priority for scanner candidates
+                tags=tags,
+                comments=f"Added via scanner gate pass. Rec: {analysis.recommendation}, Conf: {analysis.confidence}%",
+            )
+            log.info(f"  ✓ Added {ticker} to watchlist (gate PASS, rec: {analysis.recommendation})")
 
     if not auto_execute or not cfg.auto_execute_enabled or not analysis.gate_passed:
         reasons = []
@@ -2048,7 +2261,7 @@ def run_scanners(db: NexusDB, scanner_code: str | None = None):
             if scanner.auto_analyze:
                 atype = AnalysisType(scanner.analysis_type)
                 for c in candidates[: scanner.max_candidates]:
-                    run_pipeline(db, c["ticker"], atype, auto_execute=False)
+                    run_pipeline(db, c["ticker"], atype, auto_execute=False, source_scanner=scanner.scanner_code)
 
         except Exception as e:
             log.error(f"Scanner {scanner.scanner_code} failed: {e}")
