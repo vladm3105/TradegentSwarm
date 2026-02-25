@@ -345,9 +345,8 @@ class NexusService:
 
         # ─── Position Monitoring (every 5 minutes during market hours) ───────────
         now_et = datetime.now(TRADING_ET)
-        position_monitor_enabled = orchestrator.cfg._get(
-            "position_monitor_enabled", "feature_flags", "true"
-        ).lower() == "true"
+        _pm_val = orchestrator.cfg._get("position_monitor_enabled", "feature_flags", "true")
+        position_monitor_enabled = _pm_val if isinstance(_pm_val, bool) else str(_pm_val).lower() == "true"
 
         if position_monitor_enabled and is_market_hours(now_et):
             position_interval = int(orchestrator.cfg._get(
@@ -391,9 +390,8 @@ class NexusService:
             self._last_order_reconcile = now_et
 
         # ─── Task Queue Processing (every tick, respects daily limits) ───────────
-        task_queue_enabled = orchestrator.cfg._get(
-            "task_queue_enabled", "feature_flags", "true"
-        ).lower() == "true"
+        _tq_val = orchestrator.cfg._get("task_queue_enabled", "feature_flags", "true")
+        task_queue_enabled = _tq_val if isinstance(_tq_val, bool) else str(_tq_val).lower() == "true"
 
         if task_queue_enabled:
             # Process tasks every tick (limits enforced inside process_task_queue)
@@ -408,9 +406,8 @@ class NexusService:
                 log.warning(f"Task queue error: {e}")
 
         # ─── Watchlist Trigger Monitoring (every 5 minutes during market hours) ────
-        watchlist_monitor_enabled = orchestrator.cfg._get(
-            "watchlist_monitor_enabled", "feature_flags", "true"
-        ).lower() == "true"
+        _wm_val = orchestrator.cfg._get("watchlist_monitor_enabled", "feature_flags", "true")
+        watchlist_monitor_enabled = _wm_val if isinstance(_wm_val, bool) else str(_wm_val).lower() == "true"
 
         if watchlist_monitor_enabled and is_market_hours(now_et):
             watchlist_interval = int(orchestrator.cfg._get(
