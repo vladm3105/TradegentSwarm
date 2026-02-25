@@ -1,4 +1,4 @@
-# Tradegent Platform v2.2
+# Tradegent Platform v2.3
 
 A database-driven, uninterrupted trading orchestrator that uses Claude Code CLI as its AI engine, Interactive Brokers for market data and order execution, and a hybrid RAG+Graph knowledge system. Part of the **TradegentSwarm** multi-agent trading system. All configuration lives in PostgreSQL — no restarts needed to change behavior.
 
@@ -68,14 +68,43 @@ tradegent/
 ├── service.py              Main entry point — long-running daemon
 ├── orchestrator.py         Pipeline engine + CLI commands
 ├── db_layer.py             PostgreSQL access layer (NexusDB class)
+│
+├── # Monitoring Modules (v2.3)
+├── ib_client.py            Direct IB MCP client (MCP protocol over streamable-http)
+├── position_monitor.py     Detects IB position changes, triggers trade closes
+├── order_reconciler.py     Polls IB for order status updates
+├── watchlist_monitor.py    Evaluates watchlist trigger/invalidation conditions
+├── expiration_monitor.py   Tracks options approaching expiration
+├── notifications.py        Multi-channel alert system (Telegram, Webhook, Email)
+│
+├── # Utilities
+├── trading_calendar.py     Market hours detection, trading day checks
+├── options_utils.py        OCC symbol parsing, ITM detection
+├── preflight.py            Pre-analysis system health checks
+├── utils.py                Shared utility functions
+│
 ├── db/
-│   └── init.sql            Schema, seed data, views, functions
-├── docker-compose.yml      Infrastructure: PG, IB, LightRAG, Neo4j
-├── nexus-light.service     systemd unit (optional)
-├── setup.sh                One-command setup
+│   ├── init.sql            Schema, seed data, views, functions
+│   └── migrations/         Schema migrations (002-007)
+│       ├── 003_trades_watchlist_taskqueue.sql
+│       ├── 004_task_retry_columns.sql
+│       ├── 005_position_detection.sql
+│       ├── 006_options_trades.sql
+│       └── 007_notification_log.sql
+│
+├── scripts/
+│   ├── apply_migration.py      Apply database migrations
+│   ├── ingest.py               Manual RAG+Graph ingestion
+│   ├── visualize_analysis.py   Generate SVG from analysis YAML
+│   └── verify_trading_schema.py
+│
+├── tests/                  Unit tests for all modules
+├── rag/                    RAG module (embeddings, search)
+├── graph/                  Graph module (Neo4j, extraction)
+│
+├── docker-compose.yml      Infrastructure: PG, IB Gateway, Neo4j
 ├── .env.template           Environment variables template
 ├── requirements.txt        Python dependencies
-├── Dockerfile              For future GCP Cloud Run deployment
 └── README.md               This file
 ```
 
@@ -849,9 +878,167 @@ Every N seconds (configurable via `scheduler_poll_seconds`):
 2. **Refresh settings** — `cfg.refresh()` reads ALL settings from `nexus.settings` table into memory. Any changes you made since the last tick take effect now.
 3. **Check due schedules** — Queries `v_due_schedules` view. Executes each due schedule through the task dispatch map.
 4. **Earnings check** — During configured hours (default 6-7 AM ET on trading days), checks for stocks with upcoming earnings and triggers pre/post-earnings schedules.
-5. **Heartbeat** — Writes state, tick duration, and task info to `nexus.service_status`.
+5. **Position monitoring** (v2.3) — Every 5 minutes during market hours, compares IB positions vs DB trades to detect closes, partial closes, and external position increases.
+6. **Order reconciliation** (v2.3) — Every 2 minutes when orders are pending, polls IB for order status updates and handles fills/cancels.
+7. **Watchlist monitoring** (v2.3) — Every 5 minutes during market hours, evaluates trigger/invalidation conditions on active watchlist entries.
+8. **Task queue processing** (v2.3) — Processes queued tasks (post-trade reviews, detected position reviews) with retry logic.
+9. **Expiration check** (v2.3) — Once daily, checks for options expiring soon and auto-closes expired worthless options.
+10. **Heartbeat** — Writes state, tick duration, and task info to `nexus.service_status`.
 
 The sleep between ticks is interruptible — SIGTERM/SIGINT breaks the sleep immediately for graceful shutdown.
+
+---
+
+## Monitoring Modules (v2.3)
+
+### Position Monitor
+
+Detects IB position changes and triggers trade closes. Compares IB positions vs `nexus.trades` to detect:
+
+- **Full closes** — Position gone from IB, trade marked closed with P&L
+- **Partial closes** — Position reduced, trade size updated
+- **External increases** — New shares/contracts added outside orchestrator
+
+```python
+# Runs every 5 minutes during market hours
+deltas = position_monitor.check_positions()
+results = position_monitor.process_deltas(deltas)
+# results: {closed: 2, partial: 0, increase: 1, errors: 0}
+```
+
+**Settings:**
+| Key | Default | Description |
+|-----|---------|-------------|
+| `position_monitor_enabled` | true | Enable/disable position monitoring |
+| `position_monitor_interval_seconds` | 300 | Check interval (5 min) |
+| `auto_track_position_increases` | true | Auto-create trades for detected positions |
+| `position_detect_min_value` | 100 | Minimum $ value to track |
+
+### Order Reconciler
+
+Polls IB for order status updates on pending orders:
+
+- **Filled** — Updates trade with fill price, triggers notifications
+- **Cancelled** — Closes trade with P&L=0
+- **Partial** — Updates trade with partial fill info
+
+```python
+# Runs every 2 minutes when orders pending
+results = order_reconciler.reconcile_pending_orders()
+# results: {filled: 1, partial: 0, cancelled: 0, pending: 2, errors: 0}
+```
+
+### Watchlist Monitor
+
+Evaluates trigger/invalidation conditions on active watchlist entries:
+
+**Supported conditions:**
+| Type | Example | Auto-evaluated |
+|------|---------|----------------|
+| `PRICE_ABOVE` | "breaks above $150" | Yes |
+| `PRICE_BELOW` | "drops below $140" | Yes |
+| `SUPPORT_HOLD` | "holds $145 support" | Yes (requires 3 consecutive checks) |
+| `RESISTANCE_BREAK` | "breaks $160 resistance" | Yes |
+| `DATE_BEFORE` | "before 2026-03-15" | Yes |
+| `CUSTOM` | Complex conditions | No (manual review) |
+
+```python
+# Runs every 5 minutes during market hours
+results = watchlist_monitor.check_entries()
+# results: {checked: 10, triggered: 1, invalidated: 0, expired: 2, errors: 0}
+```
+
+**Settings:**
+| Key | Default | Description |
+|-----|---------|-------------|
+| `watchlist_monitor_enabled` | true | Enable/disable watchlist monitoring |
+| `watchlist_check_interval_seconds` | 300 | Check interval (5 min) |
+| `watchlist_price_threshold_pct` | 0.5 | Price tolerance for trigger evaluation |
+
+### Expiration Monitor
+
+Tracks options approaching expiration:
+
+- **Warning** — Options expiring within 7 days
+- **Critical** — Options expiring within 3 days
+- **Expired** — Auto-close as worthless (unless ITM)
+
+```python
+# Runs once daily
+results = expiration_monitor.process_expirations()
+# results: {expired_worthless: 1, needs_review: 0, errors: 0}
+```
+
+**Settings:**
+| Key | Default | Description |
+|-----|---------|-------------|
+| `options_expiry_warning_days` | 7 | Warning threshold |
+| `options_expiry_critical_days` | 3 | Critical threshold |
+| `auto_close_expired_options` | true | Auto-close expired worthless |
+
+### Notifications
+
+Multi-channel alert system for trading events:
+
+**Channels:**
+| Channel | Configuration | Use Case |
+|---------|---------------|----------|
+| Telegram | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` env vars | Mobile alerts |
+| Webhook | `webhook_url` setting | Integration with other systems |
+| Email | `EMAIL_*` env vars | Formal notifications |
+| Console | Always available | Development/testing |
+
+**Events:**
+| Event | Priority | Trigger |
+|-------|----------|---------|
+| `position_closed` | HIGH | Position closed (stop hit, manual close) |
+| `order_filled` | HIGH | Order completely filled |
+| `watchlist_triggered` | HIGH | Watchlist entry trigger condition met |
+| `options_expiring` | MEDIUM/HIGH | Options expiring within 3 days |
+| `position_detected` | MEDIUM | New position detected externally |
+
+**Settings:**
+| Key | Default | Description |
+|-----|---------|-------------|
+| `notifications_enabled` | false | Master enable/disable |
+| `notification_min_priority` | MEDIUM | Minimum priority to send |
+| `notification_rate_limit` | 1.0 | Notifications per second |
+
+```bash
+# Enable notifications
+python orchestrator.py settings set notifications_enabled true
+
+# Set Telegram credentials (in .env or export)
+export TELEGRAM_BOT_TOKEN=123456789:ABCdefGHI...
+export TELEGRAM_CHAT_ID=-1001234567890
+```
+
+---
+
+## IB MCP Client
+
+The `ib_client.py` module provides direct access to IB Gateway via MCP protocol:
+
+```python
+from ib_client import IBClient
+
+client = IBClient()
+print(client.health_check())  # True
+print(client.get_stock_price("NVDA"))  # {bid, ask, last, volume, ...}
+```
+
+**Transport:** Uses `streamable-http` (not SSE) because:
+- Service makes independent, short-lived calls on a polling schedule
+- Each call is a complete HTTP round-trip (no persistent connection needed)
+- Better fit for periodic polling vs real-time streaming
+
+**Server URL:** `http://localhost:8100/mcp`
+
+**Start IB MCP server:**
+```bash
+cd /opt/data/trading/mcp_ib
+PYTHONPATH=src python -m ibmcp --transport streamable-http --host 0.0.0.0 --port 8100
+```
 
 ---
 
@@ -1466,4 +1653,4 @@ curl -H "Authorization: Bearer $HEALTH_CHECK_TOKEN" http://localhost:8080/health
 
 ---
 
-*Tradegent Platform v2.2 — Database-driven. Uninterrupted. Hot-reloadable.*
+*Tradegent Platform v2.3 — Database-driven. Uninterrupted. Hot-reloadable.*
