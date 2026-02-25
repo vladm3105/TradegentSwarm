@@ -1126,6 +1126,162 @@ class NexusDB:
             )
         self.conn.commit()
 
+    # ─── Order Tracking Methods ─────────────────────────────────────────────────
+
+    def update_trade_order(self, trade_id: int, order_id: str, status: str,
+                           partial_fills: list | None = None,
+                           avg_fill_price: float | None = None) -> bool:
+        """
+        Update trade with IB order information.
+
+        Args:
+            trade_id: Trade ID in nexus.trades
+            order_id: IB order ID
+            status: Order status (Submitted, Filled, PartialFilled, Cancelled, Error)
+            partial_fills: List of fill events [{time, shares, price}]
+            avg_fill_price: Volume-weighted average fill price
+
+        Returns:
+            True if trade was updated, False if trade_id not found
+        """
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                UPDATE nexus.trades SET
+                    order_id = COALESCE(%s, order_id),
+                    ib_order_status = %s,
+                    partial_fills = CASE WHEN %s IS NOT NULL THEN %s::jsonb ELSE partial_fills END,
+                    avg_fill_price = COALESCE(%s, avg_fill_price),
+                    updated_at = now()
+                WHERE id = %s
+                RETURNING id
+            """, [
+                order_id,
+                status,
+                json.dumps(partial_fills) if partial_fills else None,
+                json.dumps(partial_fills) if partial_fills else None,
+                avg_fill_price,
+                trade_id
+            ])
+            updated = cur.fetchone() is not None
+        self.conn.commit()
+        return updated
+
+    def get_trades_with_pending_orders(self) -> list[dict]:
+        """Get trades with orders that need status reconciliation."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM nexus.trades
+                WHERE order_id IS NOT NULL
+                  AND ib_order_status NOT IN ('Filled', 'Cancelled', 'Error')
+                  AND status = 'open'
+                ORDER BY created_at DESC
+            """)
+            return [dict(r) for r in cur.fetchall()]
+
+    def get_open_trades_by_ticker(self, ticker: str) -> list[dict]:
+        """Get all open trades for a ticker (may be multiple)."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM nexus.trades
+                WHERE ticker = %s AND status = 'open'
+                ORDER BY entry_date DESC
+            """, [ticker.upper()])
+            return [dict(r) for r in cur.fetchall()]
+
+    def get_all_open_trades(self) -> list[dict]:
+        """Get all open trades across all tickers."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM nexus.trades
+                WHERE status = 'open'
+                ORDER BY ticker, entry_date DESC
+            """)
+            return [dict(r) for r in cur.fetchall()]
+
+    def update_trade_size(self, trade_id: int, new_size: float) -> bool:
+        """Update current_size for a trade (partial close)."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                UPDATE nexus.trades
+                SET current_size = %s, updated_at = now()
+                WHERE id = %s
+                RETURNING id
+            """, [new_size, trade_id])
+            updated = cur.fetchone() is not None
+        self.conn.commit()
+        return updated
+
+    def close_trade_with_direction(self, trade_id: int, exit_price: float,
+                                    exit_reason: str, direction: str = "long") -> bool:
+        """
+        Close a trade with direction-aware P&L calculation.
+
+        For long positions: P&L = (exit - entry) * size
+        For short positions: P&L = (entry - exit) * size
+        """
+        with self.conn.cursor() as cur:
+            if direction == "short":
+                # Short: profit when price goes down
+                cur.execute("""
+                    UPDATE nexus.trades SET
+                        status = 'closed',
+                        exit_date = now(),
+                        exit_price = %(exit_price)s,
+                        exit_reason = %(exit_reason)s,
+                        pnl_dollars = (entry_price - %(exit_price)s) * COALESCE(current_size, entry_size, 1),
+                        pnl_pct = ((entry_price - %(exit_price)s) / NULLIF(entry_price, 0)) * 100,
+                        updated_at = now()
+                    WHERE id = %(trade_id)s
+                    RETURNING id
+                """, {"exit_price": exit_price, "exit_reason": exit_reason, "trade_id": trade_id})
+            else:
+                # Long: profit when price goes up
+                cur.execute("""
+                    UPDATE nexus.trades SET
+                        status = 'closed',
+                        exit_date = now(),
+                        exit_price = %(exit_price)s,
+                        exit_reason = %(exit_reason)s,
+                        pnl_dollars = (%(exit_price)s - entry_price) * COALESCE(current_size, entry_size, 1),
+                        pnl_pct = ((%(exit_price)s - entry_price) / NULLIF(entry_price, 0)) * 100,
+                        updated_at = now()
+                    WHERE id = %(trade_id)s
+                    RETURNING id
+                """, {"exit_price": exit_price, "exit_reason": exit_reason, "trade_id": trade_id})
+            updated = cur.fetchone() is not None
+        self.conn.commit()
+        return updated
+
+    # ─── Watchlist Methods ──────────────────────────────────────────────────────
+
+    def update_watchlist_status(self, entry_id: int, status: str,
+                                notes: str | None = None) -> bool:
+        """Update watchlist entry status."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                UPDATE nexus.watchlist
+                SET status = %s,
+                    notes = COALESCE(%s, notes),
+                    updated_at = now()
+                WHERE id = %s
+                RETURNING id
+            """, [status, notes, entry_id])
+            updated = cur.fetchone() is not None
+        self.conn.commit()
+        return updated
+
+    def get_expiring_watchlist(self, hours: int = 24) -> list[dict]:
+        """Get watchlist entries expiring within N hours."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM nexus.watchlist
+                WHERE status = 'active'
+                  AND expires_at IS NOT NULL
+                  AND expires_at < now() + make_interval(hours => %s)
+                ORDER BY expires_at ASC
+            """, [hours])
+            return [dict(r) for r in cur.fetchall()]
+
     # ─── Task Queue Methods ────────────────────────────────────────────────
 
     def queue_analysis(self, ticker: str, analysis_type: str, priority: int = 5) -> int | None:
@@ -1209,3 +1365,329 @@ class NexusDB:
             """)
             rows = cur.fetchall()
         return {r["status"]: r["count"] for r in rows}
+
+    # ─── Task Queue Retry Methods ────────────────────────────────────────────────
+
+    def get_retryable_tasks(self, limit: int = 5) -> list[dict]:
+        """Get failed tasks that are ready for retry."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM nexus.task_queue
+                WHERE status = 'failed'
+                  AND retry_count < COALESCE(max_retries, 3)
+                  AND (next_retry_at IS NULL OR next_retry_at <= now())
+                ORDER BY priority DESC, created_at ASC
+                LIMIT %s
+            """, [limit])
+            return [dict(r) for r in cur.fetchall()]
+
+    def mark_task_for_retry(self, task_id: int, delay_minutes: int = 15) -> None:
+        """Mark failed task for retry with exponential backoff."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                UPDATE nexus.task_queue SET
+                    status = 'pending',
+                    retry_count = retry_count + 1,
+                    next_retry_at = now() + make_interval(mins => %s * power(2, retry_count)),
+                    error_message = NULL,
+                    started_at = NULL,
+                    completed_at = NULL
+                WHERE id = %s AND retry_count < COALESCE(max_retries, 3)
+            """, [delay_minutes, task_id])
+        self.conn.commit()
+
+    def recover_stuck_tasks(self, timeout_minutes: int = 30) -> int:
+        """Reset tasks stuck in 'running' state for too long."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                UPDATE nexus.task_queue SET
+                    status = 'pending',
+                    started_at = NULL,
+                    error_message = 'Task timeout - auto-recovered'
+                WHERE status = 'running'
+                  AND started_at < now() - make_interval(mins => %s)
+                RETURNING id
+            """, [timeout_minutes])
+            stuck = cur.fetchall()
+        self.conn.commit()
+        return len(stuck)
+
+    def get_pending_or_retryable_tasks(self, limit: int = 10) -> list[dict]:
+        """Get pending tasks OR failed tasks ready for retry."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM nexus.task_queue
+                WHERE (status = 'pending')
+                   OR (status = 'failed'
+                       AND retry_count < COALESCE(max_retries, 3)
+                       AND (next_retry_at IS NULL OR next_retry_at <= now()))
+                ORDER BY priority DESC, created_at ASC
+                LIMIT %s
+            """, [limit])
+            return [dict(r) for r in cur.fetchall()]
+
+    # ─── Position Detection Methods (IPLAN-005) ─────────────────────────────────
+
+    def add_trade_detected(self, trade: dict) -> int:
+        """Add new trade entry from position detection with options support. Returns trade ID."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO nexus.trades (
+                    ticker, entry_date, entry_price, entry_size, entry_type,
+                    current_size, thesis, source_analysis, source_type, direction,
+                    full_symbol, option_underlying, option_expiration, option_strike,
+                    option_type, option_multiplier, is_credit
+                )
+                VALUES (
+                    %(ticker)s, %(entry_date)s, %(entry_price)s, %(entry_size)s, %(entry_type)s,
+                    %(entry_size)s, %(thesis)s, %(source_analysis)s, %(source_type)s, %(direction)s,
+                    %(full_symbol)s, %(option_underlying)s, %(option_expiration)s, %(option_strike)s,
+                    %(option_type)s, %(option_multiplier)s, %(is_credit)s
+                )
+                RETURNING id
+            """, {
+                "ticker": trade.get("ticker", "").upper(),
+                "entry_date": trade.get("entry_date", datetime.now()),
+                "entry_price": trade.get("entry_price"),
+                "entry_size": trade.get("entry_size"),
+                "entry_type": trade.get("entry_type", "stock"),
+                "thesis": trade.get("thesis"),
+                "source_analysis": trade.get("source_analysis"),
+                "source_type": trade.get("source_type", "detected"),
+                "direction": trade.get("direction", "long"),
+                "full_symbol": trade.get("full_symbol"),
+                "option_underlying": trade.get("option_underlying"),
+                "option_expiration": trade.get("option_expiration"),
+                "option_strike": trade.get("option_strike"),
+                "option_type": trade.get("option_type"),
+                "option_multiplier": trade.get("option_multiplier", 100),
+                "is_credit": trade.get("is_credit", False),
+            })
+            trade_id = cur.fetchone()["id"]
+        self.conn.commit()
+        return trade_id
+
+    def get_trades_by_source_type(self, source_types: list[str]) -> list[dict]:
+        """Get trades filtered by source_type."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM nexus.trades
+                WHERE source_type = ANY(%s)
+                ORDER BY created_at DESC
+            """, [source_types])
+            return [dict(r) for r in cur.fetchall()]
+
+    def update_trade(self, trade_id: int, **kwargs) -> bool:
+        """Update trade with arbitrary fields."""
+        if not kwargs:
+            return False
+
+        # Whitelist of allowed columns
+        allowed = {
+            "source_type", "thesis", "entry_price", "entry_size", "current_size",
+            "exit_price", "exit_reason", "status", "direction"
+        }
+        invalid = set(kwargs.keys()) - allowed
+        if invalid:
+            raise ValueError(f"Invalid trade column(s): {invalid}")
+
+        set_parts = []
+        params = []
+        for key, val in kwargs.items():
+            set_parts.append(f"{key} = %s")
+            params.append(val)
+        params.append(trade_id)
+
+        with self.conn.cursor() as cur:
+            cur.execute(
+                f"UPDATE nexus.trades SET {', '.join(set_parts)}, updated_at = now() WHERE id = %s RETURNING id",
+                params
+            )
+            updated = cur.fetchone() is not None
+        self.conn.commit()
+        return updated
+
+    def archive_trade(self, trade_id: int, reason: str | None = None) -> bool:
+        """Archive a trade (move to trades_archive and delete from trades)."""
+        with self.conn.cursor() as cur:
+            # Copy to archive
+            cur.execute("""
+                INSERT INTO nexus.trades_archive
+                    (id, ticker, entry_date, entry_price, entry_size, direction,
+                     thesis, source_type, source_analysis, archive_reason)
+                SELECT id, ticker, entry_date, entry_price, entry_size, direction,
+                       thesis, source_type, source_analysis, %s
+                FROM nexus.trades WHERE id = %s
+                RETURNING id
+            """, [reason, trade_id])
+
+            archived = cur.fetchone() is not None
+            if archived:
+                # Delete from trades
+                cur.execute("DELETE FROM nexus.trades WHERE id = %s", [trade_id])
+
+        self.conn.commit()
+        return archived
+
+    def record_position_detection(self, ticker: str, size: float, trade_id: int,
+                                   full_symbol: str | None = None) -> int | None:
+        """Record a position detection for idempotency tracking.
+
+        For options, full_symbol should be the OCC symbol to distinguish
+        different contracts on the same underlying.
+        """
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO nexus.position_detections (ticker, size, trade_id, full_symbol)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT DO NOTHING
+                    RETURNING id
+                """, [ticker.upper(), size, trade_id, full_symbol])
+                row = cur.fetchone()
+            self.conn.commit()
+            return row["id"] if row else None
+        except Exception as e:
+            log.warning(f"Failed to record position detection: {e}")
+            return None
+
+    def get_position_detections_today(self, symbol_key: str) -> list[dict]:
+        """Get position detections for a symbol today.
+
+        Args:
+            symbol_key: Ticker for stocks, full OCC symbol for options
+        """
+        with self.conn.cursor() as cur:
+            # Check both ticker and full_symbol columns
+            cur.execute("""
+                SELECT * FROM nexus.position_detections
+                WHERE (full_symbol = %s OR (full_symbol IS NULL AND ticker = %s))
+                  AND detected_date = CURRENT_DATE
+            """, [symbol_key, symbol_key.upper()])
+            return [dict(r) for r in cur.fetchall()]
+
+    def complete_task_by_type(self, task_type: str, ticker: str | None = None) -> bool:
+        """Complete tasks by type and optional ticker."""
+        with self.conn.cursor() as cur:
+            if ticker:
+                cur.execute("""
+                    UPDATE nexus.task_queue SET
+                        status = 'completed', completed_at = now()
+                    WHERE task_type = %s AND ticker = %s AND status IN ('pending', 'running')
+                    RETURNING id
+                """, [task_type, ticker.upper()])
+            else:
+                cur.execute("""
+                    UPDATE nexus.task_queue SET
+                        status = 'completed', completed_at = now()
+                    WHERE task_type = %s AND status IN ('pending', 'running')
+                    RETURNING id
+                """, [task_type])
+            updated = cur.fetchone() is not None
+        self.conn.commit()
+        return updated
+
+    # ─── Options-Specific Methods (IPLAN-006) ────────────────────────────────────
+
+    def get_options_positions(self, underlying: str | None = None) -> list[dict]:
+        """Get open options positions, optionally filtered by underlying."""
+        with self.conn.cursor() as cur:
+            if underlying:
+                cur.execute("""
+                    SELECT * FROM nexus.v_options_positions
+                    WHERE option_underlying = %s
+                """, [underlying.upper()])
+            else:
+                cur.execute("SELECT * FROM nexus.v_options_positions")
+            return [dict(r) for r in cur.fetchall()]
+
+    def get_expiring_options(self, days: int = 7) -> list[dict]:
+        """Get options expiring within N days."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM nexus.v_options_positions
+                WHERE days_to_expiry <= %s
+                ORDER BY option_expiration ASC
+            """, [days])
+            return [dict(r) for r in cur.fetchall()]
+
+    def close_option_trade(
+        self,
+        trade_id: int,
+        exit_price: float,
+        exit_reason: str,
+        expiration_action: str | None = None
+    ) -> bool:
+        """Close options trade with proper P&L calculation.
+
+        For long options: P&L = (exit - entry) * size * multiplier
+        For short options: P&L = (entry - exit) * size * multiplier
+        """
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                UPDATE nexus.trades SET
+                    status = 'closed',
+                    exit_date = now(),
+                    exit_price = %(exit_price)s,
+                    exit_reason = %(exit_reason)s,
+                    expiration_action = %(expiration_action)s,
+                    pnl_dollars = CASE
+                        WHEN is_credit THEN
+                            (entry_price - %(exit_price)s) * COALESCE(current_size, entry_size) * COALESCE(option_multiplier, 100)
+                        ELSE
+                            (%(exit_price)s - entry_price) * COALESCE(current_size, entry_size) * COALESCE(option_multiplier, 100)
+                    END,
+                    pnl_pct = CASE
+                        WHEN entry_price > 0 THEN
+                            CASE
+                                WHEN is_credit THEN ((entry_price - %(exit_price)s) / entry_price) * 100
+                                ELSE ((%(exit_price)s - entry_price) / entry_price) * 100
+                            END
+                        ELSE 0
+                    END,
+                    updated_at = now()
+                WHERE id = %(trade_id)s
+                RETURNING id
+            """, {
+                "exit_price": exit_price,
+                "exit_reason": exit_reason,
+                "expiration_action": expiration_action,
+                "trade_id": trade_id
+            })
+            updated = cur.fetchone() is not None
+        self.conn.commit()
+        return updated
+
+    def get_short_options_by_underlying(self, underlying: str) -> list[dict]:
+        """Get open short options for an underlying (for assignment detection)."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM nexus.trades
+                WHERE option_underlying = %s
+                  AND status = 'open'
+                  AND is_credit = TRUE
+            """, [underlying.upper()])
+            return [dict(r) for r in cur.fetchall()]
+
+    def close_expired_option_worthless(self, trade_id: int) -> bool:
+        """Close option trade as expired worthless."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                UPDATE nexus.trades SET
+                    status = 'closed',
+                    exit_date = option_expiration,
+                    exit_price = 0,
+                    exit_reason = 'expired_worthless',
+                    expiration_action = 'expired_worthless',
+                    pnl_dollars = CASE
+                        WHEN is_credit THEN entry_price * COALESCE(current_size, entry_size) * COALESCE(option_multiplier, 100)
+                        ELSE -entry_price * COALESCE(current_size, entry_size) * COALESCE(option_multiplier, 100)
+                    END,
+                    pnl_pct = CASE WHEN is_credit THEN 100 ELSE -100 END,
+                    updated_at = now()
+                WHERE id = %s
+                RETURNING id
+            """, [trade_id])
+            updated = cur.fetchone() is not None
+        self.conn.commit()
+        return updated

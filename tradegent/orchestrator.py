@@ -1874,7 +1874,10 @@ def _chain_to_post_trade_review(db: "NexusDB", trade_id: int) -> bool:
 
     ticker = trade["ticker"]
 
+    # Include trade_id in prompt for extraction
     prompt = f"""Perform post-trade review for {ticker}.
+
+trade_id: {trade_id}
 
 Trade Details:
 - Entry: ${trade['entry_price']:.2f} on {trade['entry_date']}
@@ -1883,7 +1886,8 @@ Trade Details:
 - Reason: {trade.get('exit_reason', 'N/A')}
 - Original Analysis: {trade.get('source_analysis', 'N/A')}
 
-Follow post-trade-review skill framework (SKILL.md)."""
+Follow post-trade-review skill framework (SKILL.md).
+Save review to: tradegent_knowledge/knowledge/reviews/{ticker}_{datetime.now().strftime('%Y%m%dT%H%M')}.yaml"""
 
     task_id = db.queue_task("post_trade_review", ticker, prompt, priority=7)
     log.info(f"  → Queued post-trade review: {ticker} (task {task_id})")
@@ -2407,8 +2411,35 @@ def run_execution(db: NexusDB, analysis_path: Path) -> ExecutionResult:
         raw_output=output,
     )
 
-    if result.order_placed and stock:
-        db.update_stock_position(ticker, True, "pending")
+    if result.order_placed and parsed:
+        order_id = parsed.get("order_id")
+
+        # Create trade entry in nexus.trades
+        trade = {
+            "ticker": ticker,
+            "entry_date": datetime.now(),
+            "entry_price": parsed.get("limit_price") or parsed.get("entry_price", 0),
+            "entry_size": parsed.get("quantity") or parsed.get("shares", 0),
+            "entry_type": parsed.get("structure", "stock"),
+            "thesis": parsed.get("reason") or parsed.get("rationale", ""),
+            "source_analysis": str(analysis_path),
+        }
+
+        try:
+            trade_id = db.add_trade(trade)
+            log.info(f"Created trade {trade_id} for {ticker}")
+
+            # Store order ID for reconciliation
+            if order_id:
+                db.update_trade_order(trade_id, str(order_id), "Submitted")
+                log.info(f"Trade {trade_id} linked to order {order_id}")
+
+            # Update stock position
+            if stock:
+                db.update_stock_position(ticker, True, "pending")
+
+        except Exception as e:
+            log.error(f"Failed to create trade entry: {e}")
 
     # Increment service counters
     try:
@@ -2622,51 +2653,151 @@ def _route_scanner_results(db: NexusDB, scanner_name: str, results: list[ScanRes
     return stats
 
 
-def process_task_queue(db: NexusDB, max_tasks: int = 5) -> int:
-    """Process pending tasks from queue."""
+def process_task_queue(db: NexusDB, max_tasks: int = 5) -> dict:
+    """
+    Process pending tasks from queue.
+
+    Returns:
+        Dict with counts: {processed, succeeded, failed, skipped, retried}
+    """
+    results = {"processed": 0, "succeeded": 0, "failed": 0, "skipped": 0, "retried": 0}
+
     if not cfg.task_queue_enabled:
-        log.info("Task queue disabled (task_queue_enabled=false)")
-        return 0
+        log.debug("Task queue disabled")
+        return results
 
-    tasks = db.get_pending_tasks(limit=max_tasks)
-    processed = 0
+    # Recover stuck tasks first
+    timeout = int(cfg._get("task_timeout_minutes", "scheduler", "30"))
+    recovered = db.recover_stuck_tasks(timeout)
+    if recovered:
+        log.info(f"Recovered {recovered} stuck tasks")
 
-    log.info(f"═══ TASK QUEUE: {len(tasks)} pending ═══")
+    # Get pending and retryable tasks
+    tasks = db.get_pending_or_retryable_tasks(limit=max_tasks)
+    if not tasks:
+        return results
+
+    log.info(f"═══ TASK QUEUE: {len(tasks)} tasks ═══")
+
+    # Get daily limits
+    service_status = db.get_service_status() or {}
+    today_analyses = service_status.get("today_analyses", 0)
+    max_analyses = int(cfg._get("max_daily_analyses", "rate_limits", "20"))
+
+    retry_delay = int(cfg._get("task_retry_delay_minutes", "scheduler", "15"))
 
     for task in tasks:
         task_id = task["id"]
         task_type = task["task_type"]
         ticker = task.get("ticker")
+        is_retry = task.get("retry_count", 0) > 0
 
-        log.info(f"Processing task {task_id}: {task_type} for {ticker or 'N/A'}")
+        # Check daily limits for analysis tasks
+        if task_type == "analysis" and today_analyses >= max_analyses:
+            log.info(f"Skipping task {task_id}: daily analysis limit reached ({today_analyses}/{max_analyses})")
+            results["skipped"] += 1
+            continue
+
+        log.info(f"{'Retrying' if is_retry else 'Processing'} task {task_id}: {task_type} for {ticker or 'N/A'}")
         db.mark_task_started(task_id)
 
         try:
             if task_type == "analysis":
-                analysis_type = AnalysisType(task.get("analysis_type", "stock"))
-                result = run_analysis(db, ticker, analysis_type)
-                if result:
-                    log.info(f"  ✓ Analysis complete: {ticker}")
+                _process_analysis_task(db, task)
+                today_analyses += 1
 
             elif task_type == "post_trade_review":
-                # Run post-trade review with provided prompt
-                prompt = task.get("prompt", f"Post-trade review for {ticker}")
-                output = call_claude_code(prompt, cfg.allowed_tools_analysis, f"REVIEW-{ticker}")
-                if output:
-                    log.info(f"  ✓ Post-trade review complete: {ticker}")
+                _process_post_trade_review_task(db, task)
 
             else:
                 log.warning(f"Unknown task type: {task_type}")
+                raise ValueError(f"Unknown task type: {task_type}")
 
             db.mark_task_completed(task_id)
-            processed += 1
+            results["succeeded"] += 1
+            if is_retry:
+                results["retried"] += 1
 
         except Exception as e:
             log.error(f"Task {task_id} failed: {e}")
             db.mark_task_completed(task_id, error=str(e))
 
-    log.info(f"Processed {processed}/{len(tasks)} tasks")
-    return processed
+            # Schedule retry if retries remaining
+            if task.get("retry_count", 0) < task.get("max_retries", 3):
+                db.mark_task_for_retry(task_id, retry_delay)
+                log.info(f"Task {task_id} scheduled for retry")
+
+            results["failed"] += 1
+
+        results["processed"] += 1
+
+    log.info(f"Task queue results: {results}")
+    return results
+
+
+def _process_analysis_task(db: NexusDB, task: dict):
+    """Process an analysis task."""
+    ticker = task["ticker"]
+    analysis_type = AnalysisType(task.get("analysis_type", "stock"))
+
+    result = run_analysis(db, ticker, analysis_type)
+    if not result:
+        raise RuntimeError(f"Analysis failed for {ticker}")
+
+    log.info(f"  ✓ Analysis complete: {ticker}")
+
+
+def _process_post_trade_review_task(db: NexusDB, task: dict):
+    """Process a post-trade review task."""
+    ticker = task["ticker"]
+    prompt = task.get("prompt", f"Post-trade review for {ticker}")
+
+    # Extract trade_id from prompt if present
+    trade_id = _extract_trade_id_from_prompt(prompt)
+
+    # Run the review
+    output = call_claude_code(prompt, cfg.allowed_tools_analysis, f"REVIEW-{ticker}")
+
+    if not output:
+        raise RuntimeError(f"Post-trade review returned no output for {ticker}")
+
+    # Try to find the review file path in output
+    review_path = _extract_review_path(output)
+
+    # Mark trade as reviewed if we have the trade_id
+    if trade_id and review_path:
+        db.mark_trade_reviewed(trade_id, review_path)
+        log.info(f"  ✓ Trade {trade_id} marked as reviewed: {review_path}")
+    elif trade_id:
+        # Mark reviewed even without path
+        db.mark_trade_reviewed(trade_id, f"review_output_{ticker}_{datetime.now().strftime('%Y%m%d')}")
+        log.info(f"  ✓ Trade {trade_id} marked as reviewed (no path extracted)")
+    else:
+        log.info(f"  ✓ Post-trade review complete: {ticker}")
+
+
+def _extract_trade_id_from_prompt(prompt: str) -> int | None:
+    """Extract trade ID from review prompt."""
+    import re
+    # Look for patterns like "trade_id: 123" or "Trade 123" or "trade 123"
+    match = re.search(r'trade[_\s]?(?:id)?[:\s]*(\d+)', prompt, re.IGNORECASE)
+    return int(match.group(1)) if match else None
+
+
+def _extract_review_path(output: str) -> str | None:
+    """Extract review file path from Claude output."""
+    import re
+    # Look for YAML file paths in knowledge directory
+    patterns = [
+        r'(tradegent_knowledge/knowledge/reviews/[^\s]+\.yaml)',
+        r'Saved to[:\s]*([^\s]+\.yaml)',
+        r'Review saved[:\s]*([^\s]+\.yaml)',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, output)
+        if match:
+            return match.group(1)
+    return None
 
 
 def process_pending_reviews(db: NexusDB) -> int:
@@ -3367,6 +3498,18 @@ def main():
 
     trade_sub.add_parser("pending-reviews", help="Show trades pending review")
 
+    p = trade_sub.add_parser("detected", help="List trades from detected position increases")
+    p.add_argument("--all", dest="show_all", action="store_true", help="Show all, including confirmed")
+
+    p = trade_sub.add_parser("confirm", help="Confirm a detected trade entry")
+    p.add_argument("trade_id", type=int, help="Trade ID to confirm")
+    p.add_argument("--thesis", "-t", help="Add/update thesis")
+    p.add_argument("--price", "-p", type=float, help="Correct entry price")
+
+    p = trade_sub.add_parser("reject", help="Reject a detected trade entry")
+    p.add_argument("trade_id", type=int, help="Trade ID to reject")
+    p.add_argument("--reason", "-r", help="Reason for rejection")
+
     # ─── Watchlist DB Commands ───────────────────────────────────────────────────
     wl_parser = sub.add_parser("watchlist-db", help="DB-backed watchlist management")
     wl_sub = wl_parser.add_subparsers(dest="wl_cmd")
@@ -3377,6 +3520,30 @@ def main():
     wl_sub.add_parser("check", help="Check for expirations and triggers")
 
     wl_sub.add_parser("process-expired", help="Process expired entries")
+
+    p = wl_sub.add_parser("monitor", help="Monitor watchlist triggers")
+    p.add_argument("--once", action="store_true", help="Run once and exit (don't loop)")
+    p.add_argument("--interval", type=int, default=300, help="Check interval in seconds")
+
+    wl_sub.add_parser("pending-triggers", help="Show pending triggers for active entries")
+
+    # ─── Options Commands (IPLAN-006) ───────────────────────────────────────────
+    options_parser = sub.add_parser("options", help="Options position management")
+    options_sub = options_parser.add_subparsers(dest="options_cmd")
+
+    options_sub.add_parser("list", help="List open options positions")
+
+    p = options_sub.add_parser("expiring", help="List options expiring soon")
+    p.add_argument("--days", "-d", type=int, default=7, help="Days until expiration")
+
+    options_sub.add_parser("expired", help="List expired options needing action")
+
+    options_sub.add_parser("process-expired", help="Auto-close expired worthless options")
+
+    p = options_sub.add_parser("by-underlying", help="List options for underlying")
+    p.add_argument("ticker", help="Underlying ticker")
+
+    options_sub.add_parser("summary", help="Show options expiration summary")
 
     p = sub.add_parser("stock")
     p.add_argument("action", choices=["add", "enable", "disable", "set-state", "list"])
@@ -3641,8 +3808,60 @@ def main():
                         exit_dt = str(t.get("exit_date", ""))[:19]
                         print(f"{t['id']:>4} {t['ticker']:<6} {pnl:>8} {exit_dt:<20}")
 
+            elif args.trade_cmd == "detected":
+                # List trades created from detected position increases
+                if args.show_all:
+                    trades = db.get_trades_by_source_type(["detected", "confirmed"])
+                else:
+                    trades = db.get_trades_by_source_type(["detected"])
+
+                if not trades:
+                    print("No detected trades pending review")
+                else:
+                    print(f"\nDetected Trades ({len(trades)}):")
+                    print(f"{'ID':>4} {'Ticker':<6} {'Date':<12} {'Size':>8} {'Price':>10} {'Status':<10}")
+                    print("─" * 60)
+                    for t in trades:
+                        entry_dt = t.get("entry_date")
+                        date_str = entry_dt.strftime("%Y-%m-%d") if entry_dt else "—"
+                        size = float(t.get("entry_size") or 0)
+                        price = float(t.get("entry_price") or 0)
+                        src_type = t.get("source_type", "—")
+                        print(f"{t['id']:>4} {t['ticker']:<6} {date_str:<12} {size:>8.2f} ${price:>8.2f} {src_type:<10}")
+
+            elif args.trade_cmd == "confirm":
+                # Confirm a detected trade entry
+                trade = db.get_trade(args.trade_id)
+                if not trade:
+                    print(f"Trade {args.trade_id} not found")
+                elif trade.get("source_type") != "detected":
+                    print(f"Trade {args.trade_id} is not a detected trade (source: {trade.get('source_type')})")
+                else:
+                    updates = {"source_type": "confirmed"}
+                    if args.thesis:
+                        updates["thesis"] = args.thesis
+                    if args.price:
+                        updates["entry_price"] = args.price
+
+                    db.update_trade(args.trade_id, **updates)
+                    db.complete_task_by_type("review_detected_position", trade["ticker"])
+                    print(f"Confirmed trade {args.trade_id}: {trade['ticker']}")
+
+            elif args.trade_cmd == "reject":
+                # Reject a detected trade entry (archive it)
+                trade = db.get_trade(args.trade_id)
+                if not trade:
+                    print(f"Trade {args.trade_id} not found")
+                elif trade.get("source_type") != "detected":
+                    print(f"Trade {args.trade_id} is not a detected trade (source: {trade.get('source_type')})")
+                else:
+                    reason = args.reason or "Rejected by user"
+                    db.archive_trade(args.trade_id, reason=reason)
+                    db.complete_task_by_type("review_detected_position", trade["ticker"])
+                    print(f"Rejected and archived trade {args.trade_id}: {trade['ticker']}")
+
             else:
-                print("Usage: trade [add|close|list|pending-reviews]")
+                print("Usage: trade [add|close|list|pending-reviews|detected|confirm|reject]")
 
         # ─── Watchlist DB Commands ───────────────────────────────────────────────────
         elif args.cmd == "watchlist-db":
@@ -3675,8 +3894,84 @@ def main():
                     print(f"  ⏰ Marked expired: {entry['ticker']}")
                 print(f"\n✅ Processed {len(expired)} entries")
 
+            elif args.wl_cmd == "monitor":
+                from watchlist_monitor import WatchlistMonitor, parse_trigger, ConditionType
+                from ib_client import IBClient
+
+                ib_client = IBClient()
+                if not ib_client.health_check():
+                    print("❌ IB MCP server not available at localhost:8100")
+                    sys.exit(1)
+
+                price_tolerance = float(cfg._get("watchlist_price_threshold_pct", "feature_flags", "0.5"))
+
+                def event_handler(event):
+                    """Print events to console."""
+                    colors = {
+                        "triggered": "\033[92m",  # Green
+                        "invalidated": "\033[93m",  # Yellow
+                        "expired": "\033[91m",  # Red
+                        "error": "\033[91m"  # Red
+                    }
+                    reset = "\033[0m"
+                    color = colors.get(event.event_type, "")
+                    print(f"{color}[{event.event_type.upper()}] {event.ticker}: {event.reason}{reset}")
+
+                monitor = WatchlistMonitor(
+                    db=db,
+                    ib_client=ib_client,
+                    price_tolerance_pct=price_tolerance,
+                    on_event=event_handler
+                )
+
+                print(f"Starting watchlist monitor (interval: {args.interval}s)")
+
+                if args.once:
+                    results = monitor.check_entries()
+                    print(f"\nResults: {results}")
+                else:
+                    # Loop mode
+                    import time
+                    try:
+                        while True:
+                            results = monitor.check_entries()
+                            if results.triggered or results.invalidated or results.expired or results.errors:
+                                print(f"[{datetime.now().strftime('%H:%M:%S')}] {results}")
+                            time.sleep(args.interval)
+                    except KeyboardInterrupt:
+                        print("\nMonitor stopped")
+
+            elif args.wl_cmd == "pending-triggers":
+                from watchlist_monitor import parse_trigger, ConditionType
+
+                entries = db.get_active_watchlist()
+                if not entries:
+                    print("No active watchlist entries")
+                else:
+                    print(f"\nActive Watchlist Entries ({len(entries)}):\n")
+                    print(f"{'Ticker':<6} {'Parseable':<10} {'Condition':<40} {'Expires':<12}")
+                    print("─" * 75)
+
+                    for entry in entries:
+                        ticker = entry["ticker"]
+                        trigger_text = entry.get("entry_trigger", "")
+                        condition = parse_trigger(trigger_text) if trigger_text else None
+
+                        # Format condition
+                        if condition and condition.type != ConditionType.CUSTOM:
+                            cond_str = f"{condition.type.value}: {condition.value}"
+                            parseable = "✓"
+                        else:
+                            cond_str = trigger_text[:38] + ".." if len(trigger_text) > 40 else trigger_text
+                            parseable = "✗ (manual)"
+
+                        expires = entry.get("expires_at")
+                        expires_str = str(expires)[:10] if expires else "never"
+
+                        print(f"{ticker:<6} {parseable:<10} {cond_str:<40} {expires_str:<12}")
+
             else:
-                print("Usage: watchlist-db [list|check|process-expired]")
+                print("Usage: watchlist-db [list|check|process-expired|monitor|pending-triggers]")
 
         elif args.cmd == "settings":
             if args.action == "list":
@@ -3703,6 +3998,116 @@ def main():
                 db.set_setting(args.key, parsed_val)
                 print(f"✅ {args.key} = {parsed_val}")
                 print("  (takes effect on next service tick)")
+
+        # ─── Options Commands (IPLAN-006) ─────────────────────────────────────────────
+        elif args.cmd == "options":
+            from expiration_monitor import ExpirationMonitor
+
+            exp_monitor = ExpirationMonitor(db)
+
+            if args.options_cmd == "list":
+                options = db.get_options_positions()
+                if not options:
+                    print("No open options positions")
+                else:
+                    print(f"\n{'ID':>4} {'Symbol':<25} {'Type':<4} {'Strike':>8} {'Expires':<12} {'Days':>5} {'Size':>6}")
+                    print("─" * 75)
+                    for opt in options:
+                        opt_type = opt.get("option_type", "?")[0].upper()
+                        strike = float(opt.get("option_strike") or 0)
+                        exp_date = str(opt.get("option_expiration", ""))[:10]
+                        days = opt.get("days_to_expiry", "?")
+                        size = float(opt.get("current_size") or opt.get("entry_size") or 0)
+                        symbol = opt.get("full_symbol") or opt.get("ticker", "?")
+                        print(f"{opt['id']:>4} {symbol:<25} {opt_type:<4} ${strike:>7.2f} {exp_date:<12} {days:>5} {size:>6.0f}")
+
+            elif args.options_cmd == "expiring":
+                days = args.days
+                expiring = exp_monitor.get_expiring_soon(days)
+                if not expiring:
+                    print(f"No options expiring within {days} days")
+                else:
+                    print(f"\nOptions expiring within {days} days ({len(expiring)}):\n")
+                    print(f"{'ID':>4} {'Symbol':<25} {'Type':<4} {'Strike':>8} {'Expires':<12} {'Days':>5}")
+                    print("─" * 65)
+                    for opt in expiring:
+                        opt_type = opt.get("option_type", "?")[0].upper()
+                        strike = float(opt.get("option_strike") or 0)
+                        exp_date = str(opt.get("option_expiration", ""))[:10]
+                        days_left = opt.get("days_to_expiry", "?")
+                        symbol = opt.get("full_symbol") or opt.get("ticker", "?")
+                        # Highlight critical (<=3 days)
+                        prefix = "⚠️ " if isinstance(days_left, int) and days_left <= 3 else "  "
+                        print(f"{prefix}{opt['id']:>4} {symbol:<25} {opt_type:<4} ${strike:>7.2f} {exp_date:<12} {days_left:>5}")
+
+            elif args.options_cmd == "expired":
+                expired = exp_monitor.get_expired()
+                if not expired:
+                    print("No expired options needing action")
+                else:
+                    print(f"\nExpired options ({len(expired)}):\n")
+                    print(f"{'ID':>4} {'Symbol':<25} {'Type':<4} {'Strike':>8} {'Expired':<12}")
+                    print("─" * 60)
+                    for opt in expired:
+                        opt_type = opt.get("option_type", "?")[0].upper()
+                        strike = float(opt.get("option_strike") or 0)
+                        exp_date = str(opt.get("option_expiration", ""))[:10]
+                        symbol = opt.get("full_symbol") or opt.get("ticker", "?")
+                        print(f"{opt['id']:>4} {symbol:<25} {opt_type:<4} ${strike:>7.2f} {exp_date:<12}")
+
+            elif args.options_cmd == "process-expired":
+                # Optional: get stock prices from IB for ITM detection
+                get_price_fn = None
+                try:
+                    from ib_client import IBClient
+                    ib = IBClient()
+                    if ib.health_check():
+                        def get_price_fn(ticker):
+                            try:
+                                quote = ib.get_stock_price(ticker)
+                                return quote.get("last") if quote else None
+                            except Exception:
+                                return None
+                except Exception:
+                    print("Note: IB not available, using heuristics for ITM detection")
+
+                results = exp_monitor.process_expirations(get_stock_price_fn=get_price_fn)
+                print(f"\n✅ Processed expired options:")
+                print(f"   Closed worthless: {results['expired_worthless']}")
+                print(f"   Queued for review (ITM): {results['needs_review']}")
+                if results['errors']:
+                    print(f"   Errors: {results['errors']}")
+
+            elif args.options_cmd == "by-underlying":
+                ticker = args.ticker.upper()
+                options = db.get_options_positions(underlying=ticker)
+                if not options:
+                    print(f"No open options for {ticker}")
+                else:
+                    print(f"\nOptions for {ticker} ({len(options)}):\n")
+                    print(f"{'ID':>4} {'Symbol':<25} {'Type':<4} {'Strike':>8} {'Expires':<12} {'Days':>5} {'Size':>6}")
+                    print("─" * 75)
+                    for opt in options:
+                        opt_type = opt.get("option_type", "?")[0].upper()
+                        strike = float(opt.get("option_strike") or 0)
+                        exp_date = str(opt.get("option_expiration", ""))[:10]
+                        days = opt.get("days_to_expiry", "?")
+                        size = float(opt.get("current_size") or opt.get("entry_size") or 0)
+                        symbol = opt.get("full_symbol") or opt.get("ticker", "?")
+                        print(f"{opt['id']:>4} {symbol:<25} {opt_type:<4} ${strike:>7.2f} {exp_date:<12} {days:>5} {size:>6.0f}")
+
+            elif args.options_cmd == "summary":
+                summary = exp_monitor.get_summary()
+                print(f"\n{'═' * 40}")
+                print("OPTIONS EXPIRATION SUMMARY")
+                print(f"{'═' * 40}")
+                print(f"  Expiring today:     {summary['expiring_today']:>4}")
+                print(f"  Critical (≤3 days): {summary['critical']:>4}")
+                print(f"  Warning (≤7 days):  {summary['warning']:>4}")
+                print(f"  Expired (action):   {summary['expired']:>4}")
+
+            else:
+                print("Usage: options [list|expiring|expired|process-expired|by-underlying|summary]")
 
         # ─── Graph Commands ───────────────────────────────────────────────────────────
         elif args.cmd == "graph":

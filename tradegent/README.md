@@ -504,6 +504,35 @@ The gate prevents low-conviction trades. It must pass ALL criteria:
 
 If the gate fails, the pipeline stops. The analysis is still saved and ingested into RAG for future reference.
 
+### Output File Types: MD vs YAML
+
+The orchestrator generates different output formats based on the analysis outcome:
+
+| Gate Result | Files Generated | Knowledge Indexed |
+|-------------|-----------------|-------------------|
+| **PASS** (4/4) | MD + YAML + SVG | RAG + Graph |
+| **MARGINAL** (3/4) | MD + YAML | RAG + Graph |
+| **FAIL** (<3) | **MD only** | RAG only |
+
+**Why MD-only for failed gates:**
+
+When the Do Nothing gate fails, there's no trade to structure — no entry price, stop loss, target, or position size to track. The MD summary captures the key takeaways (why to avoid the trade) without the overhead of full YAML schema compliance or SVG visualization.
+
+**Example: Gate failures that produce MD-only output:**
+
+| Ticker | Type | Gate | Recommendation | Reason |
+|--------|------|------|----------------|--------|
+| CWVX | Stock | 0/4 | AVOID | Leveraged ETF with structural decay |
+| AMZN | Earnings | 0/4 | NEUTRAL | Negative EV, beat-and-drop pattern |
+| AAPL | Earnings | 1.5/4 | NO POSITION | EV too low, 64 days out |
+
+**Full YAML reports** are only generated when:
+1. Gate passes (≥3/4 criteria met)
+2. Recommendation is actionable (BUY, BULLISH, BEARISH)
+3. Trade structure can be defined (entry, stop, target)
+
+This is by design — the gate filters low-conviction setups before committing resources to full documentation and visualization.
+
 ### Stage 2: Execution
 
 Only runs if:
