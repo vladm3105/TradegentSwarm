@@ -2,7 +2,136 @@
 
 ## Overview
 
-Metrics for graph extraction, embedding pipeline, and hybrid search operations.
+Metrics for graph extraction, embedding pipeline, hybrid search operations, and trading system monitoring (v2.3).
+
+---
+
+## Trading Monitoring Modules (v2.3)
+
+The service includes built-in monitoring modules that track positions, orders, watchlist conditions, and options expiration.
+
+### Position Monitor
+
+Detects IB position changes by comparing IB positions vs `nexus.trades`.
+
+**Check Interval:** Every 5 minutes during market hours
+
+**Detection Types:**
+| Type | Trigger | Action |
+|------|---------|--------|
+| Full Close | Position gone from IB | Mark trade closed, calculate P&L |
+| Partial Close | Position reduced | Update trade size |
+| External Increase | New shares added | Log or auto-create trade |
+
+**Settings:**
+```sql
+-- Check position monitoring settings
+SELECT key, value FROM nexus.settings
+WHERE key IN ('position_monitor_enabled', 'position_monitor_interval_seconds',
+              'auto_track_position_increases', 'position_detect_min_value');
+```
+
+### Order Reconciler
+
+Polls IB for order status updates on pending orders.
+
+**Check Interval:** Every 2 minutes when orders are pending
+
+**Status Handling:**
+| IB Status | Action |
+|-----------|--------|
+| Filled | Update trade with fill price, send notification |
+| Cancelled | Close trade with P&L=0 |
+| Partial | Update trade with partial fill info |
+
+**Settings:**
+```sql
+SELECT key, value FROM nexus.settings
+WHERE key IN ('order_reconciler_enabled', 'order_reconcile_interval_seconds');
+```
+
+### Watchlist Monitor
+
+Evaluates trigger/invalidation conditions on active watchlist entries.
+
+**Check Interval:** Every 5 minutes during market hours
+
+**Condition Types:**
+| Condition | Example | Auto-Evaluated |
+|-----------|---------|----------------|
+| PRICE_ABOVE | "breaks above $150" | Yes |
+| PRICE_BELOW | "drops below $140" | Yes |
+| SUPPORT_HOLD | "holds $145 support" | Yes (3 consecutive checks) |
+| DATE_BEFORE | "before 2026-03-15" | Yes |
+| CUSTOM | Complex conditions | No (manual review) |
+
+**Settings:**
+```sql
+SELECT key, value FROM nexus.settings
+WHERE key IN ('watchlist_monitor_enabled', 'watchlist_check_interval_seconds',
+              'watchlist_price_threshold_pct');
+```
+
+### Expiration Monitor
+
+Tracks options approaching expiration.
+
+**Check Interval:** Once daily
+
+**Thresholds:**
+| Level | Days Until Expiration | Action |
+|-------|----------------------|--------|
+| Warning | ≤ 7 days | Send warning notification |
+| Critical | ≤ 3 days | Send critical notification |
+| Expired | 0 days | Auto-close as worthless (unless ITM) |
+
+**Settings:**
+```sql
+SELECT key, value FROM nexus.settings
+WHERE key IN ('options_expiry_warning_days', 'options_expiry_critical_days',
+              'auto_close_expired_options');
+```
+
+### Notifications
+
+Multi-channel alert system for trading events.
+
+**Channels:**
+| Channel | Configuration | Status |
+|---------|---------------|--------|
+| Telegram | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` env vars | Check logs |
+| Webhook | `webhook_url` setting | Check logs |
+| Console | Always available | Always enabled |
+
+**Events and Priorities:**
+| Event | Priority | Module |
+|-------|----------|--------|
+| `position_closed` | HIGH | Position Monitor |
+| `order_filled` | HIGH | Order Reconciler |
+| `watchlist_triggered` | HIGH | Watchlist Monitor |
+| `options_expiring` | MEDIUM/HIGH | Expiration Monitor |
+
+**Check Notification Log:**
+```sql
+-- Recent notifications
+SELECT event_type, priority, channel, sent_at, success
+FROM nexus.notification_log
+ORDER BY sent_at DESC
+LIMIT 20;
+
+-- Failures
+SELECT * FROM nexus.notification_log
+WHERE success = false
+ORDER BY sent_at DESC;
+```
+
+**Settings:**
+```sql
+SELECT key, value FROM nexus.settings
+WHERE key IN ('notifications_enabled', 'notification_min_priority', 'notification_rate_limit');
+```
+
+---
 
 ## Extraction Metrics
 
@@ -209,4 +338,85 @@ docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Health}}"
 | Extraction | `logs/extract_YYYYMMDD.jsonl` | JSONL |
 | Embedding | `logs/embed_YYYYMMDD.jsonl` | JSONL |
 | MCP Servers | `logs/mcp_graph.log`, `logs/mcp_rag.log` | Text |
+| Service | `logs/service.log` | Text |
 | Docker | `docker compose logs <service>` | Text |
+
+## Service Status
+
+### Quick Health Check
+
+```bash
+# Service status
+python orchestrator.py status
+
+# Detailed service health
+python service.py health
+```
+
+### Service Status Table
+
+```sql
+-- Current service state
+SELECT
+    state,
+    last_heartbeat,
+    last_tick_duration_ms,
+    current_task,
+    ticks_total,
+    today_analyses,
+    today_executions,
+    today_errors
+FROM nexus.service_status
+WHERE id = 1;
+```
+
+### Trading Monitors Health
+
+```python
+# Check all monitors in one call
+from service import Service
+
+svc = Service()
+print(f"Position Monitor: {'enabled' if svc._position_monitor else 'disabled'}")
+print(f"Order Reconciler: {'enabled' if svc._order_reconciler else 'disabled'}")
+print(f"Watchlist Monitor: {'enabled' if svc._watchlist_monitor else 'disabled'}")
+print(f"Expiration Monitor: {'enabled' if svc._expiration_monitor else 'disabled'}")
+print(f"Notifier: {'enabled' if svc._notifier else 'disabled'}")
+```
+
+### IB MCP Connectivity
+
+```python
+# Check IB MCP server health
+from ib_client import IBClient
+
+client = IBClient()
+healthy = client.health_check()
+print(f"IB MCP: {'connected' if healthy else 'disconnected'}")
+
+# Test quote fetch
+quote = client.get_stock_price("AAPL")
+print(f"AAPL quote: {quote}")
+```
+
+### Monitor-Specific Checks
+
+```python
+# Position Monitor
+from position_monitor import PositionMonitor
+pm = PositionMonitor(db, ib_client)
+deltas = pm.check_positions()
+print(f"Position deltas: {len(deltas)}")
+
+# Order Reconciler
+from order_reconciler import OrderReconciler
+recon = OrderReconciler(db, ib_client)
+results = recon.reconcile_pending_orders()
+print(f"Order reconciliation: {results}")
+
+# Watchlist Monitor
+from watchlist_monitor import WatchlistMonitor
+wm = WatchlistMonitor(db, ib_client)
+results = wm.check_entries()
+print(f"Watchlist check: {results}")
+```
