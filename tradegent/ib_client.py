@@ -1,21 +1,20 @@
 """
-Direct IB MCP Client - HTTP interface to IB Gateway.
+Direct IB MCP Client - MCP protocol interface to IB Gateway.
 
-Uses direct HTTP calls instead of Claude Code to avoid API costs.
-IB MCP server runs at localhost:8100 with SSE transport.
+Uses MCP client library to communicate with IB MCP server.
+IB MCP server runs at localhost:8100 with streamable-http transport.
 """
 
+import asyncio
 import json
 import logging
 import os
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-import httpx
-
 log = logging.getLogger("tradegent.ib-client")
 
-IB_MCP_URL = os.environ.get("IB_MCP_URL", "http://localhost:8100")
+IB_MCP_URL = os.environ.get("IB_MCP_URL", "http://localhost:8100/mcp")
 IB_MCP_TIMEOUT = float(os.environ.get("IB_MCP_TIMEOUT", "30"))
 
 
@@ -55,58 +54,79 @@ class IBClientProtocol(Protocol):
 
 class IBClient:
     """
-    Direct HTTP client for IB MCP server.
+    MCP client for IB MCP server.
 
+    Uses the MCP protocol over streamable-http transport.
     Avoids Claude Code API costs by calling IB MCP directly.
     """
 
-    def __init__(self, base_url: str = IB_MCP_URL, timeout: float = IB_MCP_TIMEOUT):
-        self.base_url = base_url.rstrip("/")
+    def __init__(self, mcp_url: str = IB_MCP_URL, timeout: float = IB_MCP_TIMEOUT):
+        self.mcp_url = mcp_url
         self.timeout = timeout
-        self._client: httpx.Client | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     def __enter__(self):
-        self._client = httpx.Client(timeout=self.timeout)
         return self
 
     def __exit__(self, *args):
-        if self._client:
-            self._client.close()
-            self._client = None
+        pass
 
-    def _get_client(self) -> httpx.Client:
-        if self._client is None:
-            self._client = httpx.Client(timeout=self.timeout)
-        return self._client
+    def _get_loop(self) -> asyncio.AbstractEventLoop:
+        """Get or create event loop for sync calls."""
+        try:
+            return asyncio.get_running_loop()
+        except RuntimeError:
+            if self._loop is None or self._loop.is_closed():
+                self._loop = asyncio.new_event_loop()
+            return self._loop
 
-    def _call_tool(self, tool_name: str, params: dict | None = None) -> Any:
-        """
-        Call an IB MCP tool via HTTP.
+    def _run_async(self, coro):
+        """Run async coroutine from sync context."""
+        try:
+            loop = asyncio.get_running_loop()
+            # Already in async context - create task
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                future = pool.submit(asyncio.run, coro)
+                return future.result(timeout=self.timeout)
+        except RuntimeError:
+            # No running loop - use asyncio.run
+            return asyncio.run(coro)
 
-        The IB MCP server exposes tools at POST /tools/{tool_name}
-        """
-        client = self._get_client()
-        url = f"{self.base_url}/tools/{tool_name}"
+    async def _call_tool_async(self, tool_name: str, params: dict | None = None) -> Any:
+        """Call an IB MCP tool via MCP protocol."""
+        from mcp.client.streamable_http import streamablehttp_client
+        from mcp.client.session import ClientSession
 
         try:
-            response = client.post(url, json=params or {})
-            response.raise_for_status()
-            return response.json()
-        except httpx.HTTPStatusError as e:
-            log.error(f"IB MCP HTTP error: {e.response.status_code} - {e.response.text}")
-            raise IBClientError(f"HTTP {e.response.status_code}", e.response.status_code)
-        except httpx.RequestError as e:
-            log.error(f"IB MCP request error: {e}")
-            raise IBClientError(f"Request failed: {e}")
-        except json.JSONDecodeError as e:
-            log.error(f"IB MCP JSON decode error: {e}")
-            raise IBClientError(f"Invalid JSON response")
+            async with streamablehttp_client(self.mcp_url) as (read, write, get_session_id):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    result = await session.call_tool(tool_name, params or {})
+
+                    # Parse the result - MCP returns TextContent with JSON string
+                    if result.content and len(result.content) > 0:
+                        content = result.content[0]
+                        if hasattr(content, 'text'):
+                            return json.loads(content.text)
+                    return {}
+        except Exception as e:
+            log.error(f"IB MCP call failed for {tool_name}: {e}")
+            raise IBClientError(f"MCP call failed: {e}")
+
+    def _call_tool(self, tool_name: str, params: dict | None = None) -> Any:
+        """Sync wrapper for _call_tool_async."""
+        return self._run_async(self._call_tool_async(tool_name, params))
 
     def health_check(self) -> bool:
         """Check if IB MCP server is available."""
         try:
             result = self._call_tool("health_check")
-            return result.get("status") == "ok" or result.get("connected", False)
+            return (
+                result.get("status") == "healthy" or
+                result.get("success", False) or
+                result.get("ib_connected", False)
+            )
         except Exception as e:
             log.warning(f"IB MCP health check failed: {e}")
             return False
