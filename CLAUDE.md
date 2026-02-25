@@ -1,7 +1,7 @@
 # TradegentSwarm - Claude Code Instructions
 
 > **Skills Version**: v2.6 (stock-analysis), v2.4 (earnings-analysis), v2.1 (other skills)
-> **Last Updated**: 2026-02-23
+> **Last Updated**: 2026-02-25
 > **PRODUCTION START**: 2026-02-23
 
 **Tradegent** — AI-driven trading platform using Claude Code CLI, Interactive Brokers, and a hybrid RAG+Graph knowledge system. A multi-agent swarm for market analysis, trade execution, and knowledge persistence.
@@ -859,8 +859,8 @@ The IB Gateway runs in Docker using the `gnzsnz/ib-gateway:stable` image - a wel
 ```
 ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐     ┌──────────────────┐
 │  Claude Code    │────▶│   IB MCP Server  │────▶│   IB Gateway    │────▶│  IB Servers      │
-│  (orchestrator) │ SSE │  (localhost:8100)│ API │  (localhost:4002)│ TLS │  (interactivebrokers.com)
-└─────────────────┘     └──────────────────┘     └─────────────────┘     └──────────────────┘
+│  (orchestrator) │HTTP │  (localhost:8100)│ API │  (localhost:4002)│ TLS │  (interactivebrokers.com)
+└─────────────────┘ MCP └──────────────────┘     └─────────────────┘     └──────────────────┘
 ```
 
 ### Port Mapping
@@ -978,11 +978,11 @@ print(status.summary())
 
 Access Interactive Brokers TWS/Gateway for market data, portfolio, and trading.
 
-**Server**: `ib-mcp` | **Source**: `/opt/data/trading/mcp_ib` | **Transport**: SSE
+**Server**: `ib-mcp` | **Source**: `/opt/data/trading/mcp_ib` | **Transport**: streamable-http
 
 ### Starting the Server
 
-The IB MCP server runs in SSE mode for reliable connection:
+The IB MCP server runs in streamable-http mode:
 
 ```bash
 cd /opt/data/trading/mcp_ib
@@ -991,10 +991,26 @@ IB_GATEWAY_HOST=localhost \
 IB_GATEWAY_PORT=4002 \
 IB_CLIENT_ID=2 \
 IB_READONLY=true \
-python -m ibmcp --transport sse --port 8100
+nohup python -m ibmcp --transport streamable-http --host 0.0.0.0 --port 8100 > /tmp/ib-mcp.log 2>&1 &
 ```
 
-Server URL: `http://localhost:8100/sse`
+Server URL: `http://localhost:8100/mcp`
+
+### Why streamable-http Instead of SSE
+
+| Transport | Direction | Connection | Best For |
+|-----------|-----------|------------|----------|
+| **SSE** | Unidirectional (server→client) | Long-lived, persistent | Real-time streaming, Claude Desktop |
+| **streamable-http** | Bidirectional | Per-request, stateless | Independent tool calls, service polling |
+
+The orchestrator service makes **independent, short-lived calls** (health check, get price, etc.) on a polling schedule. With streamable-http:
+
+- Each MCP tool call is a complete HTTP round-trip
+- No need to maintain persistent connections
+- Sessions managed via session IDs per request
+- Better fit for periodic polling (check positions every 5 min)
+
+SSE would be better for real-time streaming data or push notifications, but our service pattern is discrete tool invocations.
 
 > **Note**: Port 8100 is used when running IB MCP directly. The README.md shows Docker deployment using port 8002. Either works - use whatever matches your setup.
 
@@ -1190,7 +1206,7 @@ Host github.com
 ## Important Notes
 
 - **Use MCP servers as primary interface** for IB (`ib-mcp`), RAG (`trading-rag`), and Graph (`trading-graph`) operations
-- **IB MCP runs via SSE** at `http://localhost:8100/sse` - start it before running analyses
+- **IB MCP runs via streamable-http** at `http://localhost:8100/mcp` - start it before running analyses
 - **Auto-ingest hook** indexes knowledge files automatically (configure in `.claude/settings.json`)
 - Do not commit `.env` files (contains credentials)
 - IB Gateway requires valid paper trading account
