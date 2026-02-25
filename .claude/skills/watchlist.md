@@ -169,6 +169,43 @@ WEEKLY:
 - Triggers fire → invoke **trade-journal** for entry
 - May trigger new **stock-analysis** when conditions met
 
+## Database-Backed Watchlist (Workflow Automation)
+
+The `nexus.watchlist` table provides database-backed watchlist management:
+
+**Auto-Chaining:**
+When an analysis recommends WATCH and `auto_watchlist_chain=true`:
+```
+Analysis YAML → extract_chain_data() → nexus.watchlist table
+```
+
+**Database CLI Commands:**
+```bash
+# List active watchlist entries
+python orchestrator.py watchlist-db list
+
+# Check for triggered/expired entries
+python orchestrator.py watchlist-db check
+
+# Process expired entries (archive them)
+python orchestrator.py watchlist-db process-expired
+```
+
+**Table Fields:**
+| Field | Purpose |
+|-------|---------|
+| `entry_trigger` | Condition to fire (price, event) |
+| `invalidation` | Condition to remove |
+| `expires_at` | Max 30-day expiration |
+| `status` | active, triggered, invalidated, expired |
+| `source_analysis` | Link to triggering analysis |
+
+**Two-Layer Approach:**
+1. **YAML files** in `knowledge/watchlist/` - Source of truth
+2. **Database table** `nexus.watchlist` - For automated daily checks
+
+Both are valid; use database for automation, YAML for full context.
+
 ## Arguments
 
 - `$ARGUMENTS`: Ticker symbol and action (add/review/remove), or "review all"

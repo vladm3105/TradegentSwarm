@@ -181,6 +181,41 @@ Parameters:
 - Adds patterns/rules to `tradegent_knowledge/knowledge/learnings/`
 - Informs future **earnings-analysis** and **stock-analysis**
 
+## Workflow Automation (Auto-Triggering)
+
+Post-trade reviews are automatically queued when trades are closed via CLI:
+
+```
+trade close NVDA → nexus.trades updated → task_queue entry → process-queue
+                                                                    │
+                                                                    ▼
+                                                         post-trade-review runs
+```
+
+**Database Tracking:**
+| Table | Field | Purpose |
+|-------|-------|---------|
+| `nexus.trades` | `review_status` | pending → completed |
+| `nexus.trades` | `review_path` | Path to review file |
+| `nexus.task_queue` | `task_type` | `post_trade_review` |
+
+**CLI Commands:**
+```bash
+# Process all queued reviews
+python orchestrator.py process-queue
+
+# Process only pending trade reviews
+python orchestrator.py trade pending-reviews
+
+# Check queue status
+python orchestrator.py queue-status
+```
+
+**When Review Completes:**
+1. `nexus.trades.review_status` → `completed`
+2. `nexus.trades.review_path` → path to review file
+3. Review indexed to RAG + Graph
+
 ## Arguments
 
 - `$ARGUMENTS`: Ticker symbol of closed trade

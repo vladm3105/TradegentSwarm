@@ -980,3 +980,232 @@ class NexusDB:
                 params,
             )
             return [dict(row) for row in cur.fetchall()]
+
+    # ─── Watchlist Methods ────────────────────────────────────────────────
+
+    def get_watchlist_entry(self, ticker: str) -> dict | None:
+        """Get active watchlist entry for ticker."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM nexus.watchlist WHERE ticker = %s AND status = 'active' ORDER BY created_at DESC LIMIT 1",
+                [ticker.upper()]
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def get_active_watchlist(self) -> list[dict]:
+        """Get all active watchlist entries."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM nexus.watchlist WHERE status = 'active' ORDER BY priority DESC, created_at DESC"
+            )
+            return [dict(r) for r in cur.fetchall()]
+
+    def add_watchlist_entry(self, entry: dict) -> int:
+        """Add new watchlist entry. Returns entry ID."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO nexus.watchlist (ticker, entry_trigger, entry_price,
+                    invalidation, invalidation_price, expires_at, priority, source, source_analysis, notes)
+                VALUES (%(ticker)s, %(entry_trigger)s, %(entry_price)s,
+                    %(invalidation)s, %(invalidation_price)s, %(expires_at)s,
+                    %(priority)s, %(source)s, %(source_analysis)s, %(notes)s)
+                RETURNING id
+            """, {
+                "ticker": entry.get("ticker", "").upper(),
+                "entry_trigger": entry.get("entry_trigger"),
+                "entry_price": entry.get("entry_price"),
+                "invalidation": entry.get("invalidation"),
+                "invalidation_price": entry.get("invalidation_price"),
+                "expires_at": entry.get("expires_at"),
+                "priority": entry.get("priority", "medium"),
+                "source": entry.get("source"),
+                "source_analysis": entry.get("source_analysis"),
+                "notes": entry.get("notes"),
+            })
+            entry_id = cur.fetchone()["id"]
+        self.conn.commit()
+        return entry_id
+
+    def update_watchlist_status(self, ticker: str, status: str) -> None:
+        """Update watchlist entry status."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "UPDATE nexus.watchlist SET status = %s, updated_at = now() WHERE ticker = %s AND status = 'active'",
+                [status, ticker.upper()]
+            )
+        self.conn.commit()
+
+    def update_watchlist_by_id(self, entry_id: int, status: str) -> None:
+        """Update watchlist entry status by ID."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "UPDATE nexus.watchlist SET status = %s, updated_at = now() WHERE id = %s",
+                [status, entry_id]
+            )
+        self.conn.commit()
+
+    def get_expired_watchlist(self) -> list[dict]:
+        """Get watchlist entries that have expired."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM nexus.watchlist WHERE status = 'active' AND expires_at < now()"
+            )
+            return [dict(r) for r in cur.fetchall()]
+
+    # ─── Trades Methods ────────────────────────────────────────────────────
+
+    def add_trade(self, trade: dict) -> int:
+        """Add new trade entry. Returns trade ID."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO nexus.trades (ticker, entry_date, entry_price, entry_size,
+                    entry_type, current_size, thesis, source_analysis)
+                VALUES (%(ticker)s, %(entry_date)s, %(entry_price)s, %(entry_size)s,
+                    %(entry_type)s, %(entry_size)s, %(thesis)s, %(source_analysis)s)
+                RETURNING id
+            """, {
+                "ticker": trade.get("ticker", "").upper(),
+                "entry_date": trade.get("entry_date", datetime.now()),
+                "entry_price": trade.get("entry_price"),
+                "entry_size": trade.get("entry_size"),
+                "entry_type": trade.get("entry_type", "stock"),
+                "thesis": trade.get("thesis"),
+                "source_analysis": trade.get("source_analysis"),
+            })
+            trade_id = cur.fetchone()["id"]
+        self.conn.commit()
+        return trade_id
+
+    def close_trade(self, trade_id: int, exit_price: float, exit_reason: str) -> None:
+        """Close a trade and calculate P&L."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                UPDATE nexus.trades SET
+                    status = 'closed',
+                    exit_date = now(),
+                    exit_price = %(exit_price)s,
+                    exit_reason = %(exit_reason)s,
+                    pnl_dollars = (%(exit_price)s - entry_price) * COALESCE(entry_size, 1),
+                    pnl_pct = ((%(exit_price)s - entry_price) / NULLIF(entry_price, 0)) * 100,
+                    updated_at = now()
+                WHERE id = %(trade_id)s
+            """, {"exit_price": exit_price, "exit_reason": exit_reason, "trade_id": trade_id})
+        self.conn.commit()
+
+    def get_trade(self, trade_id: int) -> dict | None:
+        """Get trade by ID."""
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT * FROM nexus.trades WHERE id = %s", [trade_id])
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def get_trades_by_status(self, status: str = "open", limit: int = 20) -> list[dict]:
+        """Get trades by status."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM nexus.trades WHERE status = %s ORDER BY created_at DESC LIMIT %s",
+                [status, limit]
+            )
+            return [dict(r) for r in cur.fetchall()]
+
+    def get_trades_pending_review(self) -> list[dict]:
+        """Get closed trades that haven't been reviewed."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM nexus.trades WHERE status = 'closed' AND review_status = 'pending'"
+            )
+            return [dict(r) for r in cur.fetchall()]
+
+    def mark_trade_reviewed(self, trade_id: int, review_path: str) -> None:
+        """Mark trade as reviewed."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "UPDATE nexus.trades SET review_status = 'completed', review_path = %s, updated_at = now() WHERE id = %s",
+                [review_path, trade_id]
+            )
+        self.conn.commit()
+
+    # ─── Task Queue Methods ────────────────────────────────────────────────
+
+    def queue_analysis(self, ticker: str, analysis_type: str, priority: int = 5) -> int | None:
+        """Queue an analysis task. Returns task ID or None if cooldown active."""
+        cooldown_key = f"analysis:{ticker.upper()}:{analysis_type}"
+        with self.conn.cursor() as cur:
+            # Check cooldown (4 hour default)
+            cur.execute("""
+                SELECT id FROM nexus.task_queue
+                WHERE cooldown_key = %s AND cooldown_until > now()
+            """, [cooldown_key])
+            if cur.fetchone():
+                return None  # Cooldown active
+
+            # Get cooldown hours from settings
+            cooldown_hours = self.get_setting("analysis_cooldown_hours", 4)
+            if isinstance(cooldown_hours, str):
+                cooldown_hours = int(cooldown_hours)
+
+            cur.execute("""
+                INSERT INTO nexus.task_queue (task_type, ticker, analysis_type, priority, cooldown_key, cooldown_until)
+                VALUES ('analysis', %s, %s, %s, %s, now() + interval '%s hours')
+                RETURNING id
+            """, [ticker.upper(), analysis_type, priority, cooldown_key, cooldown_hours])
+            task_id = cur.fetchone()["id"]
+        self.conn.commit()
+        return task_id
+
+    def queue_task(self, task_type: str, ticker: str | None, prompt: str, priority: int = 5) -> int:
+        """Queue a generic task."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO nexus.task_queue (task_type, ticker, prompt, priority)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id
+            """, [task_type, ticker.upper() if ticker else None, prompt, priority])
+            task_id = cur.fetchone()["id"]
+        self.conn.commit()
+        return task_id
+
+    def get_pending_tasks(self, limit: int = 10) -> list[dict]:
+        """Get pending tasks ordered by priority."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM nexus.task_queue
+                WHERE status = 'pending'
+                ORDER BY priority DESC, created_at ASC
+                LIMIT %s
+            """, [limit])
+            return [dict(r) for r in cur.fetchall()]
+
+    def mark_task_started(self, task_id: int) -> None:
+        """Mark task as running."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "UPDATE nexus.task_queue SET status = 'running', started_at = now() WHERE id = %s",
+                [task_id]
+            )
+        self.conn.commit()
+
+    def mark_task_completed(self, task_id: int, error: str | None = None) -> None:
+        """Mark task as completed or failed."""
+        status = 'failed' if error else 'completed'
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                UPDATE nexus.task_queue SET
+                    status = %s,
+                    completed_at = now(),
+                    error_message = %s
+                WHERE id = %s
+            """, [status, error, task_id])
+        self.conn.commit()
+
+    def get_task_queue_stats(self) -> dict:
+        """Get task queue statistics."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT status, COUNT(*) as count
+                FROM nexus.task_queue
+                GROUP BY status
+            """)
+            rows = cur.fetchall()
+        return {r["status"]: r["count"] for r in rows}

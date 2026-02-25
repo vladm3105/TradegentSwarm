@@ -270,6 +270,111 @@ def generate_svg(data: dict, source_file: str = '') -> str:
         first_sentence = str(comparison_to_past).split('.')[0]
         comparison_summary = first_sentence[:55] if len(first_sentence) > 55 else first_sentence
 
+    # === NEW: Additional data for gap filling ===
+
+    # News Age Check
+    news_age = data.get('news_age_check', {})
+    news_items = news_age.get('items', [])[:3]
+    fresh_catalyst = news_age.get('fresh_catalyst_exists', False)
+    stale_news_risk = news_age.get('stale_news_risk', False)
+
+    # Data Quality
+    data_quality = data.get('data_quality', {})
+    limitations = data_quality.get('limitations', [])[:2]
+
+    # Post Mortem
+    post_mortem = data.get('post_mortem', {})
+    prior_analysis = post_mortem.get('prior_analysis', {})
+    prior_rec = prior_analysis.get('recommendation', '')
+    prior_confidence = prior_analysis.get('confidence', 0)
+
+    # Catalyst
+    catalyst = data.get('catalyst', {})
+    catalyst_type = catalyst.get('type', '')
+    catalyst_date = catalyst.get('date', '')
+    catalyst_description = catalyst.get('description', '')[:50]
+
+    # Market Environment
+    market_env = data.get('market_environment', {})
+    market_trend = market_env.get('trend', '')
+    sector_trend = market_env.get('sector_trend', '')
+
+    # Fundamentals - growth and margins
+    growth = fundamentals.get('growth', {})
+    rev_growth = growth.get('revenue_growth_yoy', 'N/A')
+    eps_growth = growth.get('eps_growth_yoy', 'N/A')
+    profitability = fundamentals.get('profitability', {})
+    gross_margin = profitability.get('gross_margin', 'N/A')
+    operating_margin = profitability.get('operating_margin', 'N/A')
+
+    # Sentiment Details
+    sentiment = data.get('sentiment', {})
+    analyst_ratings = sentiment.get('analyst_ratings', {})
+    buy_count = analyst_ratings.get('buy', 0)
+    hold_count = analyst_ratings.get('hold', 0)
+    sell_count = analyst_ratings.get('sell', 0)
+    short_interest = sentiment.get('short_interest', {})
+    short_pct = short_interest.get('pct_float', 0)
+    options_pos = sentiment.get('options_positioning', {})
+    put_call_ratio = options_pos.get('put_call_ratio', 'N/A')
+    unusual_activity = options_pos.get('unusual_activity', '')
+
+    # Trade Plan
+    trade_plan = data.get('trade_plan', {})
+    has_trade = trade_plan.get('trade', False)
+    entry_config = trade_plan.get('entry', {})
+    entry_price = entry_config.get('price', 0)
+    entry_size_pct = entry_config.get('size_pct_portfolio', 0)
+    stop_config = trade_plan.get('stop_loss', {})
+    stop_price = stop_config.get('price', 0)
+    targets_config = trade_plan.get('targets', {})
+    target_1 = targets_config.get('target_1', 0)
+    target_2 = targets_config.get('target_2', 0)
+
+    # Options Strategy
+    options_strategy = data.get('options_strategy', {})
+    opt_structure = options_strategy.get('structure', '')
+    opt_strikes = options_strategy.get('strikes', [])
+    opt_expiry = options_strategy.get('expiry', '')
+    opt_max_risk = options_strategy.get('max_risk', 0)
+
+    # Alert Levels
+    alert_levels = data.get('alert_levels', {})
+    price_alerts = alert_levels.get('price_alerts', [])[:3]
+    event_alerts = alert_levels.get('event_alerts', [])[:2]
+
+    # Falsification
+    falsification = data.get('falsification', {})
+    thesis_invalid_if = falsification.get('thesis_invalid_if', '')[:100]
+    bull_wrong_if = falsification.get('bull_thesis_wrong_if', [])[:2]
+
+    # Thesis Reversal
+    thesis_reversal = data.get('thesis_reversal', {})
+    flip_conditions = thesis_reversal.get('conditions_to_flip', [])[:2]
+    what_changes_mind = thesis_reversal.get('what_would_change_mind', '')[:80]
+
+    # Scoring
+    scoring = data.get('scoring', {})
+    overall_score = scoring.get('overall_score', 0)
+
+    # Grade
+    grade = data.get('grade', {})
+    letter_grade = grade.get('grade', '') if isinstance(grade, dict) else str(grade)
+
+    # Rationale
+    rationale = data.get('rationale', summary.get('narrative', ''))
+    if isinstance(rationale, str):
+        rationale_text = rationale[:200]
+    else:
+        rationale_text = ''
+
+    # Watchlist Trigger
+    watchlist_trigger = data.get('watchlist_trigger', '')
+
+    # Action Items
+    action_items = data.get('action_items', {})
+    immediate_actions = action_items.get('immediate', [])[:3]
+
     # Recommendation colors
     rec_bg, rec_text = get_recommendation_color(recommendation)
 
@@ -305,7 +410,7 @@ def generate_svg(data: dict, source_file: str = '') -> str:
   Document ID: {escape_xml(doc_id)}
   Generated: {escape_xml(analysis_date)}
 -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1020" font-family="Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1400" font-family="Arial, sans-serif">
   <defs>
     <linearGradient id="headerGrad" x1="0%" y1="0%" x2="100%" y2="0%">
       <stop offset="0%" style="stop-color:#1a1a2e"/>
@@ -325,7 +430,7 @@ def generate_svg(data: dict, source_file: str = '') -> str:
   </defs>
 
   <!-- Background -->
-  <rect width="1200" height="1020" fill="#f8f9fa"/>
+  <rect width="1200" height="1400" fill="#f8f9fa"/>
 
   <!-- Header -->
   <rect x="0" y="0" width="1200" height="100" fill="url(#headerGrad)"/>
@@ -637,10 +742,195 @@ def generate_svg(data: dict, source_file: str = '') -> str:
   <text x="840" y="953" font-size="11" fill="#868e96">{escape_xml(comp_lines[1]) if len(comp_lines) > 1 else ''}</text>
   <text x="840" y="971" font-size="10" fill="#868e96">{escape_xml(comp_lines[2]) if len(comp_lines) > 2 else ''}</text>
 
+  <!-- ROW 6: News & Data, Fundamentals, Sentiment -->
+
+  <!-- News & Data Quality -->
+  <rect x="40" y="1000" width="380" height="100" rx="10" fill="#fff" filter="url(#shadow)"/>
+  <text x="60" y="1030" font-size="14" font-weight="bold" fill="#212529">News &amp; Data Quality</text>
+  <circle cx="350" cy="1025" r="8" fill="{'#51cf66' if fresh_catalyst else '#ffd43b'}"/>
+  <text x="370" y="1030" font-size="11" fill="{'#51cf66' if fresh_catalyst else '#ffd43b'}">{'Fresh' if fresh_catalyst else 'Stale'}</text>
+'''
+
+    # Add news items
+    y_news = 1055
+    for item in news_items[:3]:
+        if isinstance(item, dict):
+            headline = item.get('headline', item.get('title', ''))[:40]
+            age = item.get('age_hours', item.get('age', 'N/A'))
+        else:
+            headline = str(item)[:40]
+            age = 'N/A'
+        svg += f'''  <text x="60" y="{y_news}" font-size="10" fill="#495057">• {escape_xml(headline)} ({age}h)</text>
+'''
+        y_news += 16
+
+    # Add limitations
+    if limitations:
+        svg += f'''  <text x="60" y="1090" font-size="10" fill="#868e96">Limits: {escape_xml(str(limitations[0])[:50])}</text>
+'''
+
+    svg += f'''
+  <!-- Fundamentals Growth -->
+  <rect x="440" y="1000" width="360" height="100" rx="10" fill="#fff" filter="url(#shadow)"/>
+  <text x="460" y="1030" font-size="14" font-weight="bold" fill="#212529">Fundamentals</text>
+
+  <text x="460" y="1055" font-size="12" fill="#868e96">Revenue Growth YoY</text>
+  <text x="620" y="1055" font-size="12" font-weight="bold" fill="{'#51cf66' if isinstance(rev_growth, (int, float)) and rev_growth > 0 else '#ff6b6b'}">{escape_xml(str(rev_growth))}{'%' if isinstance(rev_growth, (int, float)) else ''}</text>
+
+  <text x="460" y="1075" font-size="12" fill="#868e96">EPS Growth YoY</text>
+  <text x="620" y="1075" font-size="12" font-weight="bold" fill="{'#51cf66' if isinstance(eps_growth, (int, float)) and eps_growth > 0 else '#ff6b6b'}">{escape_xml(str(eps_growth))}{'%' if isinstance(eps_growth, (int, float)) else ''}</text>
+
+  <text x="460" y="1095" font-size="12" fill="#868e96">Gross Margin</text>
+  <text x="620" y="1095" font-size="12" fill="#212529">{escape_xml(str(gross_margin))}{'%' if isinstance(gross_margin, (int, float)) else ''}</text>
+
+  <text x="700" y="1055" font-size="12" fill="#868e96">Op Margin</text>
+  <text x="760" y="1055" font-size="12" fill="#212529">{escape_xml(str(operating_margin))}{'%' if isinstance(operating_margin, (int, float)) else ''}</text>
+
+  <!-- Sentiment Details -->
+  <rect x="820" y="1000" width="340" height="100" rx="10" fill="#fff" filter="url(#shadow)"/>
+  <text x="840" y="1030" font-size="14" font-weight="bold" fill="#212529">Sentiment Details</text>
+
+  <text x="840" y="1055" font-size="11" fill="#868e96">Analyst Ratings:</text>
+  <text x="925" y="1055" font-size="11" fill="#51cf66">{buy_count}B</text>
+  <text x="955" y="1055" font-size="11" fill="#ffd43b">{hold_count}H</text>
+  <text x="985" y="1055" font-size="11" fill="#ff6b6b">{sell_count}S</text>
+
+  <text x="840" y="1075" font-size="11" fill="#868e96">Short Interest:</text>
+  <text x="925" y="1075" font-size="11" fill="{'#ff6b6b' if short_pct > 10 else '#495057'}">{short_pct:.1f}% of float</text>
+
+  <text x="840" y="1095" font-size="11" fill="#868e96">P/C Ratio:</text>
+  <text x="905" y="1095" font-size="11" fill="#495057">{escape_xml(str(put_call_ratio))}</text>
+  <text x="1000" y="1095" font-size="10" fill="#228be6">{escape_xml(str(unusual_activity)[:20])}</text>
+
+  <!-- ROW 7: Trade Plan, Alerts, Falsification -->
+
+  <!-- Trade Plan or Pass Reasoning -->
+  <rect x="40" y="1120" width="380" height="100" rx="10" fill="#fff" filter="url(#shadow)"/>
+  <text x="60" y="1150" font-size="14" font-weight="bold" fill="#212529">{'Trade Plan' if has_trade else 'No Trade - Pass'}</text>
+'''
+
+    if has_trade:
+        svg += f'''  <text x="60" y="1175" font-size="12" fill="#868e96">Entry:</text>
+  <text x="110" y="1175" font-size="12" font-weight="bold" fill="#212529">${entry_price:.2f} ({entry_size_pct:.1f}% port)</text>
+
+  <text x="60" y="1195" font-size="12" fill="#868e96">Stop:</text>
+  <text x="110" y="1195" font-size="12" font-weight="bold" fill="#ff6b6b">${stop_price:.2f}</text>
+
+  <text x="200" y="1195" font-size="12" fill="#868e96">Targets:</text>
+  <text x="260" y="1195" font-size="12" font-weight="bold" fill="#51cf66">${target_1:.0f} / ${target_2:.0f}</text>
+
+  <text x="60" y="1212" font-size="10" fill="#228be6">{escape_xml(str(opt_structure)[:40]) if opt_structure else 'Stock position'}</text>
+'''
+    else:
+        # Show why passing
+        pass_reasons = []
+        if not ev_check:
+            pass_reasons.append(f"EV {ev_actual:.1f}% below threshold")
+        if not confidence_check:
+            pass_reasons.append(f"Confidence {confidence_actual}% too low")
+        if not rr_check:
+            pass_reasons.append(f"R:R {rr_actual} insufficient")
+        if not edge_check:
+            pass_reasons.append("Edge already priced in")
+        for i, reason in enumerate(pass_reasons[:3]):
+            svg += f'''  <text x="60" y="{1175 + i*20}" font-size="11" fill="#ff6b6b">• {escape_xml(reason)}</text>
+'''
+
+    svg += f'''
+  <!-- Alert Levels -->
+  <rect x="440" y="1120" width="360" height="100" rx="10" fill="#fff" filter="url(#shadow)"/>
+  <text x="460" y="1150" font-size="14" font-weight="bold" fill="#212529">Alert Levels</text>
+'''
+
+    # Price alerts
+    y_alert = 1175
+    for alert in price_alerts[:3]:
+        if isinstance(alert, dict):
+            price = alert.get('price', alert.get('level', 0))
+            action = alert.get('action', alert.get('description', ''))[:25]
+        else:
+            price = alert
+            action = ''
+        svg += f'''  <text x="460" y="{y_alert}" font-size="11" fill="#495057">${price:.2f} → {escape_xml(action)}</text>
+'''
+        y_alert += 18
+
+    # Event alerts
+    for event in event_alerts[:2]:
+        if isinstance(event, dict):
+            desc = event.get('event', event.get('description', ''))[:35]
+        else:
+            desc = str(event)[:35]
+        svg += f'''  <text x="460" y="{y_alert}" font-size="10" fill="#228be6">📅 {escape_xml(desc)}</text>
+'''
+        y_alert += 16
+
+    svg += f'''
+  <!-- Falsification Criteria -->
+  <rect x="820" y="1120" width="340" height="100" rx="10" fill="#fff" filter="url(#shadow)"/>
+  <text x="840" y="1150" font-size="14" font-weight="bold" fill="#212529">Falsification</text>
+  <text x="840" y="1175" font-size="11" fill="#495057">Thesis invalid if:</text>
+'''
+
+    # Falsification details
+    if thesis_invalid_if:
+        # Word wrap the invalidation condition
+        words = thesis_invalid_if.split()
+        lines_f = []
+        curr = []
+        for w in words:
+            curr.append(w)
+            if len(' '.join(curr)) > 38:
+                lines_f.append(' '.join(curr[:-1]))
+                curr = [w]
+        if curr:
+            lines_f.append(' '.join(curr))
+
+        y_f = 1190
+        for line in lines_f[:2]:
+            svg += f'''  <text x="840" y="{y_f}" font-size="10" fill="#ff6b6b">{escape_xml(line)}</text>
+'''
+            y_f += 14
+
+    for i, cond in enumerate(bull_wrong_if[:2]):
+        svg += f'''  <text x="840" y="{1190 + 14 * (2 + i)}" font-size="10" fill="#868e96">• {escape_xml(str(cond)[:38])}</text>
+'''
+
+    svg += f'''
+  <!-- ROW 8: Rationale Text Box -->
+  <rect x="40" y="1240" width="1120" height="120" rx="10" fill="#fff" filter="url(#shadow)"/>
+  <text x="60" y="1270" font-size="14" font-weight="bold" fill="#212529">Rationale</text>
+'''
+
+    # Word wrap rationale into multiple lines
+    rationale_full = str(rationale_text).replace('\n', ' ').strip()
+    r_words = rationale_full.split()
+    r_lines = []
+    r_curr = []
+    for w in r_words:
+        r_curr.append(w)
+        if len(' '.join(r_curr)) > 120:
+            r_lines.append(' '.join(r_curr[:-1]))
+            r_curr = [w]
+    if r_curr:
+        r_lines.append(' '.join(r_curr))
+
+    y_rat = 1295
+    for line in r_lines[:4]:
+        svg += f'''  <text x="60" y="{y_rat}" font-size="11" fill="#495057">{escape_xml(line)}</text>
+'''
+        y_rat += 18
+
+    # Add watchlist trigger if present
+    if watchlist_trigger:
+        svg += f'''  <text x="60" y="1350" font-size="11" fill="#228be6">Watchlist Trigger: {escape_xml(str(watchlist_trigger)[:80])}</text>
+'''
+
+    svg += f'''
   <!-- Footer -->
-  <rect x="0" y="1000" width="1200" height="20" fill="#1a1a2e"/>
-  <text x="40" y="1014" font-size="9" fill="#868e96">Source: {escape_xml(source_file.split('/')[-1]) if source_file else doc_id}</text>
-  <text x="1160" y="1014" font-size="9" fill="#868e96" text-anchor="end">Tradegent v{version} | {escape_xml(analysis_date)}</text>
+  <rect x="0" y="1380" width="1200" height="20" fill="#1a1a2e"/>
+  <text x="40" y="1394" font-size="9" fill="#868e96">Source: {escape_xml(source_file.split('/')[-1]) if source_file else doc_id}</text>
+  <text x="1160" y="1394" font-size="9" fill="#868e96" text-anchor="end">Tradegent v{version} | {escape_xml(analysis_date)}</text>
 </svg>'''
 
     return svg

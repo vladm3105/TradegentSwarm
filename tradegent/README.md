@@ -311,6 +311,11 @@ Key-value pairs read by the service on every tick. Changes take effect immediate
 | feature_flags | **dry_run_mode** | **true** | **Blocks all Claude Code calls** |
 | feature_flags | auto_execute_enabled | false | Global Stage 2 kill switch |
 | feature_flags | scanners_enabled | true | Global scanner toggle |
+| feature_flags | auto_viz_enabled | true | Auto-generate SVG after analysis |
+| feature_flags | auto_watchlist_chain | true | Auto-add WATCH recommendations to watchlist |
+| feature_flags | scanner_auto_route | true | Auto-route scanner results to analysis/watchlist |
+| feature_flags | task_queue_enabled | true | Enable async task queue processing |
+| rate_limits | analysis_cooldown_hours | 4 | Hours between re-analyzing same ticker |
 
 **Important:** `dry_run_mode` starts as `true`. The service will log what it *would* do but won't call Claude Code until you explicitly disable it.
 
@@ -377,6 +382,63 @@ Singleton row (id=1) tracking the service health.
 | today_analyses | Counter (resets at midnight) |
 | today_executions | Counter (resets at midnight) |
 | today_errors | Counter (resets at midnight) |
+
+### nexus.trades — Trade Journal
+
+Tracks executed positions for P&L and post-trade review.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| ticker | VARCHAR(10) | Stock symbol |
+| entry_date | TIMESTAMPTZ | When position was opened |
+| entry_price | DECIMAL | Entry price |
+| entry_size | DECIMAL | Number of shares/contracts |
+| entry_type | VARCHAR | stock, call, put, spread |
+| status | VARCHAR | open, closed, partial |
+| exit_date | TIMESTAMPTZ | When position was closed |
+| exit_price | DECIMAL | Exit price |
+| exit_reason | VARCHAR | target, stop, manual, expiry |
+| pnl_dollars | DECIMAL | P&L in dollars (auto-calculated) |
+| pnl_pct | DECIMAL | P&L as percentage (auto-calculated) |
+| thesis | TEXT | Trade thesis |
+| source_analysis | VARCHAR | Path to source analysis file |
+| review_status | VARCHAR | pending, completed |
+| review_path | VARCHAR | Path to review file |
+
+### nexus.watchlist — DB-Backed Watchlist
+
+Persistent watchlist with entry triggers and expiration.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| ticker | VARCHAR(10) | Stock symbol |
+| entry_trigger | TEXT | Condition for entry (e.g., "Price below $150") |
+| entry_price | DECIMAL | Target entry price |
+| invalidation | TEXT | When to abandon the watch |
+| invalidation_price | DECIMAL | Price that invalidates thesis |
+| expires_at | TIMESTAMPTZ | Max time to hold watch |
+| priority | VARCHAR | high, medium, low |
+| status | VARCHAR | active, triggered, invalidated, expired |
+| source | VARCHAR | analysis, scanner:name |
+| source_analysis | VARCHAR | Path to source analysis |
+
+### nexus.task_queue — Async Task Processing
+
+Queue for background task processing with cooldown support.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| task_type | VARCHAR | analysis, post_trade_review, scan |
+| ticker | VARCHAR | Stock symbol |
+| analysis_type | VARCHAR | stock, earnings |
+| prompt | TEXT | Task prompt/instructions |
+| priority | INT | Processing priority (1-10) |
+| status | VARCHAR | pending, running, completed, failed |
+| cooldown_key | VARCHAR | Prevents duplicate runs |
+| cooldown_until | TIMESTAMPTZ | When cooldown expires |
+| started_at | TIMESTAMPTZ | When task started |
+| completed_at | TIMESTAMPTZ | When task finished |
+| error_message | TEXT | Error details if failed |
 
 ### Views
 
@@ -560,6 +622,51 @@ python3 orchestrator.py run-due
 python3 orchestrator.py earnings-check
 ```
 
+### Trade Management
+
+```bash
+# Add a new trade
+python3 orchestrator.py trade add NVDA --price 450.00 --size 100 --type stock \
+    --thesis "AI momentum play" --analysis "analyses/NVDA_stock_20260224.md"
+
+# Close a trade
+python3 orchestrator.py trade close 1 --price 475.00 --reason target
+# Auto-chains to post-trade review task queue
+
+# List trades
+python3 orchestrator.py trade list                    # Open trades (default)
+python3 orchestrator.py trade list --status closed    # Closed trades
+python3 orchestrator.py trade list --status all       # All trades
+
+# View pending reviews
+python3 orchestrator.py trade pending-reviews
+```
+
+### Watchlist DB Commands
+
+```bash
+# List active watchlist entries
+python3 orchestrator.py watchlist-db list
+python3 orchestrator.py watchlist-db list --status all   # Include inactive
+
+# Check for expirations and triggers
+python3 orchestrator.py watchlist-db check
+
+# Process expired entries
+python3 orchestrator.py watchlist-db process-expired
+```
+
+### Task Queue
+
+```bash
+# Process pending tasks
+python3 orchestrator.py process-queue              # Up to 5 tasks (default)
+python3 orchestrator.py process-queue --max 10     # Up to 10 tasks
+
+# View queue status
+python3 orchestrator.py queue-status
+```
+
 ### System
 
 ```bash
@@ -584,6 +691,86 @@ python3 service.py init
 
 # Show health status
 python3 service.py health
+```
+
+---
+
+## Workflow Automation
+
+The platform automates common trading workflows through automatic chaining and task queuing.
+
+### Post-Analysis Workflow
+
+After each analysis completes, the following steps run automatically:
+
+1. **Auto-Visualization** — Generates an SVG dashboard from the analysis YAML
+2. **Chain Data Extraction** — Extracts recommendation, EV, entry price from the analysis
+3. **Watchlist Chaining** — If recommendation is WATCH, adds to DB watchlist
+4. **Gate Logging** — Logs whether the Do Nothing gate passed
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│  Analysis   │────▶│  Generate   │────▶│  Extract    │────▶│  Chain to   │
+│  Completes  │     │  SVG        │     │  Chain Data │     │  Watchlist  │
+└─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
+```
+
+### Scanner Routing
+
+Scanner results are automatically routed based on score thresholds:
+
+| Score | Action |
+|-------|--------|
+| ≥ 7.5 | Queue full analysis (high priority) |
+| 5.5 - 7.4 | Add to watchlist (14-day expiration) |
+| < 5.5 | Skip |
+
+```bash
+# Scanner routing is automatic when scanner_auto_route=true
+python3 orchestrator.py scan
+# High-scoring results appear in: python3 orchestrator.py queue-status
+```
+
+### Trade → Review Chain
+
+When a trade is closed, a post-trade review is automatically queued:
+
+```bash
+python3 orchestrator.py trade close 1 --price 475.00 --reason target
+# → Queues post-trade review task
+# → Process with: python3 orchestrator.py process-queue
+```
+
+### T-7/T-2/T+1 Earnings Schedules
+
+Pre-configured earnings analysis schedules:
+
+| Schedule | Timing | Analysis Type |
+|----------|--------|---------------|
+| T-7 | 7 days before earnings | Full earnings analysis |
+| T-2 | 2 days before earnings | Updated analysis |
+| T+1 | 1 day after earnings | Post-earnings review |
+
+```bash
+# Setup earnings schedules for all stocks with earnings dates
+psql -d lightrag -f scripts/setup_earnings_schedules.sql
+```
+
+### Controlling Automation
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `auto_viz_enabled` | true | Auto-generate SVG visualizations |
+| `auto_watchlist_chain` | true | Auto-add WATCH recommendations |
+| `scanner_auto_route` | true | Auto-route scanner results |
+| `task_queue_enabled` | true | Enable background task processing |
+| `analysis_cooldown_hours` | 4 | Prevent re-analyzing same ticker |
+
+```bash
+# Disable all automation
+python3 orchestrator.py settings set auto_viz_enabled false
+python3 orchestrator.py settings set auto_watchlist_chain false
+python3 orchestrator.py settings set scanner_auto_route false
 ```
 
 ---

@@ -220,7 +220,7 @@ def generate_combined_svg(stock_data: dict, earnings_data: dict,
     svg_parts = []
 
     # ─── HEADER ────────────────────────────────────────────────────────────────
-    svg_parts.append(f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1400" width="1200" height="1400">
+    svg_parts.append(f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1580" width="1200" height="1580">
   <defs>
     <style>
       .title {{ font: bold 24px system-ui, sans-serif; fill: #212529; }}
@@ -238,7 +238,7 @@ def generate_combined_svg(stock_data: dict, earnings_data: dict,
   </defs>
 
   <!-- Background -->
-  <rect width="1200" height="1400" fill="#f8f9fa" rx="8"/>
+  <rect width="1200" height="1580" fill="#f8f9fa" rx="8"/>
 
   <!-- Header -->
   <rect x="20" y="20" width="1160" height="80" fill="#fff" rx="8" filter="url(#shadow)"/>
@@ -606,35 +606,108 @@ def generate_combined_svg(stock_data: dict, earnings_data: dict,
 
     svg_parts.append(f'''
   <!-- ROW 7: ACTION ITEMS -->
-  <rect x="20" y="1160" width="1160" height="100" fill="#fff" rx="8" filter="url(#shadow)"/>
+  <rect x="20" y="1160" width="1160" height="80" fill="#fff" rx="8" filter="url(#shadow)"/>
   <text x="40" y="1185" class="section-title">IMMEDIATE ACTION ITEMS</text>
 
-  <text x="40" y="1210" class="small" font-weight="bold">Stock:</text>
-  <text x="640" y="1210" class="small" font-weight="bold">Earnings:</text>
+  <text x="40" y="1205" class="small" font-weight="bold">Stock:</text>
+  <text x="640" y="1205" class="small" font-weight="bold">Earnings:</text>
 ''')
 
-    action_y = 1225
-    for i, action in enumerate(s_actions):
-        svg_parts.append(f'''  <text x="40" y="{action_y + i*15}" class="small">• {escape_xml(str(action)[:70])}</text>''')
+    action_y = 1220
+    for i, action in enumerate(s_actions[:2]):
+        svg_parts.append(f'''  <text x="40" y="{action_y + i*13}" class="small">• {escape_xml(str(action)[:70])}</text>''')
 
-    for i, action in enumerate(e_actions):
-        svg_parts.append(f'''  <text x="640" y="{action_y + i*15}" class="small">• {escape_xml(str(action)[:70])}</text>''')
+    for i, action in enumerate(e_actions[:2]):
+        svg_parts.append(f'''  <text x="640" y="{action_y + i*13}" class="small">• {escape_xml(str(action)[:70])}</text>''')
+
+    # ─── ROW 8: TRADE PLAN & FALSIFICATION ──────────────────────────────────────
+    s_trade_plan = stock_data.get('trade_plan', {})
+    s_has_trade = s_trade_plan.get('trade', False)
+    s_entry = s_trade_plan.get('entry', {})
+    s_stop = s_trade_plan.get('stop_loss', {})
+    s_targets = s_trade_plan.get('targets', {})
+
+    e_trade_plan = earnings_data.get('trade_plan', {})
+    e_has_trade = e_trade_plan.get('trade', False)
+    e_entry = e_trade_plan.get('entry', {})
+    e_stop = e_trade_plan.get('stop_loss', {})
+
+    s_falsification = stock_data.get('falsification', {})
+    s_thesis_invalid = s_falsification.get('thesis_invalid_if', '')[:80]
+
+    e_falsification = earnings_data.get('falsification', {})
+    e_thesis_invalid = e_falsification.get('thesis_invalid_if', '')[:80]
+
+    svg_parts.append(f'''
+  <!-- ROW 8: TRADE PLAN & FALSIFICATION -->
+  <rect x="20" y="1260" width="570" height="100" fill="#fff" rx="8" filter="url(#shadow)"/>
+  <text x="40" y="1285" class="section-title">{'STOCK TRADE PLAN' if s_has_trade else 'STOCK: NO TRADE'}</text>
+''')
+
+    if s_has_trade:
+        svg_parts.append(f'''
+  <text x="40" y="1310" class="label">Entry: ${s_entry.get('price', 0):.2f}</text>
+  <text x="150" y="1310" class="label">Stop: ${s_stop.get('price', 0):.2f}</text>
+  <text x="260" y="1310" class="label">Target: ${s_targets.get('target_1', 0):.0f}</text>
+  <text x="40" y="1330" class="small">Size: {s_entry.get('size_pct_portfolio', 0):.1f}% portfolio</text>''')
+    else:
+        svg_parts.append(f'''
+  <text x="40" y="1310" class="small" fill="#ff6b6b">Gate criteria not met - see analysis for details</text>
+  <text x="40" y="1330" class="small">Invalidation: {escape_xml(s_thesis_invalid[:60])}...</text>''')
+
+    svg_parts.append(f'''
+  <rect x="610" y="1260" width="570" height="100" fill="#fff" rx="8" filter="url(#shadow)"/>
+  <text x="630" y="1285" class="section-title">{'EARNINGS TRADE PLAN' if e_has_trade else 'EARNINGS: NO TRADE'}</text>
+''')
+
+    if e_has_trade:
+        svg_parts.append(f'''
+  <text x="630" y="1310" class="label">Entry: ${e_entry.get('price', 0):.2f}</text>
+  <text x="740" y="1310" class="label">Stop: ${e_stop.get('price', 0):.2f}</text>
+  <text x="630" y="1330" class="small">Size: {e_entry.get('size_pct_portfolio', 0):.1f}% portfolio</text>''')
+    else:
+        svg_parts.append(f'''
+  <text x="630" y="1310" class="small" fill="#ff6b6b">Gate criteria not met - see analysis for details</text>
+  <text x="630" y="1330" class="small">Invalidation: {escape_xml(e_thesis_invalid[:60])}...</text>''')
+
+    # ─── ROW 9: RATIONALE ────────────────────────────────────────────────────────
+    s_rationale = stock_data.get('rationale', stock_data.get('summary', {}).get('narrative', ''))
+    e_rationale = earnings_data.get('rationale', earnings_data.get('summary', {}).get('narrative', ''))
+
+    if isinstance(s_rationale, str):
+        s_rationale_text = s_rationale[:150]
+    else:
+        s_rationale_text = ''
+
+    if isinstance(e_rationale, str):
+        e_rationale_text = e_rationale[:150]
+    else:
+        e_rationale_text = ''
+
+    svg_parts.append(f'''
+  <!-- ROW 9: RATIONALE -->
+  <rect x="20" y="1380" width="1160" height="80" fill="#fff" rx="8" filter="url(#shadow)"/>
+  <text x="40" y="1405" class="section-title">COMBINED RATIONALE</text>
+
+  <text x="40" y="1425" class="small"><tspan font-weight="bold">Stock:</tspan> {escape_xml(s_rationale_text[:100])}...</text>
+  <text x="40" y="1445" class="small"><tspan font-weight="bold">Earnings:</tspan> {escape_xml(e_rationale_text[:100])}...</text>
+''')
 
     # ─── FOOTER ────────────────────────────────────────────────────────────────
     svg_parts.append(f'''
   <!-- Footer -->
-  <rect x="20" y="1280" width="1160" height="100" fill="#fff" rx="8" filter="url(#shadow)"/>
+  <rect x="20" y="1480" width="1160" height="80" fill="#1a1a2e" rx="8"/>
 
-  <text x="40" y="1310" class="small">Stock Analysis: {Path(stock_file).name if stock_file else 'N/A'}</text>
-  <text x="40" y="1330" class="small">Earnings Analysis: {Path(earnings_file).name if earnings_file else 'N/A'}</text>
+  <text x="40" y="1510" class="small" fill="#adb5bd">Stock: {Path(stock_file).name if stock_file else 'N/A'}</text>
+  <text x="40" y="1530" class="small" fill="#adb5bd">Earnings: {Path(earnings_file).name if earnings_file else 'N/A'}</text>
 
-  <text x="600" y="1320" text-anchor="middle" class="label">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M EST')}</text>
+  <text x="600" y="1520" text-anchor="middle" fill="#adb5bd" font-size="11">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M EST')}</text>
 
-  <text x="1160" y="1310" text-anchor="end" class="small">Stock v{s_version} | Earnings v{e_version}</text>
-  <text x="1160" y="1330" text-anchor="end" class="small">Tradegent Combined Analysis</text>
+  <text x="1160" y="1510" text-anchor="end" class="small" fill="#adb5bd">Stock v{s_version} | Earnings v{e_version}</text>
+  <text x="1160" y="1530" text-anchor="end" class="small" fill="#adb5bd">Tradegent Combined Analysis</text>
 
   <!-- Warning if gates conflict -->
-  {f'<rect x="40" y="1345" width="1120" height="25" fill="#fff3cd" rx="4"/><text x="600" y="1362" text-anchor="middle" font-size="11" fill="#856404">⚠️ Gates conflict: Review both analyses carefully before trading</text>' if (s_open_trade_passes != e_open_trade_passes) else ''}
+  {f'<rect x="40" y="1545" width="1120" height="20" fill="#fff3cd" rx="4"/><text x="600" y="1558" text-anchor="middle" font-size="10" fill="#856404">⚠️ Gates conflict: Review both analyses carefully before trading</text>' if (s_open_trade_passes != e_open_trade_passes) else ''}
 
 </svg>''')
 

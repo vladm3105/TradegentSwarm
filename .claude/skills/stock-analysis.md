@@ -257,6 +257,24 @@ TOTAL SCORE:                ___/10
 - WATCH → invoke **watchlist** skill
 - BUY/SELL → prepare for **trade-journal** skill
 
+## Workflow Automation
+
+Post-analysis workflow runs automatically when `auto_viz_enabled` and `auto_watchlist_chain` settings are enabled:
+
+```
+Analysis Saved → Auto-Viz SVG → Extract Chain Data → Auto-Chain
+                     │                  │                │
+                     ▼                  ▼                ▼
+               SVG dashboard    recommendation     WATCH → nexus.watchlist
+                                  + EV/conf       BUY/SELL → ready for trade
+```
+
+**Database Settings:**
+- `auto_viz_enabled`: Auto-generate SVG after save (default: true)
+- `auto_watchlist_chain`: Auto-add WATCH to database watchlist (default: true)
+
+The orchestrator handles this automatically via `_post_analysis_workflow()` function.
+
 ## MCP Tools
 
 | Tool | Purpose |

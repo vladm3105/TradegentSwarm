@@ -250,6 +250,26 @@ class Settings:
         """Path to the tradegent_knowledge repo."""
         return Path(self._get("knowledge_repo_path", None, "/opt/data/tradegent_swarm/tradegent_knowledge"))
 
+    @property
+    def auto_viz_enabled(self) -> bool:
+        """Auto-generate SVG visualization after analysis."""
+        return self._get_bool("auto_viz_enabled", None, True)
+
+    @property
+    def auto_watchlist_chain(self) -> bool:
+        """Auto-add WATCH recommendations to watchlist."""
+        return self._get_bool("auto_watchlist_chain", None, True)
+
+    @property
+    def scanner_auto_route(self) -> bool:
+        """Auto-route scanner results to analysis/watchlist."""
+        return self._get_bool("scanner_auto_route", None, True)
+
+    @property
+    def task_queue_enabled(self) -> bool:
+        """Enable async task queue processing."""
+        return self._get_bool("task_queue_enabled", None, True)
+
 
 # Module-level default (overridden when DB is available)
 cfg = Settings()
@@ -1663,6 +1683,260 @@ def _update_analysis_confidence(
         return False
 
 
+# ─── Workflow Automation ────────────────────────────────────────────────────
+
+
+@dataclass
+class AnalysisChainData:
+    """Data extracted from analysis for workflow chaining."""
+    ticker: str
+    recommendation: str
+    confidence: int
+    expected_value: float
+    entry_price: float | None
+    stop_price: float | None
+    invalidation: str | None
+    gate_result: str
+    file_path: str
+
+
+def extract_chain_data(analysis_path: Path) -> AnalysisChainData | None:
+    """Extract chaining data from analysis YAML."""
+    import yaml
+
+    try:
+        with open(analysis_path, 'r') as f:
+            content = f.read()
+
+        # Try to parse as YAML (our new format)
+        if content.startswith('_meta:') or content.startswith('ticker:'):
+            data = yaml.safe_load(content)
+        else:
+            # Try to extract JSON block from markdown
+            parsed = parse_json_block(content)
+            if not parsed:
+                log.debug(f"No JSON block found in {analysis_path}")
+                return None
+            data = parsed
+
+        # Extract recommendation
+        recommendation = data.get('recommendation', 'NEUTRAL')
+
+        # Extract confidence
+        conf_obj = data.get('confidence', {})
+        if isinstance(conf_obj, dict):
+            confidence = conf_obj.get('level', 50)
+        else:
+            confidence = conf_obj if isinstance(conf_obj, int) else 50
+
+        # Extract gate
+        gate = data.get('do_nothing_gate', {})
+        gate_result = gate.get('gate_result', 'FAIL') if isinstance(gate, dict) else 'FAIL'
+
+        # Extract trade plan
+        trade_plan = data.get('trade_plan', {})
+        if isinstance(trade_plan, dict):
+            entry = trade_plan.get('entry', {})
+            entry_price = entry.get('price') if isinstance(entry, dict) else None
+            stop = trade_plan.get('stop_loss', {})
+            stop_price = stop.get('price') if isinstance(stop, dict) else None
+        else:
+            entry_price = None
+            stop_price = None
+
+        # Extract falsification as invalidation
+        falsification = data.get('falsification', {})
+        if isinstance(falsification, dict):
+            invalidation = falsification.get('thesis_invalid_if', '')
+        else:
+            invalidation = str(falsification) if falsification else ''
+
+        # Extract expected value
+        scenarios = data.get('scenarios', {})
+        if isinstance(scenarios, dict):
+            ev = scenarios.get('expected_value', 0)
+            if isinstance(ev, dict):
+                ev = ev.get('total', 0)
+        else:
+            ev = 0
+
+        return AnalysisChainData(
+            ticker=data.get('ticker', ''),
+            recommendation=recommendation,
+            confidence=confidence,
+            expected_value=float(ev) if ev else 0.0,
+            entry_price=float(entry_price) if entry_price else None,
+            stop_price=float(stop_price) if stop_price else None,
+            invalidation=invalidation[:200] if invalidation else None,
+            gate_result=gate_result,
+            file_path=str(analysis_path)
+        )
+    except Exception as e:
+        log.warning(f"Failed to extract chain data from {analysis_path}: {e}")
+        return None
+
+
+def _generate_visualization(ticker: str, db: "NexusDB") -> str | None:
+    """Generate SVG visualization after analysis completion."""
+    if not cfg.auto_viz_enabled:
+        return None
+
+    script_path = BASE_DIR / "scripts" / "visualize_combined.py"
+    if not script_path.exists():
+        log.debug(f"Visualization script not found: {script_path}")
+        return None
+
+    try:
+        result = subprocess.run(
+            [sys.executable, str(script_path), ticker, "--json"],
+            capture_output=True,
+            text=True,
+            cwd=str(BASE_DIR),
+            timeout=60  # 60 second timeout
+        )
+
+        if result.returncode == 0:
+            try:
+                output = json.loads(result.stdout)
+                svg_path = output.get('svg_path')
+                if svg_path:
+                    log.info(f"  ✓ Generated visualization: {svg_path}")
+                    return svg_path
+            except json.JSONDecodeError:
+                # Non-JSON output, check if SVG was mentioned
+                if ".svg" in result.stdout:
+                    log.info(f"  ✓ Visualization generated")
+                    return result.stdout.strip()
+        else:
+            log.warning(f"  ⚠ Visualization failed: {result.stderr[:200]}")
+            return None
+
+    except subprocess.TimeoutExpired:
+        log.error("  ✗ Visualization timed out after 60s")
+        return None
+    except Exception as e:
+        log.error(f"  ✗ Visualization error: {e}")
+        return None
+
+
+def _chain_to_watchlist(
+    db: "NexusDB",
+    ticker: str,
+    analysis_path: str,
+    recommendation: str,
+    entry_price: float | None = None,
+    invalidation: str | None = None,
+) -> bool:
+    """Auto-chain to watchlist when recommendation is WATCH."""
+    if not cfg.auto_watchlist_chain:
+        return False
+
+    if recommendation.upper() not in ("WATCH", "WATCHLIST"):
+        return False
+
+    # Check if already in watchlist
+    existing = db.get_watchlist_entry(ticker)
+    if existing:
+        log.info(f"  → {ticker} already in watchlist (id={existing['id']})")
+        return False
+
+    from datetime import timedelta
+
+    entry = {
+        "ticker": ticker.upper(),
+        "entry_trigger": f"Price at or below ${entry_price:.2f}" if entry_price else "See analysis",
+        "entry_price": entry_price,
+        "invalidation": invalidation or "Thesis broken - see analysis",
+        "invalidation_price": None,
+        "expires_at": (datetime.now() + timedelta(days=30)).isoformat(),
+        "priority": "medium",
+        "source": "analysis",
+        "source_analysis": analysis_path,
+        "notes": None,
+    }
+
+    entry_id = db.add_watchlist_entry(entry)
+    log.info(f"  → Chained to watchlist: {ticker} (id={entry_id})")
+    return True
+
+
+def _chain_to_post_trade_review(db: "NexusDB", trade_id: int) -> bool:
+    """Auto-trigger post-trade review when position is closed."""
+    if not cfg.task_queue_enabled:
+        return False
+
+    trade = db.get_trade(trade_id)
+    if not trade or trade["status"] != "closed":
+        return False
+
+    if trade.get("review_status") != "pending":
+        return False  # Already reviewed or in progress
+
+    ticker = trade["ticker"]
+
+    prompt = f"""Perform post-trade review for {ticker}.
+
+Trade Details:
+- Entry: ${trade['entry_price']:.2f} on {trade['entry_date']}
+- Exit: ${trade['exit_price']:.2f} on {trade['exit_date']}
+- P/L: {trade.get('pnl_pct', 0):+.1f}%
+- Reason: {trade.get('exit_reason', 'N/A')}
+- Original Analysis: {trade.get('source_analysis', 'N/A')}
+
+Follow post-trade-review skill framework (SKILL.md)."""
+
+    task_id = db.queue_task("post_trade_review", ticker, prompt, priority=7)
+    log.info(f"  → Queued post-trade review: {ticker} (task {task_id})")
+    return True
+
+
+def _post_analysis_workflow(
+    db: "NexusDB", ticker: str, analysis_path: Path, result: "AnalysisResult"
+) -> None:
+    """Run post-analysis workflow: visualization, chaining, etc."""
+    if ticker in ("PORTFOLIO", "SCAN"):
+        return  # Skip for non-stock analyses
+
+    log.info(f"[POST] Running post-analysis workflow for {ticker}")
+
+    # 1. Generate visualization
+    svg_path = _generate_visualization(ticker, db)
+
+    # 2. Extract chain data
+    chain_data = extract_chain_data(analysis_path)
+    if not chain_data:
+        # Try to get data from parsed JSON
+        if result.parsed_json:
+            recommendation = result.recommendation
+            entry_price = result.parsed_json.get("entry_price")
+            invalidation = result.parsed_json.get("rationale_summary", "")
+            gate_result = "PASS" if result.gate_passed else "FAIL"
+        else:
+            log.debug("Could not extract chain data, skipping workflow")
+            return
+    else:
+        recommendation = chain_data.recommendation
+        entry_price = chain_data.entry_price
+        invalidation = chain_data.invalidation
+        gate_result = chain_data.gate_result
+
+    # 3. Chain to watchlist if WATCH recommendation
+    if recommendation.upper() in ("WATCH", "WATCHLIST"):
+        _chain_to_watchlist(
+            db, ticker, str(analysis_path),
+            recommendation,
+            entry_price,
+            invalidation
+        )
+
+    # 4. Log gate result
+    if gate_result == "PASS":
+        log.info(f"  ✓ Gate PASS: {ticker} ready for trade execution")
+    else:
+        ev = chain_data.expected_value if chain_data else result.expected_value
+        log.info(f"  → Gate {gate_result}: {ticker} (EV: {ev:.1f}%)")
+
+
 # ─── Stage 1: Analysis ──────────────────────────────────────────────────────
 
 
@@ -1860,6 +2134,12 @@ def _run_analysis_4phase_traced(
             except Exception:
                 pass
 
+            # Post-analysis workflow (visualization, chaining)
+            try:
+                _post_analysis_workflow(db, ticker, result.filepath, result)
+            except Exception as e:
+                log.warning(f"[{trace_id}] Post-analysis workflow failed: {e}")
+
             log.info(
                 f"╚═══ 4-PHASE COMPLETE ═══ {ticker} | Gate: {'PASS' if result.gate_passed else 'FAIL'} | "
                 f"Rec: {result.recommendation} | Conf: {result.confidence}% [{trace_id}]"
@@ -1972,6 +2252,12 @@ def _run_analysis_4phase_untraced(
         except Exception:
             pass
 
+        # Post-analysis workflow (visualization, chaining)
+        try:
+            _post_analysis_workflow(db, ticker, result.filepath, result)
+        except Exception as e:
+            log.warning(f"[{trace_id}] Post-analysis workflow failed: {e}")
+
         log.info(
             f"╚═══ 4-PHASE COMPLETE ═══ {ticker} | Gate: {'PASS' if result.gate_passed else 'FAIL'} | "
             f"Rec: {result.recommendation} | Conf: {result.confidence}% [{trace_id}]"
@@ -2064,6 +2350,12 @@ def _legacy_run_analysis(
         db.increment_service_counter("today_analyses")
     except Exception:
         pass
+
+    # Post-analysis workflow (visualization, chaining)
+    try:
+        _post_analysis_workflow(db, ticker, filepath, result)
+    except Exception as e:
+        log.warning(f"Post-analysis workflow failed: {e}")
 
     log.info(
         f"Analysis: {ticker} | Gate: {'PASS' if result.gate_passed else 'FAIL'} | "
@@ -2266,6 +2558,125 @@ def run_scanners(db: NexusDB, scanner_code: str | None = None):
         except Exception as e:
             log.error(f"Scanner {scanner.scanner_code} failed: {e}")
             db.complete_scanner_run(run_id, "failed", 0, error=str(e))
+
+
+@dataclass
+class ScanResult:
+    """Result from a scanner for routing."""
+    ticker: str
+    score: float
+    scanner_name: str
+    catalyst: str = ""
+
+
+def _route_scanner_results(db: NexusDB, scanner_name: str, results: list[ScanResult]) -> dict:
+    """Route scanner results based on score thresholds."""
+    if not cfg.scanner_auto_route:
+        return {"analyzed": 0, "watchlisted": 0, "skipped": 0}
+
+    stats = {"analyzed": 0, "watchlisted": 0, "skipped": 0}
+
+    # Respect concurrent limits
+    max_queue = cfg.max_concurrent_runs
+    queued = 0
+
+    for result in sorted(results, key=lambda x: x.score, reverse=True):
+        ticker = result.ticker
+        score = result.score
+
+        if score >= 7.5 and queued < max_queue:
+            # High score -> Trigger full analysis
+            analysis_type = "earnings" if "earnings" in scanner_name.lower() else "stock"
+
+            task_id = db.queue_analysis(ticker, analysis_type, priority=int(score))
+            if task_id:
+                log.info(f"  → High score ({score:.1f}): Queued analysis for {ticker}")
+                stats["analyzed"] += 1
+                queued += 1
+            else:
+                log.debug(f"  → {ticker} in cooldown, skipping")
+                stats["skipped"] += 1
+
+        elif score >= 5.5:
+            # Medium score -> Add to watchlist
+            existing = db.get_watchlist_entry(ticker)
+            if not existing:
+                from datetime import timedelta
+                db.add_watchlist_entry({
+                    "ticker": ticker,
+                    "entry_trigger": result.catalyst or "Scanner trigger",
+                    "entry_price": None,
+                    "invalidation": "Score drops below 5.5",
+                    "invalidation_price": None,
+                    "expires_at": (datetime.now() + timedelta(days=14)).isoformat(),
+                    "priority": "low",
+                    "source": f"scanner:{scanner_name}",
+                    "source_analysis": None,
+                    "notes": f"Score: {score:.1f}",
+                })
+                log.info(f"  → Medium score ({score:.1f}): Added {ticker} to watchlist")
+                stats["watchlisted"] += 1
+        else:
+            stats["skipped"] += 1
+
+    return stats
+
+
+def process_task_queue(db: NexusDB, max_tasks: int = 5) -> int:
+    """Process pending tasks from queue."""
+    if not cfg.task_queue_enabled:
+        log.info("Task queue disabled (task_queue_enabled=false)")
+        return 0
+
+    tasks = db.get_pending_tasks(limit=max_tasks)
+    processed = 0
+
+    log.info(f"═══ TASK QUEUE: {len(tasks)} pending ═══")
+
+    for task in tasks:
+        task_id = task["id"]
+        task_type = task["task_type"]
+        ticker = task.get("ticker")
+
+        log.info(f"Processing task {task_id}: {task_type} for {ticker or 'N/A'}")
+        db.mark_task_started(task_id)
+
+        try:
+            if task_type == "analysis":
+                analysis_type = AnalysisType(task.get("analysis_type", "stock"))
+                result = run_analysis(db, ticker, analysis_type)
+                if result:
+                    log.info(f"  ✓ Analysis complete: {ticker}")
+
+            elif task_type == "post_trade_review":
+                # Run post-trade review with provided prompt
+                prompt = task.get("prompt", f"Post-trade review for {ticker}")
+                output = call_claude_code(prompt, cfg.allowed_tools_analysis, f"REVIEW-{ticker}")
+                if output:
+                    log.info(f"  ✓ Post-trade review complete: {ticker}")
+
+            else:
+                log.warning(f"Unknown task type: {task_type}")
+
+            db.mark_task_completed(task_id)
+            processed += 1
+
+        except Exception as e:
+            log.error(f"Task {task_id} failed: {e}")
+            db.mark_task_completed(task_id, error=str(e))
+
+    log.info(f"Processed {processed}/{len(tasks)} tasks")
+    return processed
+
+
+def process_pending_reviews(db: NexusDB) -> int:
+    """Process all trades pending review. Call from scheduler."""
+    trades = db.get_trades_pending_review()
+    count = 0
+    for trade in trades:
+        if _chain_to_post_trade_review(db, trade["id"]):
+            count += 1
+    return count
 
 
 def run_earnings_check(db: NexusDB):
@@ -2928,6 +3339,45 @@ def main():
     sub.add_parser("health", help="Check all service health")
     sub.add_parser("db-init")
 
+    # ─── Task Queue Commands ─────────────────────────────────────────────────────
+    p = sub.add_parser("process-queue", help="Process pending tasks from queue")
+    p.add_argument("--max", type=int, default=5, help="Max tasks to process")
+
+    p = sub.add_parser("queue-status", help="Show task queue status")
+
+    # ─── Trade Commands ──────────────────────────────────────────────────────────
+    trade_parser = sub.add_parser("trade", help="Trade journal management")
+    trade_sub = trade_parser.add_subparsers(dest="trade_cmd")
+
+    p = trade_sub.add_parser("add", help="Add new trade entry")
+    p.add_argument("ticker", help="Stock ticker")
+    p.add_argument("--price", type=float, required=True, help="Entry price")
+    p.add_argument("--size", type=float, required=True, help="Position size (shares)")
+    p.add_argument("--type", default="stock", choices=["stock", "call", "put", "spread"])
+    p.add_argument("--thesis", help="Trade thesis")
+    p.add_argument("--analysis", help="Path to source analysis")
+
+    p = trade_sub.add_parser("close", help="Close trade")
+    p.add_argument("trade_id", type=int, help="Trade ID to close")
+    p.add_argument("--price", type=float, required=True, help="Exit price")
+    p.add_argument("--reason", default="manual", help="Exit reason")
+
+    p = trade_sub.add_parser("list", help="List trades")
+    p.add_argument("--status", choices=["open", "closed", "all"], default="open")
+
+    trade_sub.add_parser("pending-reviews", help="Show trades pending review")
+
+    # ─── Watchlist DB Commands ───────────────────────────────────────────────────
+    wl_parser = sub.add_parser("watchlist-db", help="DB-backed watchlist management")
+    wl_sub = wl_parser.add_subparsers(dest="wl_cmd")
+
+    p = wl_sub.add_parser("list", help="List watchlist entries")
+    p.add_argument("--status", choices=["active", "all"], default="active")
+
+    wl_sub.add_parser("check", help="Check for expirations and triggers")
+
+    wl_sub.add_parser("process-expired", help="Process expired entries")
+
     p = sub.add_parser("stock")
     p.add_argument("action", choices=["add", "enable", "disable", "set-state", "list"])
     p.add_argument("ticker", nargs="?")
@@ -3116,6 +3566,117 @@ def main():
             elif args.action == "set-state" and args.ticker and args.state:
                 db.upsert_stock(args.ticker.upper(), state=args.state)
                 print(f"✅ {args.ticker.upper()} → {args.state}")
+
+        # ─── Task Queue Commands ─────────────────────────────────────────────────────
+        elif args.cmd == "process-queue":
+            count = process_task_queue(db, max_tasks=args.max)
+            print(f"✅ Processed {count} tasks")
+
+        elif args.cmd == "queue-status":
+            stats = db.get_task_queue_stats()
+            pending = db.get_pending_tasks(limit=10)
+            print(f"\n{'═' * 40}")
+            print("TASK QUEUE STATUS")
+            print(f"{'═' * 40}")
+            for status, count in stats.items():
+                print(f"  {status:<15} {count:>4}")
+            if pending:
+                print(f"\nPending Tasks (up to 10):")
+                print(f"{'ID':>4} {'Type':<20} {'Ticker':<8} {'Priority'}")
+                print("─" * 45)
+                for t in pending:
+                    print(f"{t['id']:>4} {t['task_type']:<20} {t.get('ticker') or '—':<8} {t['priority']}")
+
+        # ─── Trade Commands ──────────────────────────────────────────────────────────
+        elif args.cmd == "trade":
+            if args.trade_cmd == "add":
+                trade = {
+                    "ticker": args.ticker.upper(),
+                    "entry_date": datetime.now(),
+                    "entry_price": args.price,
+                    "entry_size": args.size,
+                    "entry_type": args.type,
+                    "thesis": args.thesis or "",
+                    "source_analysis": args.analysis,
+                }
+                trade_id = db.add_trade(trade)
+                print(f"✅ Added trade {trade_id}: {args.ticker.upper()} @ ${args.price:.2f} x {args.size}")
+
+            elif args.trade_cmd == "close":
+                trade = db.get_trade(args.trade_id)
+                if not trade:
+                    print(f"❌ Trade {args.trade_id} not found")
+                else:
+                    db.close_trade(args.trade_id, args.price, args.reason)
+                    pnl_pct = ((args.price - float(trade["entry_price"])) / float(trade["entry_price"])) * 100
+                    print(f"✅ Closed trade {args.trade_id}: {trade['ticker']} @ ${args.price:.2f} ({pnl_pct:+.1f}%)")
+                    # Auto-chain to post-trade review
+                    _chain_to_post_trade_review(db, args.trade_id)
+
+            elif args.trade_cmd == "list":
+                status = args.status
+                if status == "all":
+                    with db.conn.cursor() as cur:
+                        cur.execute("SELECT * FROM nexus.trades ORDER BY created_at DESC LIMIT 20")
+                        trades = [dict(r) for r in cur.fetchall()]
+                else:
+                    trades = db.get_trades_by_status(status)
+                print(f"\n{'ID':>4} {'Ticker':<6} {'Entry':>10} {'Exit':>10} {'P/L':>8} {'Status':<8}")
+                print("─" * 55)
+                for t in trades:
+                    pnl = f"{float(t.get('pnl_pct') or 0):+.1f}%" if t.get("pnl_pct") else "—"
+                    exit_p = f"${float(t['exit_price']):.2f}" if t.get("exit_price") else "—"
+                    print(f"{t['id']:>4} {t['ticker']:<6} ${float(t['entry_price']):>8.2f} {exit_p:>10} {pnl:>8} {t['status']:<8}")
+
+            elif args.trade_cmd == "pending-reviews":
+                trades = db.get_trades_pending_review()
+                if not trades:
+                    print("No trades pending review")
+                else:
+                    print(f"\nTrades Pending Review ({len(trades)}):")
+                    print(f"{'ID':>4} {'Ticker':<6} {'P/L':>8} {'Exit Date':<20}")
+                    print("─" * 45)
+                    for t in trades:
+                        pnl = f"{float(t.get('pnl_pct') or 0):+.1f}%"
+                        exit_dt = str(t.get("exit_date", ""))[:19]
+                        print(f"{t['id']:>4} {t['ticker']:<6} {pnl:>8} {exit_dt:<20}")
+
+            else:
+                print("Usage: trade [add|close|list|pending-reviews]")
+
+        # ─── Watchlist DB Commands ───────────────────────────────────────────────────
+        elif args.cmd == "watchlist-db":
+            if args.wl_cmd == "list":
+                if args.status == "all":
+                    with db.conn.cursor() as cur:
+                        cur.execute("SELECT * FROM nexus.watchlist ORDER BY priority DESC, created_at DESC")
+                        entries = [dict(r) for r in cur.fetchall()]
+                else:
+                    entries = db.get_active_watchlist()
+                print(f"\n{'ID':>4} {'Ticker':<6} {'Priority':<8} {'Expires':<12} {'Trigger':<30}")
+                print("─" * 70)
+                for e in entries:
+                    exp = e['expires_at'].strftime('%Y-%m-%d') if e.get('expires_at') else "—"
+                    trigger = (e.get('entry_trigger') or "")[:28]
+                    print(f"{e['id']:>4} {e['ticker']:<6} {e.get('priority', 'med'):<8} {exp:<12} {trigger:<30}")
+
+            elif args.wl_cmd == "check":
+                # Check for expired entries
+                expired = db.get_expired_watchlist()
+                for entry in expired:
+                    db.update_watchlist_by_id(entry['id'], 'expired')
+                    print(f"  ⏰ Expired: {entry['ticker']}")
+                print(f"\n✅ Processed {len(expired)} expirations")
+
+            elif args.wl_cmd == "process-expired":
+                expired = db.get_expired_watchlist()
+                for entry in expired:
+                    db.update_watchlist_by_id(entry['id'], 'expired')
+                    print(f"  ⏰ Marked expired: {entry['ticker']}")
+                print(f"\n✅ Processed {len(expired)} entries")
+
+            else:
+                print("Usage: watchlist-db [list|check|process-expired]")
 
         elif args.cmd == "settings":
             if args.action == "list":

@@ -523,3 +523,140 @@ $$ LANGUAGE plpgsql;
 
 COMMENT ON TABLE nexus.audit_log IS 'Security audit log tracking all significant actions. Required for compliance and incident response.';
 COMMENT ON FUNCTION nexus.audit_log_event IS 'Helper function to log audit events with consistent structure.';
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 9. TRADES TABLE (for trade journal and post-trade review)
+-- ═══════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS nexus.trades (
+    id              SERIAL PRIMARY KEY,
+    ticker          VARCHAR(10) NOT NULL,
+
+    -- Entry
+    entry_date      TIMESTAMPTZ NOT NULL,
+    entry_price     DECIMAL(12,4) NOT NULL,
+    entry_size      DECIMAL(12,4),           -- shares or contracts
+    entry_type      VARCHAR(20) DEFAULT 'stock',  -- stock, call, put, spread
+
+    -- Position
+    status          VARCHAR(20) DEFAULT 'open',   -- open, closed, partial
+    current_size    DECIMAL(12,4),
+
+    -- Exit (when closed)
+    exit_date       TIMESTAMPTZ,
+    exit_price      DECIMAL(12,4),
+    exit_reason     VARCHAR(50),             -- target, stop, manual, expiry
+
+    -- P&L
+    pnl_dollars     DECIMAL(12,2),
+    pnl_pct         DECIMAL(8,4),
+
+    -- Thesis
+    thesis          TEXT,
+    source_analysis VARCHAR(200),            -- path to analysis YAML
+
+    -- Review
+    review_status   VARCHAR(20) DEFAULT 'pending',  -- pending, completed
+    review_path     VARCHAR(200),            -- path to review YAML
+
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_trades_ticker ON nexus.trades(ticker);
+CREATE INDEX IF NOT EXISTS idx_trades_status ON nexus.trades(status);
+CREATE INDEX IF NOT EXISTS idx_trades_review ON nexus.trades(review_status) WHERE status = 'closed';
+
+DROP TRIGGER IF EXISTS trades_updated_at ON nexus.trades;
+CREATE TRIGGER trades_updated_at BEFORE UPDATE ON nexus.trades
+    FOR EACH ROW EXECUTE FUNCTION nexus.update_timestamp();
+
+COMMENT ON TABLE nexus.trades IS 'Trade journal entries for position tracking and post-trade review.';
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 10. WATCHLIST TABLE (DB-backed watchlist for persistence)
+-- ═══════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS nexus.watchlist (
+    id              SERIAL PRIMARY KEY,
+    ticker          VARCHAR(10) NOT NULL,
+
+    -- Entry conditions
+    entry_trigger   TEXT NOT NULL,           -- "Price below $150"
+    entry_price     DECIMAL(12,4),
+
+    -- Invalidation
+    invalidation    TEXT,
+    invalidation_price DECIMAL(12,4),
+
+    -- Timing
+    expires_at      TIMESTAMPTZ,
+    priority        VARCHAR(10) DEFAULT 'medium',  -- high, medium, low
+
+    -- Status
+    status          VARCHAR(20) DEFAULT 'active',  -- active, triggered, invalidated, expired
+
+    -- Source
+    source          VARCHAR(50),             -- "analysis", "scanner:earnings-momentum"
+    source_analysis VARCHAR(200),
+
+    -- Notes
+    notes           TEXT,
+
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Note: UNIQUE constraint on (ticker, status) not used - allows multiple entries per ticker
+CREATE INDEX IF NOT EXISTS idx_watchlist_ticker ON nexus.watchlist(ticker);
+CREATE INDEX IF NOT EXISTS idx_watchlist_active ON nexus.watchlist(status) WHERE status = 'active';
+CREATE INDEX IF NOT EXISTS idx_watchlist_expires ON nexus.watchlist(expires_at) WHERE status = 'active';
+
+DROP TRIGGER IF EXISTS watchlist_updated_at ON nexus.watchlist;
+CREATE TRIGGER watchlist_updated_at BEFORE UPDATE ON nexus.watchlist
+    FOR EACH ROW EXECUTE FUNCTION nexus.update_timestamp();
+
+COMMENT ON TABLE nexus.watchlist IS 'DB-backed watchlist for entry trigger tracking. Source of truth for watch entries.';
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 11. TASK QUEUE (for async task processing)
+-- ═══════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS nexus.task_queue (
+    id              SERIAL PRIMARY KEY,
+
+    task_type       VARCHAR(50) NOT NULL,    -- analysis, post_trade_review, scan
+    ticker          VARCHAR(10),
+
+    -- Task details
+    analysis_type   VARCHAR(20),             -- stock, earnings
+    prompt          TEXT,
+    priority        INTEGER DEFAULT 5,
+
+    -- Status
+    status          VARCHAR(20) DEFAULT 'pending',  -- pending, running, completed, failed
+
+    -- Cooldown (prevent duplicate runs)
+    cooldown_key    VARCHAR(100),            -- "analysis:NVDA:stock"
+    cooldown_until  TIMESTAMPTZ,
+
+    -- Execution
+    started_at      TIMESTAMPTZ,
+    completed_at    TIMESTAMPTZ,
+    error_message   TEXT,
+
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_queue_pending ON nexus.task_queue(status, priority DESC) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_task_queue_cooldown ON nexus.task_queue(cooldown_key, cooldown_until);
+
+COMMENT ON TABLE nexus.task_queue IS 'Async task queue for background processing of analyses and reviews.';
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- WORKFLOW AUTOMATION SETTINGS
+-- ═══════════════════════════════════════════════════════════════════════════
+INSERT INTO nexus.settings (key, value, category, description) VALUES
+    ('auto_viz_enabled', 'true', 'feature_flags', 'Auto-generate SVG after analysis'),
+    ('auto_watchlist_chain', 'true', 'feature_flags', 'Auto-add WATCH recommendations to watchlist'),
+    ('scanner_auto_route', 'true', 'feature_flags', 'Auto-route scanner results to analysis/watchlist'),
+    ('task_queue_enabled', 'true', 'feature_flags', 'Enable async task queue processing'),
+    ('analysis_cooldown_hours', '4', 'rate_limits', 'Hours between re-analyzing same ticker')
+ON CONFLICT (key) DO NOTHING;

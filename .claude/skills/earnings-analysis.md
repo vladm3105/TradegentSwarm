@@ -168,6 +168,39 @@ After completion:
 - If recommendation is BULLISH/BEARISH with trade → prepare for **trade-journal** skill
 - Update **ticker-profile** if significant new patterns observed
 
+## Workflow Automation
+
+Post-analysis workflow runs automatically when `auto_viz_enabled` and `auto_watchlist_chain` settings are enabled:
+
+```
+Analysis Saved → Auto-Viz SVG → Extract Chain Data → Auto-Chain
+                     │                  │                │
+                     ▼                  ▼                ▼
+              Earnings SVG       recommendation     WATCH → nexus.watchlist
+                                  + EV/conf       BUY/SELL → ready for trade
+```
+
+**T-7/T-2/T+1 Earnings Schedules:**
+
+Stocks with `next_earnings_date` in `nexus.stocks` table get automatic earnings analysis schedules:
+
+| Schedule | Timing | Purpose |
+|----------|--------|---------|
+| T-7 | 7 days before | Initial pre-earnings analysis |
+| T-2 | 2 days before | Pre-earnings update |
+| T+1 | 1 day after | Post-earnings review |
+
+Set up with:
+```bash
+psql -f scripts/setup_earnings_schedules.sql
+```
+
+**Database Settings:**
+- `auto_viz_enabled`: Auto-generate SVG after save (default: true)
+- `auto_watchlist_chain`: Auto-add WATCH to database watchlist (default: true)
+
+The orchestrator handles this automatically via `_post_analysis_workflow()` function.
+
 ## Arguments
 
 - `$ARGUMENTS`: Ticker symbol (e.g., NVDA, AAPL, MSFT)

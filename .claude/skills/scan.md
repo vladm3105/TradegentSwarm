@@ -215,6 +215,44 @@ CLOSE (15:30-16:15):
 - Updates market regime context for all other skills
 - Weekly earnings-calendar informs **earnings-analysis** pipeline
 
+## Workflow Automation (Auto-Routing)
+
+Scanner results are automatically routed via database when `scanner_auto_route=true`:
+
+```
+Scanner Results → _route_scanner_results() → Task Queue or Watchlist DB
+                         │
+          ┌──────────────┼──────────────┐
+          ▼              ▼              ▼
+       ≥ 7.5         5.5-7.4         < 5.5
+          │              │              │
+          ▼              ▼              ▼
+   nexus.task_queue  nexus.watchlist   Skip
+   (analyze task)    (with priority)
+```
+
+**Cooldown Mechanism:**
+- Same ticker won't be re-analyzed within `analysis_cooldown_hours` (default: 4)
+- Checked via `cooldown_key` in `nexus.task_queue`
+
+**CLI Commands:**
+```bash
+# Process queued analyses from scanner
+python orchestrator.py process-queue
+
+# Check what's queued
+python orchestrator.py queue-status
+
+# Run analyses for due stocks
+python orchestrator.py run-due
+```
+
+**Settings:**
+| Setting | Default | Purpose |
+|---------|---------|---------|
+| `scanner_auto_route` | true | Enable auto-routing |
+| `analysis_cooldown_hours` | 4 | Min hours between re-analysis |
+
 ## Arguments
 
 - `$ARGUMENTS`: Scanner name (optional), or "daily", "weekly", "all"

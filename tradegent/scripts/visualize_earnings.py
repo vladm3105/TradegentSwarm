@@ -128,16 +128,96 @@ def generate_svg(data: dict, source_file: str = '') -> str:
     technical = data.get('technical', {})
     tech_score = technical.get('technical_score', 5)
     rsi = technical.get('momentum', {}).get('rsi', 50)
+    support = technical.get('key_levels', {}).get('support', 0)
+    resistance = technical.get('key_levels', {}).get('resistance', 0)
 
     # Sentiment
     sentiment = data.get('sentiment', {})
     sentiment_score = sentiment.get('sentiment_score', 5)
     overall_sentiment = sentiment.get('overall_sentiment', 'neutral')
+    crowded_trade = sentiment.get('crowded_trade', {})
+    is_crowded = crowded_trade.get('crowded', False)
 
     # Expectations
     expectations = data.get('expectations_assessment', {})
     priced_for_perfection = expectations.get('priced_for_perfection', False)
     sell_the_news_risk = expectations.get('sell_the_news_risk', 'medium')
+
+    # === NEW: Additional data extraction for gaps ===
+
+    # News Age Check
+    news_age = data.get('news_age_check', {})
+    news_items = news_age.get('items', [])[:3]
+    fresh_catalyst = news_age.get('fresh_catalyst_exists', False)
+
+    # Customer Demand
+    customer_demand = data.get('customer_demand', {})
+    demand_signal = customer_demand.get('signal_strength', 'neutral')
+    demand_signals = customer_demand.get('signals', [])[:2]
+
+    # Estimate Revisions
+    est_revisions = prep.get('estimate_revisions', {})
+    revision_direction = est_revisions.get('direction', 'flat')
+    revision_magnitude = est_revisions.get('magnitude', 'none')
+
+    # Key Metric
+    key_metric = prep.get('key_metric', {})
+    key_metric_name = key_metric.get('name', '')
+    key_metric_consensus = key_metric.get('consensus', '')
+
+    # Bias Check
+    bias_check = data.get('bias_check', {})
+    biases_detected = []
+    for bias_type in ['recency_bias', 'confirmation_bias', 'overconfidence', 'anchoring', 'fomo', 'loss_aversion']:
+        bias_data = bias_check.get(bias_type, {})
+        if bias_data.get('present', False):
+            biases_detected.append((bias_type.replace('_', ' ').title(), bias_data.get('severity', 'low')))
+
+    # Trade Plan
+    trade_plan = data.get('trade_plan', {})
+    has_trade = trade_plan.get('trade', False)
+    entry_price = trade_plan.get('entry', {}).get('price', 0)
+    stop_loss = trade_plan.get('stop_loss', {}).get('price', 0)
+    target_1 = trade_plan.get('targets', {}).get('target_1', 0)
+    structure_type = trade_plan.get('structure', {}).get('type', 'none')
+
+    # Alert Levels
+    alert_levels = data.get('alert_levels', {})
+    price_alerts = alert_levels.get('price_alerts', [])[:2]
+
+    # Falsification
+    falsification = data.get('falsification', {})
+    beat_wrong_if = falsification.get('beat_thesis_wrong_if', [])[:2]
+    miss_wrong_if = falsification.get('miss_thesis_wrong_if', [])[:2]
+
+    # Thesis Reversal
+    thesis_reversal = data.get('thesis_reversal', {})
+    flip_conditions = thesis_reversal.get('conditions_to_flip', [])[:2]
+
+    # Alternative Strategies
+    alternatives = data.get('alternative_strategies', {})
+    alt_strategies = alternatives.get('strategies', [])[:2]
+
+    # Action Items
+    action_items = data.get('action_items', {})
+    immediate_actions = action_items.get('immediate', [])[:3]
+    earnings_day_actions = action_items.get('earnings_day', [])[:2]
+
+    # Meta Learning
+    meta_learning = data.get('meta_learning', {})
+    new_rule = meta_learning.get('new_rule', {})
+    pattern_identified = meta_learning.get('pattern_identified', '')
+
+    # Pass Reasoning (if no trade)
+    pass_reasoning = data.get('pass_reasoning', {})
+    pass_reasons = pass_reasoning.get('reasons', [])[:3]
+
+    # Rationale
+    rationale = decision.get('rationale', data.get('rationale', ''))
+    if isinstance(rationale, str):
+        rationale_text = rationale[:300]
+    else:
+        rationale_text = ''
 
     # Colors
     rec_bg, rec_text = get_recommendation_color(recommendation)
@@ -171,7 +251,7 @@ def generate_svg(data: dict, source_file: str = '') -> str:
     svg_parts = []
 
     # Header
-    svg_parts.append(f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 700" width="420" height="700">
+    svg_parts.append(f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 1100" width="420" height="1100">
   <defs>
     <style>
       .title {{ font: bold 18px system-ui, sans-serif; fill: #212529; }}
@@ -188,7 +268,7 @@ def generate_svg(data: dict, source_file: str = '') -> str:
   </defs>
 
   <!-- Background -->
-  <rect width="420" height="700" fill="#f8f9fa" rx="8"/>
+  <rect width="420" height="1100" fill="#f8f9fa" rx="8"/>
 
   <!-- Header -->
   <rect x="10" y="10" width="400" height="70" fill="#fff" rx="6" stroke="#dee2e6" stroke-width="1"/>
@@ -396,11 +476,116 @@ def generate_svg(data: dict, source_file: str = '') -> str:
   <text x="320" y="650" class="label">IV Rank: <tspan class="value">{prep.get('implied_move', {}).get('iv_rank', 'N/A')}</tspan></text>
 ''')
 
+    # === NEW SECTIONS: Fill the gaps ===
+
+    # News Age Check & Customer Demand
+    demand_color = {'strong_bullish': '#2f9e44', 'bullish': '#51cf66', 'neutral': '#868e96', 'bearish': '#ff8787', 'strong_bearish': '#c92a2a'}
+    svg_parts.append(f'''
+  <!-- News & Demand -->
+  <rect x="10" y="670" width="400" height="70" fill="#fff" rx="6" stroke="#dee2e6" stroke-width="1"/>
+  <text x="20" y="690" class="section-title">NEWS &amp; DEMAND</text>
+  <text x="20" y="708" class="label">Fresh Catalyst:</text>
+  <text x="100" y="708" class="value" fill="{'#51cf66' if fresh_catalyst else '#868e96'}">{'YES' if fresh_catalyst else 'NO'}</text>
+  <text x="150" y="708" class="label">Demand Signal:</text>
+  <text x="245" y="708" class="value" fill="{demand_color.get(demand_signal, '#868e96')}">{escape_xml(demand_signal.replace('_', ' ').title())}</text>
+  <text x="20" y="728" class="label">Revisions:</text>
+  <text x="75" y="728" class="value">{escape_xml(revision_direction.title())} ({escape_xml(revision_magnitude)})</text>
+  <text x="200" y="728" class="label">Crowded:</text>
+  <text x="250" y="728" class="value" fill="{'#ff6b6b' if is_crowded else '#51cf66'}">{'YES' if is_crowded else 'NO'}</text>
+''')
+
+    # Trade Plan (if exists)
+    if has_trade:
+        svg_parts.append(f'''
+  <!-- Trade Plan -->
+  <rect x="10" y="750" width="400" height="60" fill="#e7f5ff" rx="6" stroke="#74c0fc" stroke-width="1"/>
+  <text x="20" y="770" class="section-title" fill="#1971c2">TRADE PLAN</text>
+  <text x="20" y="790" class="label">Entry: <tspan class="value">${entry_price:.2f}</tspan></text>
+  <text x="120" y="790" class="label">Stop: <tspan class="value" fill="#ff6b6b">${stop_loss:.2f}</tspan></text>
+  <text x="220" y="790" class="label">Target: <tspan class="value" fill="#51cf66">${target_1:.2f}</tspan></text>
+  <text x="320" y="790" class="label">Type: <tspan class="value">{escape_xml(structure_type)}</tspan></text>
+''')
+    else:
+        svg_parts.append(f'''
+  <!-- No Trade - Pass Reasoning -->
+  <rect x="10" y="750" width="400" height="60" fill="#fff3cd" rx="6" stroke="#ffc107" stroke-width="1"/>
+  <text x="20" y="770" class="section-title" fill="#856404">NO TRADE - REASONING</text>
+''')
+        reason_y = 788
+        for reason in pass_reasons[:2]:
+            reason_text = reason.get('reason', str(reason))[:50] if isinstance(reason, dict) else str(reason)[:50]
+            svg_parts.append(f'''  <text x="20" y="{reason_y}" class="small">• {escape_xml(reason_text)}</text>''')
+            reason_y += 12
+
+    # Alert Levels
+    svg_parts.append(f'''
+  <!-- Alert Levels -->
+  <rect x="10" y="820" width="195" height="60" fill="#fff" rx="6" stroke="#dee2e6" stroke-width="1"/>
+  <text x="20" y="840" class="section-title">PRICE ALERTS</text>
+''')
+    alert_y = 858
+    for alert in price_alerts[:2]:
+        price = alert.get('price', 0)
+        direction = alert.get('direction', '')
+        svg_parts.append(f'''  <text x="20" y="{alert_y}" class="small">${price:.0f} ({direction})</text>''')
+        alert_y += 14
+
+    # Biases Detected
+    svg_parts.append(f'''
+  <!-- Biases -->
+  <rect x="215" y="820" width="195" height="60" fill="#fff" rx="6" stroke="#dee2e6" stroke-width="1"/>
+  <text x="225" y="840" class="section-title">BIASES DETECTED</text>
+''')
+    if biases_detected:
+        bias_y = 858
+        for bias_name, severity in biases_detected[:2]:
+            sev_color = '#ff6b6b' if severity == 'high' else '#ffd43b' if severity == 'medium' else '#868e96'
+            svg_parts.append(f'''  <text x="225" y="{bias_y}" class="small">{escape_xml(bias_name)}: <tspan fill="{sev_color}">{severity.upper()}</tspan></text>''')
+            bias_y += 14
+    else:
+        svg_parts.append(f'''  <text x="225" y="858" class="small" fill="#51cf66">None detected ✓</text>''')
+
+    # Falsification & Thesis Reversal
+    svg_parts.append(f'''
+  <!-- Falsification -->
+  <rect x="10" y="890" width="400" height="70" fill="#fff" rx="6" stroke="#dee2e6" stroke-width="1"/>
+  <text x="20" y="910" class="section-title">FALSIFICATION CRITERIA</text>
+  <text x="20" y="928" class="small" fill="#ff6b6b">Beat thesis wrong if:</text>
+''')
+    fals_y = 940
+    for cond in beat_wrong_if[:1]:
+        svg_parts.append(f'''  <text x="25" y="{fals_y}" class="small">• {escape_xml(str(cond)[:55])}</text>''')
+        fals_y += 12
+    svg_parts.append(f'''  <text x="210" y="928" class="small" fill="#51cf66">Miss thesis wrong if:</text>''')
+    fals_y = 940
+    for cond in miss_wrong_if[:1]:
+        svg_parts.append(f'''  <text x="215" y="{fals_y}" class="small">• {escape_xml(str(cond)[:45])}</text>''')
+
+    # Alternative Strategies
+    svg_parts.append(f'''
+  <!-- Alternatives -->
+  <rect x="10" y="970" width="400" height="55" fill="#fff" rx="6" stroke="#dee2e6" stroke-width="1"/>
+  <text x="20" y="990" class="section-title">ALTERNATIVE STRATEGIES</text>
+''')
+    alt_y = 1008
+    for alt in alt_strategies[:2]:
+        strategy = alt.get('strategy', '')[:60]
+        svg_parts.append(f'''  <text x="20" y="{alt_y}" class="small">• {escape_xml(strategy)}</text>''')
+        alt_y += 12
+
+    # Rationale Text Box
+    svg_parts.append(f'''
+  <!-- Rationale -->
+  <rect x="10" y="1035" width="400" height="45" fill="#f1f3f5" rx="6" stroke="#dee2e6" stroke-width="1"/>
+  <text x="20" y="1052" class="section-title">RATIONALE</text>
+  <text x="20" y="1068" class="small">{escape_xml(rationale_text[:100])}...</text>
+''')
+
     # Footer - show just filename for cleaner display
     source_name = Path(source_file).name if source_file else ''
     svg_parts.append(f'''
   <!-- Footer -->
-  <text x="210" y="685" text-anchor="middle" class="small">Source: {escape_xml(source_name)}</text>
+  <text x="210" y="1095" text-anchor="middle" class="small">Source: {escape_xml(source_name)}</text>
 </svg>''')
 
     return '\n'.join(svg_parts)

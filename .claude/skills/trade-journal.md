@@ -155,6 +155,35 @@ Parameters:
 - Exit automatically triggers **post-trade-review** skill
 - Results update **ticker-profile** trading history
 
+## Workflow Automation (Database-Backed)
+
+Trades can be tracked in the `nexus.trades` database table for automated workflow:
+
+**Database CLI Commands:**
+```bash
+# Add a trade to database
+python orchestrator.py trade add NVDA --entry-price 145.00 --thesis "Earnings momentum"
+
+# Close a trade (auto-queues post-trade review)
+python orchestrator.py trade close NVDA --price 158.00 --reason target_hit
+
+# List trades
+python orchestrator.py trade list --status open
+```
+
+**Auto-Review Chaining:**
+When a trade is closed via CLI, the system automatically:
+1. Updates `nexus.trades` with exit details and P&L
+2. Queues a `post_trade_review` task in `nexus.task_queue`
+3. `python orchestrator.py process-queue` executes the review
+
+**Trade Table Fields:**
+| Field | Purpose |
+|-------|---------|
+| `status` | open, closed |
+| `review_status` | pending, completed |
+| `review_path` | Path to completed review file |
+
 ## Arguments
 
 - `$ARGUMENTS`: Ticker symbol and action (entry/exit/update)
