@@ -86,6 +86,8 @@ Skills in `.claude/skills/` auto-invoke based on context. Each skill has:
 | **trade-journal**         | v2.1    | "log trade", "bought", "sold", "entered position"        | Trade Mgmt |
 | **watchlist**             | v2.1    | "watchlist", "add to watchlist", "watch this"            | Trade Mgmt |
 | **post-trade-review**     | v2.1    | "review trade", "closed trade", "what did I learn"       | Learning   |
+| **post-earnings-review**  | v1.0    | Auto: T+1 after earnings, "post-earnings review"         | Learning   |
+| **report-validation**     | v1.0    | Auto: new analysis saved, "validate analysis"            | Validation |
 | **scan**                  | v1.0    | "scan", "find opportunities", "what should I trade"      | Scanning   |
 | **visualize-analysis**    | v1.0    | "visualize", "create svg", "visual dashboard"            | Utility    |
 | **detected-position**     | v1.0    | Auto: position increase detected                         | Monitoring |
@@ -135,7 +137,61 @@ python tradegent.py queue-status
 position_monitor → detected_position task → skill_handler → trade entry
 order_reconciler → fill_analysis task → skill_handler → fill grade
 expiration_monitor → options_management task → skill_handler → roll advice
+service (earnings) → post_earnings_review task → skill_handler → review + grade
+service (expiry) → report_validation task → skill_handler → CONFIRM/SUPERSEDE/INVALIDATE
 ```
+
+### Review & Validation Skills (v1.0) - IPLAN-001
+
+Systematic review of forecasts vs actual outcomes and validation of analysis chains.
+
+| Skill | Triggers | Purpose |
+|-------|----------|---------|
+| post-earnings-review | Auto: T+1 after earnings, Manual: "post-earnings review TICKER" | Compare forecast vs actual, grade accuracy, update calibration |
+| report-validation | Auto: new analysis saved, Auto: forecast expires, Manual: "validate analysis TICKER" | CONFIRM/SUPERSEDE/INVALIDATE prior analysis |
+
+**Validation Results:**
+
+| Result | Meaning | Action |
+|--------|---------|--------|
+| **CONFIRM** | New analysis confirms prior thesis | Update lineage status to 'confirmed' |
+| **SUPERSEDE** | Thesis evolved, same direction | Link chain, update status to 'superseded' |
+| **INVALIDATE** | Thesis broken, direction changed | Alert, invalidate watchlist, status 'invalidated' |
+
+**CLI Commands:**
+```bash
+# Post-earnings review
+python tradegent.py review-earnings pending           # List pending reviews
+python tradegent.py review-earnings run NVDA          # Manual review
+python tradegent.py review-earnings backfill --limit 10  # Backfill historical
+
+# Report validation
+python tradegent.py validate-analysis expired         # List expired forecasts
+python tradegent.py validate-analysis run NVDA        # Manual validation
+python tradegent.py validate-analysis process-expired # Process all expired
+
+# Analysis lineage
+python tradegent.py lineage show NVDA                 # Show analysis chain
+python tradegent.py lineage active                    # List active analyses
+python tradegent.py lineage invalidated               # List invalidated analyses
+
+# Confidence calibration
+python tradegent.py calibration summary               # Show calibration by bucket
+python tradegent.py calibration ticker NVDA           # Ticker-specific calibration
+```
+
+**Database Tables:**
+- `nexus.analysis_lineage` - Tracks analysis chains, validation state, review grades
+- `nexus.confidence_calibration` - Tracks prediction accuracy by confidence bucket
+
+**Settings:**
+| Setting | Default | Purpose |
+|---------|---------|---------|
+| `auto_post_earnings_review` | true | Auto-queue review T+1 after earnings |
+| `auto_report_validation` | true | Auto-validate when new analysis saved |
+| `validation_on_expiry` | true | Auto-validate when forecast expires |
+| `post_earnings_delay_hours` | 4 | Hours after market open to queue review |
+| `invalidation_alerts_enabled` | true | Log alerts on INVALIDATE |
 
 ### v2.6 Key Features (stock-analysis) - PRODUCTION
 
@@ -312,10 +368,18 @@ Parameters:
 
 ```text
 scan → earnings-analysis → watchlist → trade-journal → post-trade-review
-         ↓                                    ↓
-    stock-analysis ─────────────────────→ ticker-profile
-         ↓
-      research
+         ↓         ↓                          ↓
+    stock-analysis ↓                    ticker-profile
+         ↓         ↓
+      research     ↓
+                   ↓
+         [EARNINGS RELEASE]
+                   ↓
+         post-earnings-review → confidence calibration
+                   ↓
+         [NEW ANALYSIS SAVED]
+                   ↓
+         report-validation → CONFIRM/SUPERSEDE/INVALIDATE
 ```
 
 **Automatic chaining:**
@@ -324,6 +388,10 @@ scan → earnings-analysis → watchlist → trade-journal → post-trade-review
 - Trade journal exit → triggers post-trade-review skill
 - Scanner high score → triggers appropriate analysis skill
 - Post-trade review → updates ticker-profile
+- Earnings release (T+1) → triggers post-earnings-review skill
+- New analysis saved → triggers report-validation skill (if prior exists)
+- Forecast expires → triggers report-validation skill
+- INVALIDATE result → invalidates watchlist entry, sends alert
 
 ## Key Conventions
 
@@ -345,6 +413,8 @@ Example: `NVDA_20250120T0900.yaml`
 | trade-journal | `knowledge/trades/` |
 | watchlist | `knowledge/watchlist/` |
 | post-trade-review | `knowledge/reviews/` |
+| post-earnings-review | `knowledge/reviews/post-earnings/` |
+| report-validation | `knowledge/reviews/validation/` |
 | market-scanning | Uses `knowledge/scanners/`, outputs to `watchlist/` |
 
 ## Executing Skills
