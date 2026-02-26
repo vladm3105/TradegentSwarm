@@ -376,6 +376,47 @@ def validate_scenarios(doc: dict, result: ValidationResult):
         )
 
 
+def validate_forecast_validity(doc: dict, result: ValidationResult):
+    """Validate forecast_valid_until field in _meta (v2.6 required).
+
+    After forecast_valid_until date, the analysis becomes historical-only
+    and should not be used for trading decisions.
+    """
+    meta = doc.get("_meta", {})
+    forecast_date = meta.get("forecast_valid_until")
+
+    if not forecast_date:
+        result.add_error(
+            "_meta.forecast_valid_until is required (YYYY-MM-DD format). "
+            "After this date, analysis is historical only."
+        )
+        return
+
+    # Validate date format
+    try:
+        parsed_date = datetime.strptime(str(forecast_date), "%Y-%m-%d")
+
+        # Check if date is in the past (warning, not error - may be reviewing old analysis)
+        if parsed_date.date() < datetime.now().date():
+            result.add_warning(
+                f"forecast_valid_until ({forecast_date}) is in the past. "
+                "This analysis is historical-only and should not be used for trading."
+            )
+
+    except ValueError:
+        result.add_error(
+            f"_meta.forecast_valid_until must be YYYY-MM-DD format (found: {forecast_date})"
+        )
+
+    # Optional: check forecast_horizon_days consistency
+    horizon_days = meta.get("forecast_horizon_days")
+    if horizon_days is not None:
+        if not isinstance(horizon_days, int) or horizon_days < 0:
+            result.add_warning(
+                f"_meta.forecast_horizon_days should be a positive integer (found: {horizon_days})"
+            )
+
+
 def validate_document(file_path: Path) -> ValidationResult:
     """Main validation function."""
     result = ValidationResult(str(file_path))
@@ -407,6 +448,7 @@ def validate_document(file_path: Path) -> ValidationResult:
     validate_insider_activity(doc, result)
     validate_news_age_check(doc, result)
     validate_scenarios(doc, result)
+    validate_forecast_validity(doc, result)
 
     return result
 

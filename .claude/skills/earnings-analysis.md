@@ -34,6 +34,17 @@ Use this skill when analyzing stocks 3-10 days before earnings announcements. Au
 - User mentions upcoming earnings for a stock
 - Pre-earnings trade evaluation needed
 
+## Forecast Validity
+
+Earnings analyses are **automatically invalidated** after the earnings release:
+
+| Field | Value |
+|-------|-------|
+| `_meta.forecast_valid_until` | Earnings date (YYYY-MM-DD) |
+| `_meta.forecast_horizon_days` | 0 (expires on earnings date) |
+
+After earnings, the analysis becomes **historical only** - used for post-mortem review and learning, not trading decisions. The T+1 post-earnings review analyzes actual results vs predictions.
+
 ## Workflow
 
 ### Step 1: Get Historical Context (RAG v2.0 + Graph)
@@ -123,6 +134,7 @@ Use `tradegent_knowledge/skills/earnings-analysis/template.yaml` structure.
     "structure": "shares/calls/puts/spread/none",
     "expiry": "YYYY-MM-DD or null",
     "strikes": "description or null",
+    "forecast_valid_until": "YYYY-MM-DD (earnings date)",
     "rationale_summary": "One sentence summary of recommendation"
 }
 ```

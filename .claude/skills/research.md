@@ -103,10 +103,11 @@ Load `tradegent_knowledge/skills/research-analysis/SKILL.md` and execute the res
    - Beneficiaries (long candidates)
    - Losers (short/avoid candidates)
    - Sector positioning
-5. **Step 5: Set Review Schedule**
-   - Validity period (30/90/365 days)
-   - Review triggers
-   - Falsification criteria
+5. **Step 5: Set Forecast Validity**
+   - `forecast_valid_until`: YYYY-MM-DD when research expires
+   - `forecast_horizon_days`: 30=tactical, 90=strategic, 365=secular
+   - Review triggers and falsification criteria
+   - After expiry, research is historical only (learning/review)
 
 ### Step 5: Generate Output
 

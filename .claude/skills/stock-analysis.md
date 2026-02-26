@@ -38,12 +38,26 @@ Use this skill for non-earnings trading opportunities: technical breakouts, valu
 
 | Section | Requirement |
 |---------|-------------|
+| `_meta.forecast_valid_until` | YYYY-MM-DD when analysis expires |
 | `comparable_companies` | Min 3 peers with P/E, P/S, EV/EBITDA |
 | `liquidity_analysis` | ADV, bid-ask spread, slippage estimates |
 | `insider_activity` | Transaction details with Form 4 summary |
 | `bull_case_analysis` | Min 3 scored arguments |
 | `bear_case_analysis` | Min 3 scored arguments |
 | `do_nothing_gate` | EV>5%, Confidence>60%, R:R>2:1 (fixed) |
+
+## Forecast Validity
+
+Every analysis MUST set `forecast_valid_until` in `_meta`:
+
+| Scenario | Forecast Valid Until | Horizon Days |
+|----------|---------------------|--------------|
+| Has earnings date | Next earnings date | Days to earnings |
+| No upcoming earnings | +30 calendar days | 30 |
+| Major catalyst pending | Catalyst date | Days to catalyst |
+| Macro/sector play | +14-21 days | 14-21 |
+
+After `forecast_valid_until`, the analysis is **historical only** - used for learning/review, not trading decisions.
 
 ## Workflow
 
@@ -180,6 +194,7 @@ Use `tradegent_knowledge/skills/stock-analysis/template.yaml` (v2.6).
     "target": null,
     "position_size_pct": 0.0,
     "structure": "shares|calls|puts|spread|none",
+    "forecast_valid_until": "YYYY-MM-DD",
     "rationale_summary": "One sentence summary"
 }
 ```

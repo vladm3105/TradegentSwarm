@@ -94,6 +94,8 @@ def generate_svg(data: dict, source_file: str = '') -> str:
     company_name = data.get('company_name', meta.get('company_name', ''))
     analysis_date = data.get('analysis_date', meta.get('created', ''))
     version = str(meta.get('version', '2.6'))
+    forecast_valid_until = meta.get('forecast_valid_until', '')
+    forecast_horizon_days = meta.get('forecast_horizon_days', '')
 
     # Root level fields
     recommendation = data.get('recommendation', 'N/A')
@@ -473,6 +475,10 @@ def generate_svg(data: dict, source_file: str = '') -> str:
   <text x="430" y="255" font-size="13" fill="#868e96">Next Earnings</text>
   <text x="560" y="255" font-size="13" font-weight="bold" fill="#212529">{escape_xml(str(next_earnings)[:10])}</text>
   <text x="660" y="255" font-size="11" fill="#868e96">({escape_xml(str(days_to_earnings))} days)</text>
+
+  <text x="430" y="280" font-size="13" fill="#868e96">Valid Until</text>
+  <text x="560" y="280" font-size="13" font-weight="bold" fill="#e67700">{escape_xml(str(forecast_valid_until)[:10]) if forecast_valid_until else 'Not set'}</text>
+  <text x="660" y="280" font-size="11" fill="#868e96">{f'({forecast_horizon_days}d horizon)' if forecast_horizon_days else ''}</text>
 
   <!-- Gate Decision Box -->
   <rect x="780" y="120" width="380" height="160" rx="10" fill="#fff" filter="url(#shadow)"/>
