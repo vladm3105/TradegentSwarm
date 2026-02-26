@@ -471,8 +471,8 @@ def generate_svg(data: dict, source_file: str = '') -> str:
   <text x="560" y="230" font-size="13" font-weight="bold" fill="{'#ff6b6b' if ytd_return < 0 else '#51cf66'}">{ytd_return:+.1f}%</text>
 
   <text x="430" y="255" font-size="13" fill="#868e96">Next Earnings</text>
-  <text x="560" y="255" font-size="13" font-weight="bold" fill="#212529">{escape_xml(str(next_earnings)[:6])}</text>
-  <text x="620" y="255" font-size="11" fill="#868e96">({escape_xml(str(days_to_earnings))} days)</text>
+  <text x="560" y="255" font-size="13" font-weight="bold" fill="#212529">{escape_xml(str(next_earnings)[:10])}</text>
+  <text x="660" y="255" font-size="11" fill="#868e96">({escape_xml(str(days_to_earnings))} days)</text>
 
   <!-- Gate Decision Box -->
   <rect x="780" y="120" width="380" height="160" rx="10" fill="#fff" filter="url(#shadow)"/>
