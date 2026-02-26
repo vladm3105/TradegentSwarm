@@ -48,14 +48,34 @@ Use this skill for non-earnings trading opportunities: technical breakouts, valu
 
 ## Forecast Validity
 
-Every analysis MUST set `forecast_valid_until` in `_meta`:
+Every analysis MUST set `forecast_valid_until` in `_meta`. This is the date when the thesis becomes stale and requires re-analysis.
 
-| Scenario | Forecast Valid Until | Horizon Days |
-|----------|---------------------|--------------|
-| Has earnings date | Next earnings date | Days to earnings |
-| No upcoming earnings | +30 calendar days | 30 |
-| Major catalyst pending | Catalyst date | Days to catalyst |
-| Macro/sector play | +14-21 days | 14-21 |
+**Decision Tree (follow in order):**
+
+```
+1. Is there an upcoming earnings date?
+   YES → forecast_valid_until = earnings_date
+         (Earnings will validate/invalidate thesis)
+
+2. Is there a specific catalyst with a known date?
+   (FDA decision, product launch, contract award, etc.)
+   YES → forecast_valid_until = catalyst_date
+         (Catalyst outcome determines thesis validity)
+
+3. Is this a technical/momentum play?
+   YES → forecast_valid_until = +7 to 14 days
+         (Technical setups decay quickly)
+
+4. Is this a macro/sector rotation play?
+   YES → forecast_valid_until = +14 to 21 days
+         (Macro conditions shift)
+
+5. None of the above (value/fundamental play)?
+   → forecast_valid_until = +30 days MAX
+     (Default ceiling, not a target)
+```
+
+**Required in output:** Explicitly state the reason for the chosen expiration date in `_meta.forecast_reason`.
 
 After `forecast_valid_until`, the analysis is **historical only** - used for learning/review, not trading decisions.
 
@@ -195,6 +215,7 @@ Use `tradegent_knowledge/skills/stock-analysis/template.yaml` (v2.6).
     "position_size_pct": 0.0,
     "structure": "shares|calls|puts|spread|none",
     "forecast_valid_until": "YYYY-MM-DD",
+    "forecast_reason": "Why this expiration (earnings/catalyst/technical/default)",
     "rationale_summary": "One sentence summary"
 }
 ```

@@ -408,6 +408,14 @@ def validate_forecast_validity(doc: dict, result: ValidationResult):
             f"_meta.forecast_valid_until must be YYYY-MM-DD format (found: {forecast_date})"
         )
 
+    # Check forecast_reason is provided (required for v2.6)
+    forecast_reason = meta.get("forecast_reason", "")
+    if not forecast_reason or len(str(forecast_reason).strip()) < 5:
+        result.add_error(
+            "_meta.forecast_reason is required. Explain why this expiration date "
+            "(e.g., 'Earnings 2026-03-15', 'FDA decision', 'Breakout window 7d')"
+        )
+
     # Optional: check forecast_horizon_days consistency
     horizon_days = meta.get("forecast_horizon_days")
     if horizon_days is not None:
