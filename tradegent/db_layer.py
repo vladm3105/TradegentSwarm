@@ -1733,3 +1733,274 @@ class NexusDB:
             updated = cur.fetchone() is not None
         self.conn.commit()
         return updated
+
+    # ─── Analysis Lineage Methods (IPLAN-001) ─────────────────────────────────────
+
+    def get_pending_post_earnings_reviews(self) -> list[dict]:
+        """Get earnings analyses that need post-earnings review."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM nexus.analysis_lineage
+                WHERE analysis_type = 'earnings-analysis'
+                AND earnings_date < CURRENT_DATE
+                AND earnings_date >= CURRENT_DATE - INTERVAL '7 days'
+                AND post_earnings_review_file IS NULL
+                AND current_status = 'active'
+                ORDER BY earnings_date DESC
+            """)
+            return [dict(r) for r in cur.fetchall()]
+
+    def get_expired_forecasts(self) -> list[dict]:
+        """Get analyses with expired forecast_valid_until."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM nexus.analysis_lineage
+                WHERE forecast_valid_until < CURRENT_DATE
+                AND current_status = 'active'
+                ORDER BY forecast_valid_until DESC
+            """)
+            return [dict(r) for r in cur.fetchall()]
+
+    def get_analysis_lineage(self, ticker: str, limit: int = 10) -> list[dict]:
+        """Get analysis lineage chain for a ticker."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM nexus.analysis_lineage
+                WHERE ticker = %s
+                ORDER BY current_analysis_date DESC
+                LIMIT %s
+            """, [ticker.upper(), limit])
+            return [dict(r) for r in cur.fetchall()]
+
+    def get_active_analysis(self, ticker: str, analysis_type: str) -> dict | None:
+        """Get the most recent active analysis for a ticker."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM nexus.analysis_lineage
+                WHERE ticker = %s
+                AND analysis_type = %s
+                AND current_status = 'active'
+                ORDER BY current_analysis_date DESC
+                LIMIT 1
+            """, [ticker.upper(), analysis_type])
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def create_lineage_entry(
+        self,
+        ticker: str,
+        analysis_type: str,
+        current_analysis_file: str,
+        forecast_valid_until: date | None = None,
+        earnings_date: date | None = None,
+        prior_analysis_file: str | None = None,
+        prior_analysis_date: datetime | None = None
+    ) -> int:
+        """Create a new analysis lineage entry. Returns lineage ID."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO nexus.analysis_lineage
+                    (ticker, analysis_type, current_analysis_file, current_analysis_date,
+                     forecast_valid_until, earnings_date, prior_analysis_file, prior_analysis_date)
+                VALUES (%s, %s, %s, now(), %s, %s, %s, %s)
+                RETURNING id
+            """, [
+                ticker.upper(),
+                analysis_type,
+                current_analysis_file,
+                forecast_valid_until,
+                earnings_date,
+                prior_analysis_file,
+                prior_analysis_date
+            ])
+            lineage_id = cur.fetchone()["id"]
+        self.conn.commit()
+        return lineage_id
+
+    def update_lineage_status(
+        self,
+        lineage_id: int,
+        status: str,
+        validation_file: str | None = None,
+        validation_result: str | None = None,
+        post_earnings_file: str | None = None,
+        grade: str | None = None
+    ) -> bool:
+        """Update analysis lineage status."""
+        updates = ["current_status = %s"]
+        params: list = [status]
+
+        if validation_file:
+            updates.append("validation_file = %s")
+            updates.append("validation_date = now()")
+            params.append(validation_file)
+
+        if validation_result:
+            updates.append("validation_result = %s")
+            params.append(validation_result)
+
+        if post_earnings_file:
+            updates.append("post_earnings_review_file = %s")
+            updates.append("post_earnings_review_date = now()")
+            params.append(post_earnings_file)
+
+        if grade:
+            updates.append("post_earnings_grade = %s")
+            params.append(grade)
+
+        params.append(lineage_id)
+
+        with self.conn.cursor() as cur:
+            cur.execute(
+                f"UPDATE nexus.analysis_lineage SET {', '.join(updates)} WHERE id = %s RETURNING id",
+                params
+            )
+            updated = cur.fetchone() is not None
+        self.conn.commit()
+        return updated
+
+    def get_latest_earnings_analysis(self, ticker: str) -> str | None:
+        """Get the latest earnings analysis file path for a ticker."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT current_analysis_file FROM nexus.analysis_lineage
+                WHERE ticker = %s AND analysis_type = 'earnings-analysis'
+                ORDER BY current_analysis_date DESC
+                LIMIT 1
+            """, [ticker.upper()])
+            row = cur.fetchone()
+        return row["current_analysis_file"] if row else None
+
+    def get_latest_analysis(self, ticker: str, analysis_type: str = None) -> str | None:
+        """Get the latest analysis file path for a ticker."""
+        with self.conn.cursor() as cur:
+            if analysis_type:
+                cur.execute("""
+                    SELECT current_analysis_file FROM nexus.analysis_lineage
+                    WHERE ticker = %s AND analysis_type = %s
+                    ORDER BY current_analysis_date DESC
+                    LIMIT 1
+                """, [ticker.upper(), analysis_type])
+            else:
+                cur.execute("""
+                    SELECT current_analysis_file FROM nexus.analysis_lineage
+                    WHERE ticker = %s
+                    ORDER BY current_analysis_date DESC
+                    LIMIT 1
+                """, [ticker.upper()])
+            row = cur.fetchone()
+        return row["current_analysis_file"] if row else None
+
+    def get_all_unreviewed_earnings_analyses(self) -> list[dict]:
+        """Get all earnings analyses that haven't been reviewed (for backfill)."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM nexus.analysis_lineage
+                WHERE analysis_type = 'earnings-analysis'
+                AND post_earnings_review_file IS NULL
+                AND earnings_date IS NOT NULL
+                ORDER BY earnings_date DESC
+            """)
+            return [dict(r) for r in cur.fetchall()]
+
+    # ─── Confidence Calibration Methods (IPLAN-001) ───────────────────────────────
+
+    def update_confidence_calibration(
+        self,
+        ticker: str | None,
+        analysis_type: str,
+        confidence: int,
+        was_correct: bool
+    ) -> bool:
+        """Update confidence calibration tracking."""
+        bucket = (confidence // 10) * 10  # Round to nearest 10
+        correct_int = 1 if was_correct else 0
+
+        with self.conn.cursor() as cur:
+            # Upsert for ticker-specific calibration
+            cur.execute("""
+                INSERT INTO nexus.confidence_calibration
+                    (ticker, analysis_type, confidence_bucket, total_predictions, correct_predictions)
+                VALUES (%s, %s, %s, 1, %s)
+                ON CONFLICT (COALESCE(ticker, ''), analysis_type, confidence_bucket)
+                DO UPDATE SET
+                    total_predictions = nexus.confidence_calibration.total_predictions + 1,
+                    correct_predictions = nexus.confidence_calibration.correct_predictions + %s,
+                    actual_rate = (nexus.confidence_calibration.correct_predictions + %s)::decimal /
+                                 (nexus.confidence_calibration.total_predictions + 1),
+                    last_updated = now()
+            """, [ticker, analysis_type, bucket, correct_int, correct_int, correct_int])
+
+            # Also update aggregate (ticker=NULL)
+            cur.execute("""
+                INSERT INTO nexus.confidence_calibration
+                    (ticker, analysis_type, confidence_bucket, total_predictions, correct_predictions)
+                VALUES (NULL, %s, %s, 1, %s)
+                ON CONFLICT (COALESCE(ticker, ''), analysis_type, confidence_bucket)
+                DO UPDATE SET
+                    total_predictions = nexus.confidence_calibration.total_predictions + 1,
+                    correct_predictions = nexus.confidence_calibration.correct_predictions + %s,
+                    actual_rate = (nexus.confidence_calibration.correct_predictions + %s)::decimal /
+                                 (nexus.confidence_calibration.total_predictions + 1),
+                    last_updated = now()
+            """, [analysis_type, bucket, correct_int, correct_int, correct_int])
+
+        self.conn.commit()
+        return True
+
+    def get_calibration_stats(self, bucket: int | None = None) -> list[dict]:
+        """Get confidence calibration statistics."""
+        with self.conn.cursor() as cur:
+            if bucket:
+                cur.execute("""
+                    SELECT * FROM nexus.confidence_calibration
+                    WHERE ticker IS NULL AND confidence_bucket = %s
+                    ORDER BY analysis_type, confidence_bucket
+                """, [bucket])
+            else:
+                cur.execute("""
+                    SELECT * FROM nexus.confidence_calibration
+                    WHERE ticker IS NULL
+                    ORDER BY analysis_type, confidence_bucket
+                """)
+            return [dict(r) for r in cur.fetchall()]
+
+    def get_ticker_calibration(self, ticker: str, analysis_type: str) -> list[dict]:
+        """Get confidence calibration for a specific ticker."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM nexus.confidence_calibration
+                WHERE ticker = %s AND analysis_type = %s
+                ORDER BY confidence_bucket
+            """, [ticker.upper(), analysis_type])
+            return [dict(r) for r in cur.fetchall()]
+
+    # ─── Watchlist Invalidation (IPLAN-001) ───────────────────────────────────────
+
+    def invalidate_watchlist_entry(self, ticker: str, reason: str) -> bool:
+        """Invalidate watchlist entry for ticker if exists."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                UPDATE nexus.watchlist
+                SET status = 'invalidated',
+                    notes = COALESCE(notes, '') || ' | Invalidated: ' || %s,
+                    updated_at = now()
+                WHERE ticker = %s
+                AND status = 'active'
+                RETURNING id
+            """, [reason, ticker.upper()])
+            result = cur.fetchone()
+        self.conn.commit()
+        return result is not None
+
+    def task_already_queued(self, task_type: str, ticker: str, context_key: str = None) -> bool:
+        """Check if a task is already queued (pending or running) to prevent duplicates."""
+        cooldown_key = f"{task_type}:{ticker}:{context_key}" if context_key else f"{task_type}:{ticker}"
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT id FROM nexus.task_queue
+                WHERE cooldown_key = %s
+                AND status IN ('pending', 'running')
+                LIMIT 1
+            """, [cooldown_key])
+            return cur.fetchone() is not None

@@ -2724,6 +2724,12 @@ def process_task_queue(db: NexusDB, max_tasks: int = 5) -> dict:
             elif task_type == "expiration_review":
                 _process_expiration_review_task(db, task)
 
+            elif task_type == "post_earnings_review":
+                _process_post_earnings_review_task(db, task)
+
+            elif task_type == "report_validation":
+                _process_report_validation_task(db, task)
+
             else:
                 log.warning(f"Unknown task type: {task_type}")
                 raise ValueError(f"Unknown task type: {task_type}")
@@ -2974,6 +2980,214 @@ def _process_expiration_review_task(db: NexusDB, task: dict):
             log.warning(f"Claude lesson extraction failed: {e}")
     else:
         log.info(f"  ✓ Expiration review: {ticker} {result.get('outcome', '')}")
+
+
+def _process_post_earnings_review_task(db: NexusDB, task: dict):
+    """Process post-earnings review task.
+
+    Triggered by service.py when earnings have been released.
+    Uses Claude to compare forecast vs actual results and generate lessons.
+    """
+    ticker = task.get("ticker")
+    task_id = task["id"]
+    prompt = task.get("prompt", "")
+
+    # Extract analysis file from prompt if present
+    analysis_file = None
+    if "analysis_file:" in prompt:
+        for line in prompt.split("\n"):
+            if line.startswith("analysis_file:"):
+                analysis_file = line.split(":", 1)[1].strip()
+                break
+
+    if not analysis_file:
+        # Try to find latest earnings analysis
+        analysis_file = db.get_latest_earnings_analysis(ticker)
+
+    if not analysis_file:
+        log.warning(f"No earnings analysis found for {ticker} - skipping review")
+        return
+
+    # Check if Claude mode is enabled
+    use_claude = db.cfg._get("skill_use_claude_code", "skills", "false").lower() == "true"
+    if not use_claude:
+        log.info(f"  ⊘ Post-earnings review skipped (Claude disabled): {ticker}")
+        return
+
+    # Build context for skill invocation
+    context = {
+        "ticker": ticker,
+        "analysis_file": analysis_file,
+        "source": "earnings_release",
+    }
+
+    try:
+        from skill_handlers import invoke_skill_claude
+
+        result = invoke_skill_claude(db, "post-earnings-review", context, task_id)
+        review_file = result.get("review_file")
+        grade = result.get("grade", "?")
+
+        if review_file:
+            # Update lineage with review info
+            lineage = db.get_active_analysis(ticker, "earnings")
+            if lineage:
+                db.update_lineage_status(
+                    lineage["id"],
+                    "reviewed",
+                    post_earnings_review_file=review_file,
+                    post_earnings_grade=grade,
+                )
+
+            # Update confidence calibration
+            confidence = result.get("stated_confidence")
+            was_correct = grade in ["A", "B"]  # A or B = good prediction
+            if confidence:
+                db.update_confidence_calibration(ticker, "earnings", confidence, was_correct)
+
+            log.info(f"  ✓ Post-earnings review: {ticker} grade={grade}")
+        else:
+            log.warning(f"  ⚠ Post-earnings review produced no file: {ticker}")
+
+    except Exception as e:
+        log.error(f"Post-earnings review failed for {ticker}: {e}")
+        raise
+
+
+def _process_report_validation_task(db: NexusDB, task: dict):
+    """Process report validation task.
+
+    Triggered when:
+    - New analysis is created (validate against prior)
+    - Forecast expires (check if still valid)
+
+    Uses Claude to determine: CONFIRM, SUPERSEDE, or INVALIDATE.
+    """
+    ticker = task.get("ticker")
+    task_id = task["id"]
+    prompt = task.get("prompt", "")
+
+    # Extract files from prompt
+    prior_file = None
+    new_file = None
+    trigger = "new_analysis"
+
+    for line in prompt.split("\n"):
+        if line.startswith("prior_file:"):
+            prior_file = line.split(":", 1)[1].strip()
+        elif line.startswith("new_file:"):
+            new_file = line.split(":", 1)[1].strip()
+        elif line.startswith("trigger:"):
+            trigger = line.split(":", 1)[1].strip()
+
+    # For expiry validation, we only have prior file
+    if trigger == "forecast_expiry" and prior_file and not new_file:
+        # Re-run analysis and then validate
+        log.info(f"  → Forecast expired for {ticker}, triggering fresh analysis")
+        # This will be handled by the normal analysis flow
+        # which chains to validation automatically
+        return
+
+    if not prior_file:
+        # Try to find prior active analysis
+        lineage = db.get_active_analysis(ticker, "stock")
+        if not lineage:
+            lineage = db.get_active_analysis(ticker, "earnings")
+        if lineage:
+            prior_file = lineage["current_analysis_file"]
+
+    if not prior_file:
+        log.warning(f"No prior analysis found for {ticker} - skipping validation")
+        return
+
+    # Check if Claude mode is enabled
+    use_claude = db.cfg._get("skill_use_claude_code", "skills", "false").lower() == "true"
+    if not use_claude:
+        log.info(f"  ⊘ Report validation skipped (Claude disabled): {ticker}")
+        return
+
+    # Build context for skill invocation
+    context = {
+        "ticker": ticker,
+        "prior_file": prior_file,
+        "new_file": new_file,
+        "trigger": trigger,
+        "source": "validation_check",
+    }
+
+    try:
+        from skill_handlers import invoke_skill_claude
+
+        result = invoke_skill_claude(db, "report-validation", context, task_id)
+        validation_result = result.get("validation_result")
+        validation_file = result.get("validation_file")
+
+        if validation_result and validation_file:
+            # Update lineage
+            lineage = db.get_active_analysis(ticker, "stock")
+            if not lineage:
+                lineage = db.get_active_analysis(ticker, "earnings")
+
+            if lineage:
+                if validation_result == "INVALIDATE":
+                    db.update_lineage_status(
+                        lineage["id"],
+                        "invalidated",
+                        validation_file=validation_file,
+                        validation_result=validation_result,
+                    )
+                    # Invalidate watchlist entry
+                    invalidation_reason = result.get("reason", "Thesis invalidated by new analysis")
+                    db.invalidate_watchlist_entry(ticker, invalidation_reason)
+
+                    # Send alert if enabled
+                    alerts_enabled = db.cfg._get("invalidation_alerts_enabled", "skills", "true").lower() == "true"
+                    if alerts_enabled:
+                        _send_invalidation_alert(ticker, validation_result, invalidation_reason)
+
+                    log.warning(f"  ⚠ INVALIDATED: {ticker} - {invalidation_reason}")
+
+                elif validation_result == "SUPERSEDE":
+                    db.update_lineage_status(
+                        lineage["id"],
+                        "superseded",
+                        validation_file=validation_file,
+                        validation_result=validation_result,
+                    )
+                    log.info(f"  ✓ Validation: {ticker} SUPERSEDED")
+
+                else:  # CONFIRM
+                    db.update_lineage_status(
+                        lineage["id"],
+                        "confirmed",
+                        validation_file=validation_file,
+                        validation_result=validation_result,
+                    )
+                    log.info(f"  ✓ Validation: {ticker} CONFIRMED")
+        else:
+            log.warning(f"  ⚠ Report validation produced no result: {ticker}")
+
+    except Exception as e:
+        log.error(f"Report validation failed for {ticker}: {e}")
+        raise
+
+
+def _send_invalidation_alert(ticker: str, result: str, reason: str):
+    """Send alert when analysis is invalidated.
+
+    Currently logs to console. Can be extended to send email/Slack/etc.
+    """
+    alert_msg = f"""
+╔══════════════════════════════════════════════════════════════════╗
+║  ⚠️  ANALYSIS INVALIDATED                                        ║
+╠══════════════════════════════════════════════════════════════════╣
+║  Ticker: {ticker:<54} ║
+║  Result: {result:<54} ║
+║  Reason: {reason[:54]:<54} ║
+╚══════════════════════════════════════════════════════════════════╝
+"""
+    log.warning(alert_msg)
+    # TODO: Add email/Slack notification integration
 
 
 def process_pending_reviews(db: NexusDB) -> int:
@@ -3721,6 +3935,53 @@ def main():
 
     options_sub.add_parser("summary", help="Show options expiration summary")
 
+    # ─── Review Commands (IPLAN-001) ─────────────────────────────────────────────
+    review_parser = sub.add_parser("review-earnings", help="Post-earnings review management")
+    review_sub = review_parser.add_subparsers(dest="review_cmd")
+
+    p = review_sub.add_parser("run", help="Run post-earnings review for ticker")
+    p.add_argument("ticker", help="Ticker symbol")
+    p.add_argument("--analysis", help="Path to specific analysis file")
+
+    review_sub.add_parser("pending", help="List pending post-earnings reviews")
+
+    p = review_sub.add_parser("backfill", help="Generate reviews for historical analyses")
+    p.add_argument("--limit", type=int, default=10, help="Max analyses to backfill")
+    p.add_argument("--dry-run", action="store_true", help="Show what would be reviewed")
+
+    validation_parser = sub.add_parser("validate-analysis", help="Report validation management")
+    validation_sub = validation_parser.add_subparsers(dest="validation_cmd")
+
+    p = validation_sub.add_parser("run", help="Validate analysis against prior")
+    p.add_argument("ticker", help="Ticker symbol")
+    p.add_argument("--new", dest="new_file", help="New analysis file")
+    p.add_argument("--prior", dest="prior_file", help="Prior analysis file")
+
+    validation_sub.add_parser("expired", help="List expired forecasts needing validation")
+
+    p = validation_sub.add_parser("process-expired", help="Process all expired forecasts")
+    p.add_argument("--dry-run", action="store_true", help="Show what would be processed")
+
+    lineage_parser = sub.add_parser("lineage", help="Analysis lineage tracking")
+    lineage_sub = lineage_parser.add_subparsers(dest="lineage_cmd")
+
+    p = lineage_sub.add_parser("show", help="Show lineage for ticker")
+    p.add_argument("ticker", help="Ticker symbol")
+    p.add_argument("--limit", type=int, default=10, help="Max entries to show")
+
+    lineage_sub.add_parser("active", help="List all active analyses")
+
+    lineage_sub.add_parser("invalidated", help="List invalidated analyses")
+
+    calibration_parser = sub.add_parser("calibration", help="Confidence calibration stats")
+    calibration_sub = calibration_parser.add_subparsers(dest="calibration_cmd")
+
+    calibration_sub.add_parser("summary", help="Show calibration summary by bucket")
+
+    p = calibration_sub.add_parser("ticker", help="Show calibration for specific ticker")
+    p.add_argument("ticker", help="Ticker symbol")
+    p.add_argument("--type", dest="analysis_type", default="earnings", help="Analysis type")
+
     p = sub.add_parser("stock")
     p.add_argument("action", choices=["add", "enable", "disable", "set-state", "list"])
     p.add_argument("ticker", nargs="?")
@@ -4284,6 +4545,241 @@ def main():
 
             else:
                 print("Usage: options [list|expiring|expired|process-expired|by-underlying|summary]")
+
+        # ─── Review Commands (IPLAN-001) ─────────────────────────────────────────────
+        elif args.cmd == "review-earnings":
+            if args.review_cmd == "run":
+                ticker = args.ticker.upper()
+                analysis_file = args.analysis
+
+                if not analysis_file:
+                    analysis_file = db.get_latest_earnings_analysis(ticker)
+
+                if not analysis_file:
+                    print(f"❌ No earnings analysis found for {ticker}")
+                else:
+                    # Queue the post-earnings review task
+                    prompt = f"analysis_file: {analysis_file}"
+                    task_id = db.queue_task("post_earnings_review", ticker, prompt=prompt, priority=8)
+                    print(f"✅ Queued post-earnings review for {ticker} (task {task_id})")
+                    print(f"   Analysis: {analysis_file}")
+                    print("   Run: python tradegent.py process-queue")
+
+            elif args.review_cmd == "pending":
+                pending = db.get_pending_post_earnings_reviews()
+                if not pending:
+                    print("No pending post-earnings reviews")
+                else:
+                    print(f"\nPending Post-Earnings Reviews ({len(pending)}):\n")
+                    print(f"{'Ticker':<8} {'Earnings':<12} {'Analysis Date':<20} {'File'}")
+                    print("─" * 80)
+                    for p in pending:
+                        earnings = str(p.get("earnings_date", ""))[:10]
+                        analysis_dt = str(p.get("current_analysis_date", ""))[:19]
+                        file_short = p.get("current_analysis_file", "")[-40:]
+                        print(f"{p['ticker']:<8} {earnings:<12} {analysis_dt:<20} ...{file_short}")
+
+            elif args.review_cmd == "backfill":
+                limit = args.limit
+                dry_run = args.dry_run
+                unreviewed = db.get_all_unreviewed_earnings_analyses()[:limit]
+
+                if not unreviewed:
+                    print("No unreviewed earnings analyses found")
+                else:
+                    print(f"\n{'Backfilling' if not dry_run else 'Would backfill'} {len(unreviewed)} analyses:\n")
+                    for u in unreviewed:
+                        ticker = u.get("ticker")
+                        file_path = u.get("current_analysis_file")
+                        if dry_run:
+                            print(f"  [DRY-RUN] {ticker}: {file_path}")
+                        else:
+                            prompt = f"analysis_file: {file_path}"
+                            task_id = db.queue_task("post_earnings_review", ticker, prompt=prompt, priority=5)
+                            print(f"  ✓ Queued {ticker} (task {task_id})")
+
+                    if not dry_run:
+                        print(f"\n✅ Queued {len(unreviewed)} reviews. Run: python tradegent.py process-queue")
+
+            else:
+                print("Usage: review-earnings [run|pending|backfill]")
+
+        elif args.cmd == "validate-analysis":
+            if args.validation_cmd == "run":
+                ticker = args.ticker.upper()
+                new_file = args.new_file
+                prior_file = args.prior_file
+
+                if not prior_file:
+                    lineage = db.get_active_analysis(ticker, "stock")
+                    if not lineage:
+                        lineage = db.get_active_analysis(ticker, "earnings")
+                    if lineage:
+                        prior_file = lineage["current_analysis_file"]
+
+                if not prior_file:
+                    print(f"❌ No prior analysis found for {ticker}")
+                else:
+                    prompt_lines = [f"prior_file: {prior_file}"]
+                    if new_file:
+                        prompt_lines.append(f"new_file: {new_file}")
+                    prompt_lines.append("trigger: manual")
+
+                    task_id = db.queue_task(
+                        "report_validation", ticker,
+                        prompt="\n".join(prompt_lines),
+                        priority=8
+                    )
+                    print(f"✅ Queued report validation for {ticker} (task {task_id})")
+                    print(f"   Prior: {prior_file}")
+                    if new_file:
+                        print(f"   New: {new_file}")
+                    print("   Run: python tradegent.py process-queue")
+
+            elif args.validation_cmd == "expired":
+                expired = db.get_expired_forecasts()
+                if not expired:
+                    print("No expired forecasts")
+                else:
+                    print(f"\nExpired Forecasts ({len(expired)}):\n")
+                    print(f"{'Ticker':<8} {'Type':<10} {'Valid Until':<12} {'Analysis Date':<20}")
+                    print("─" * 60)
+                    for e in expired:
+                        valid_until = str(e.get("forecast_valid_until", ""))[:10]
+                        analysis_dt = str(e.get("current_analysis_date", ""))[:19]
+                        print(f"{e['ticker']:<8} {e['analysis_type']:<10} {valid_until:<12} {analysis_dt:<20}")
+
+            elif args.validation_cmd == "process-expired":
+                dry_run = args.dry_run
+                expired = db.get_expired_forecasts()
+
+                if not expired:
+                    print("No expired forecasts to process")
+                else:
+                    print(f"\n{'Processing' if not dry_run else 'Would process'} {len(expired)} expired forecasts:\n")
+                    for e in expired:
+                        ticker = e["ticker"]
+                        prior_file = e["current_analysis_file"]
+                        if dry_run:
+                            print(f"  [DRY-RUN] {ticker}: {prior_file}")
+                        else:
+                            prompt = f"prior_file: {prior_file}\ntrigger: forecast_expiry"
+                            task_id = db.queue_task("report_validation", ticker, prompt=prompt, priority=6)
+                            print(f"  ✓ Queued {ticker} (task {task_id})")
+
+                    if not dry_run:
+                        print(f"\n✅ Queued {len(expired)} validations. Run: python tradegent.py process-queue")
+
+            else:
+                print("Usage: validate-analysis [run|expired|process-expired]")
+
+        elif args.cmd == "lineage":
+            if args.lineage_cmd == "show":
+                ticker = args.ticker.upper()
+                limit = args.limit
+                lineage = db.get_analysis_lineage(ticker, limit=limit)
+
+                if not lineage:
+                    print(f"No lineage found for {ticker}")
+                else:
+                    print(f"\nAnalysis Lineage for {ticker} ({len(lineage)} entries):\n")
+                    print(f"{'ID':>4} {'Type':<10} {'Status':<12} {'Date':<12} {'Grade':<6} {'Validation'}")
+                    print("─" * 70)
+                    for l in lineage:
+                        status = l.get("current_status", "?")
+                        date_str = str(l.get("current_analysis_date", ""))[:10]
+                        grade = l.get("post_earnings_grade") or "—"
+                        val_result = l.get("validation_result") or "—"
+                        print(f"{l['id']:>4} {l['analysis_type']:<10} {status:<12} {date_str:<12} {grade:<6} {val_result}")
+
+            elif args.lineage_cmd == "active":
+                with db.conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT ticker, analysis_type, current_status, current_analysis_date,
+                               forecast_valid_until, earnings_date
+                        FROM nexus.analysis_lineage
+                        WHERE current_status = 'active'
+                        ORDER BY current_analysis_date DESC
+                    """)
+                    active = [dict(r) for r in cur.fetchall()]
+
+                if not active:
+                    print("No active analyses")
+                else:
+                    print(f"\nActive Analyses ({len(active)}):\n")
+                    print(f"{'Ticker':<8} {'Type':<10} {'Date':<12} {'Valid Until':<12} {'Earnings'}")
+                    print("─" * 60)
+                    for a in active:
+                        date_str = str(a.get("current_analysis_date", ""))[:10]
+                        valid = str(a.get("forecast_valid_until") or "—")[:10]
+                        earnings = str(a.get("earnings_date") or "—")[:10]
+                        print(f"{a['ticker']:<8} {a['analysis_type']:<10} {date_str:<12} {valid:<12} {earnings}")
+
+            elif args.lineage_cmd == "invalidated":
+                with db.conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT ticker, analysis_type, current_status, validation_result,
+                               current_analysis_date, updated_at
+                        FROM nexus.analysis_lineage
+                        WHERE current_status = 'invalidated'
+                        ORDER BY updated_at DESC
+                        LIMIT 20
+                    """)
+                    invalidated = [dict(r) for r in cur.fetchall()]
+
+                if not invalidated:
+                    print("No invalidated analyses")
+                else:
+                    print(f"\nInvalidated Analyses ({len(invalidated)}):\n")
+                    print(f"{'Ticker':<8} {'Type':<10} {'Result':<12} {'Analysis Date':<12} {'Invalidated'}")
+                    print("─" * 65)
+                    for i in invalidated:
+                        date_str = str(i.get("current_analysis_date", ""))[:10]
+                        inv_date = str(i.get("updated_at", ""))[:10]
+                        result = i.get("validation_result") or "—"
+                        print(f"{i['ticker']:<8} {i['analysis_type']:<10} {result:<12} {date_str:<12} {inv_date}")
+
+            else:
+                print("Usage: lineage [show|active|invalidated]")
+
+        elif args.cmd == "calibration":
+            if args.calibration_cmd == "summary":
+                stats = db.get_calibration_stats()
+                if not stats:
+                    print("No calibration data yet")
+                else:
+                    print(f"\nConfidence Calibration Summary:\n")
+                    print(f"{'Bucket':<8} {'Total':>8} {'Correct':>8} {'Rate':>8} {'Expected':>10}")
+                    print("─" * 50)
+                    for s in stats:
+                        bucket = s["confidence_bucket"]
+                        total = s["total_predictions"]
+                        correct = s["correct_predictions"]
+                        actual = float(s["actual_rate"] or 0)
+                        expected_low = bucket
+                        expected_high = bucket + 9
+                        calibrated = "✓" if expected_low <= actual <= expected_high else "✗"
+                        print(f"{bucket}-{bucket+9}%{'':<2} {total:>8} {correct:>8} {actual:>7.1f}% {expected_low}-{expected_high}% {calibrated}")
+
+            elif args.calibration_cmd == "ticker":
+                ticker = args.ticker.upper()
+                analysis_type = args.analysis_type
+                stats = db.get_ticker_calibration(ticker, analysis_type)
+                if not stats:
+                    print(f"No calibration data for {ticker} ({analysis_type})")
+                else:
+                    print(f"\nCalibration for {ticker} ({analysis_type}):\n")
+                    print(f"{'Bucket':<8} {'Total':>8} {'Correct':>8} {'Rate':>8}")
+                    print("─" * 40)
+                    for s in stats:
+                        bucket = s["confidence_bucket"]
+                        total = s["total_predictions"]
+                        correct = s["correct_predictions"]
+                        actual = float(s["actual_rate"] or 0)
+                        print(f"{bucket}-{bucket+9}%{'':<2} {total:>8} {correct:>8} {actual:>7.1f}%")
+
+            else:
+                print("Usage: calibration [summary|ticker]")
 
         # ─── Graph Commands ───────────────────────────────────────────────────────────
         elif args.cmd == "graph":

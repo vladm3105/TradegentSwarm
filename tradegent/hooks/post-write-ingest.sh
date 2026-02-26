@@ -58,10 +58,44 @@ else
     STATUS="${STATUS}, Graph: failed"
 fi
 
+# Queue report validation for new analyses (IPLAN-001)
+VALIDATION_QUEUED=""
+if [[ "$FILE_PATH" =~ knowledge/analysis/(stock|earnings)/ ]]; then
+    # Extract ticker from filename (format: TICKER_YYYYMMDDTHHMM.yaml)
+    FILENAME=$(basename "$FILE_PATH")
+    TICKER=$(echo "$FILENAME" | cut -d'_' -f1)
+
+    if [[ -n "$TICKER" ]] && [[ "$TICKER" != "TEMPLATE" ]]; then
+        # Check if auto_report_validation is enabled
+        cd /opt/data/tradegent_swarm/tradegent
+        AUTO_VALIDATE=$(python -c "from db_layer import NexusDB; db=NexusDB(); print(db.cfg._get('auto_report_validation', 'feature_flags', 'true'))" 2>/dev/null || echo "true")
+
+        if [[ "$AUTO_VALIDATE" == "true" ]]; then
+            # Check if there's a prior active analysis to validate against
+            HAS_PRIOR=$(python -c "
+from db_layer import NexusDB
+db = NexusDB()
+prior = db.get_active_analysis('$TICKER', 'stock') or db.get_active_analysis('$TICKER', 'earnings')
+print('yes' if prior else 'no')
+" 2>/dev/null || echo "no")
+
+            if [[ "$HAS_PRIOR" == "yes" ]]; then
+                # Queue report validation task
+                python -c "
+from db_layer import NexusDB
+db = NexusDB()
+if not db.task_already_queued('report_validation', '$TICKER'):
+    db.queue_task('report_validation', '$TICKER', prompt='new_file: $FILE_PATH\ntrigger: new_analysis', priority=7)
+" 2>/dev/null && VALIDATION_QUEUED=", Validation queued"
+            fi
+        fi
+    fi
+fi
+
 # Return context to Claude
 cat <<EOF
 {
-  "additionalContext": "Auto-ingested to knowledge base: ${STATUS}"
+  "additionalContext": "Auto-ingested to knowledge base: ${STATUS}${VALIDATION_QUEUED}"
 }
 EOF
 

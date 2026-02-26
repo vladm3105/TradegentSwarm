@@ -660,3 +660,113 @@ INSERT INTO nexus.settings (key, value, category, description) VALUES
     ('task_queue_enabled', 'true', 'feature_flags', 'Enable async task queue processing'),
     ('analysis_cooldown_hours', '4', 'rate_limits', 'Hours between re-analyzing same ticker')
 ON CONFLICT (key) DO NOTHING;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 12. ANALYSIS LINEAGE (IPLAN-001: Post-Earnings Review & Report Validation)
+-- ═══════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS nexus.analysis_lineage (
+    id                      SERIAL PRIMARY KEY,
+    ticker                  VARCHAR(10) NOT NULL,
+
+    -- Analysis identification
+    analysis_type           VARCHAR(20) NOT NULL,  -- 'earnings-analysis' | 'stock-analysis'
+    current_analysis_file   VARCHAR(500) NOT NULL,
+    current_analysis_date   TIMESTAMPTZ NOT NULL,
+    current_status          VARCHAR(20) NOT NULL DEFAULT 'active',
+    -- Status: active, confirmed, superseded, invalidated, expired
+
+    -- Prior analysis chain
+    prior_analysis_file     VARCHAR(500),
+    prior_analysis_date     TIMESTAMPTZ,
+
+    -- Validation tracking
+    validation_file         VARCHAR(500),
+    validation_date         TIMESTAMPTZ,
+    validation_result       VARCHAR(20),  -- CONFIRM | SUPERSEDE | INVALIDATE
+
+    -- Post-earnings review tracking (for earnings-analysis only)
+    post_earnings_review_file   VARCHAR(500),
+    post_earnings_review_date   TIMESTAMPTZ,
+    post_earnings_grade         VARCHAR(1),  -- A, B, C, D, F
+
+    -- Expiration tracking
+    forecast_valid_until    DATE,
+    earnings_date           DATE,  -- For earnings-analysis only
+
+    created_at              TIMESTAMPTZ DEFAULT now(),
+    updated_at              TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_lineage_ticker ON nexus.analysis_lineage(ticker);
+CREATE INDEX IF NOT EXISTS idx_lineage_type ON nexus.analysis_lineage(ticker, analysis_type);
+CREATE INDEX IF NOT EXISTS idx_lineage_active ON nexus.analysis_lineage(ticker, current_status)
+    WHERE current_status = 'active';
+CREATE INDEX IF NOT EXISTS idx_lineage_pending_review ON nexus.analysis_lineage(ticker)
+    WHERE analysis_type = 'earnings-analysis'
+    AND post_earnings_review_file IS NULL
+    AND earnings_date < CURRENT_DATE;
+CREATE INDEX IF NOT EXISTS idx_lineage_expired_forecasts ON nexus.analysis_lineage(forecast_valid_until)
+    WHERE current_status = 'active'
+    AND forecast_valid_until < CURRENT_DATE;
+
+DROP TRIGGER IF EXISTS analysis_lineage_updated_at ON nexus.analysis_lineage;
+CREATE TRIGGER analysis_lineage_updated_at BEFORE UPDATE ON nexus.analysis_lineage
+    FOR EACH ROW EXECUTE FUNCTION nexus.update_timestamp();
+
+COMMENT ON TABLE nexus.analysis_lineage IS 'Tracks analysis chain/lineage, validation results, and post-earnings reviews.';
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 13. CONFIDENCE CALIBRATION (IPLAN-001)
+-- ═══════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS nexus.confidence_calibration (
+    id                  SERIAL PRIMARY KEY,
+    ticker              VARCHAR(10),  -- NULL for aggregate
+    analysis_type       VARCHAR(20) NOT NULL,
+    confidence_bucket   INTEGER NOT NULL,  -- 50, 60, 70, 80, 90
+    total_predictions   INTEGER DEFAULT 0,
+    correct_predictions INTEGER DEFAULT 0,
+    actual_rate         DECIMAL(5,2),  -- Calculated: correct/total
+    last_updated        TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_calibration_bucket ON nexus.confidence_calibration(
+    COALESCE(ticker, ''), analysis_type, confidence_bucket
+);
+
+COMMENT ON TABLE nexus.confidence_calibration IS 'Tracks confidence calibration to compare stated confidence vs actual accuracy.';
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- VIEWS FOR ANALYSIS LINEAGE
+-- ═══════════════════════════════════════════════════════════════════════════
+CREATE OR REPLACE VIEW nexus.v_pending_post_earnings_reviews AS
+SELECT * FROM nexus.analysis_lineage
+WHERE analysis_type = 'earnings-analysis'
+  AND earnings_date < CURRENT_DATE
+  AND earnings_date >= CURRENT_DATE - INTERVAL '7 days'
+  AND post_earnings_review_file IS NULL
+  AND current_status = 'active'
+ORDER BY earnings_date DESC;
+
+CREATE OR REPLACE VIEW nexus.v_expired_forecasts AS
+SELECT * FROM nexus.analysis_lineage
+WHERE forecast_valid_until < CURRENT_DATE
+  AND current_status = 'active'
+ORDER BY forecast_valid_until DESC;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- SETTINGS FOR POST-EARNINGS REVIEW & REPORT VALIDATION (IPLAN-001)
+-- ═══════════════════════════════════════════════════════════════════════════
+INSERT INTO nexus.settings (key, value, category, description) VALUES
+    ('auto_post_earnings_review', 'true', 'feature_flags',
+     'Auto-queue post-earnings review T+1 after release'),
+    ('auto_report_validation', 'true', 'feature_flags',
+     'Auto-validate prior analysis when new one created'),
+    ('validation_on_expiry', 'true', 'feature_flags',
+     'Queue validation review when forecast_valid_until expires'),
+    ('post_earnings_delay_hours', '4', 'scheduler',
+     'Hours after market open to queue post-earnings review'),
+    ('invalidation_alerts_enabled', 'true', 'feature_flags',
+     'Log alerts when analysis is invalidated'),
+    ('update_ticker_profile_on_review', 'true', 'feature_flags',
+     'Update ticker profile after post-earnings review')
+ON CONFLICT (key) DO NOTHING;

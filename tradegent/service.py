@@ -448,6 +448,14 @@ class NexusService:
         if self._should_check_expirations():
             self._process_expirations()
 
+        # ─── Post-Earnings Review Check (IPLAN-001) ───────────────────────────────────
+        if self._should_check_post_earnings():
+            self._check_earnings_releases()
+
+        # ─── Expired Forecasts Check (IPLAN-001) ──────────────────────────────────────
+        if self._should_check_expired_forecasts():
+            self._check_expired_forecasts()
+
         # 5. Clear current task
         self._db.heartbeat("running", current_task=None)
 
@@ -505,6 +513,101 @@ class NexusService:
             log.warning(f"Expiration check error: {e}")
 
         self._last_expiration_check = datetime.now()
+
+    # ─── Post-Earnings Review Check (IPLAN-001) ────────────────────────────────────
+
+    def _should_check_post_earnings(self) -> bool:
+        """Check if we should look for post-earnings reviews (once per trading day)."""
+        _val = orchestrator.cfg._get("auto_post_earnings_review", "feature_flags", "true")
+        enabled = _val if isinstance(_val, bool) else str(_val).lower() == "true"
+        if not enabled:
+            return False
+
+        # Check at specific hours (default 10:00 and 15:00 ET)
+        now = datetime.now(ET)
+        check_hours = [10, 15]  # 10 AM and 3 PM ET
+        return now.hour in check_hours and now.weekday() < 5  # Weekdays only
+
+    def _check_earnings_releases(self):
+        """Check for earnings that released, queue post-earnings review."""
+        self._db.heartbeat("running", current_task="post-earnings review check")
+
+        try:
+            delay_hours = int(orchestrator.cfg._get("post_earnings_delay_hours", "scheduler", "4"))
+
+            # Find earnings analyses where:
+            # 1. earnings_date was in last 7 days
+            # 2. No post_earnings_review_file in lineage
+            pending = self._db.get_pending_post_earnings_reviews()
+
+            for analysis in pending:
+                ticker = analysis["ticker"]
+                earnings_date = analysis.get("earnings_date")
+                lineage_id = analysis["id"]
+
+                # Check if already queued
+                if self._db.task_already_queued("post_earnings_review", ticker, str(earnings_date)):
+                    continue
+
+                log.info(f"Queueing post-earnings review for {ticker} (earnings: {earnings_date})")
+
+                # Queue the task
+                self._db.queue_task(
+                    task_type="post_earnings_review",
+                    ticker=ticker,
+                    prompt=f"Post-earnings review for {ticker}. Prior analysis: {analysis.get('current_analysis_file')}. Earnings date: {earnings_date}. Lineage ID: {lineage_id}",
+                    priority=7,
+                    cooldown_key=f"post_earnings_review:{ticker}:{earnings_date}",
+                    cooldown_hours=24
+                )
+
+        except Exception as e:
+            log.warning(f"Post-earnings check error: {e}")
+
+    # ─── Expired Forecasts Check (IPLAN-001) ───────────────────────────────────────
+
+    def _should_check_expired_forecasts(self) -> bool:
+        """Check if we should look for expired forecasts (once per trading day)."""
+        _val = orchestrator.cfg._get("validation_on_expiry", "feature_flags", "true")
+        enabled = _val if isinstance(_val, bool) else str(_val).lower() == "true"
+        if not enabled:
+            return False
+
+        # Check once in morning (9:00 ET)
+        now = datetime.now(ET)
+        return now.hour == 9 and now.weekday() < 5  # Weekdays only
+
+    def _check_expired_forecasts(self):
+        """Check for analyses with expired forecast_valid_until, queue validation."""
+        self._db.heartbeat("running", current_task="expired forecast check")
+
+        try:
+            # Find analyses where forecast_valid_until has passed
+            expired = self._db.get_expired_forecasts()
+
+            for analysis in expired:
+                ticker = analysis["ticker"]
+                forecast_date = analysis.get("forecast_valid_until")
+                lineage_id = analysis["id"]
+
+                # Check if already queued
+                if self._db.task_already_queued("report_validation", ticker, str(forecast_date)):
+                    continue
+
+                log.info(f"Queueing validation for expired forecast: {ticker} (expired: {forecast_date})")
+
+                # Queue the task
+                self._db.queue_task(
+                    task_type="report_validation",
+                    ticker=ticker,
+                    prompt=f"Validate expired analysis: {analysis.get('current_analysis_file')}. Forecast expired: {forecast_date}. Lineage ID: {lineage_id}. Reason: forecast_expired",
+                    priority=5,
+                    cooldown_key=f"report_validation:{ticker}:{forecast_date}",
+                    cooldown_hours=48
+                )
+
+        except Exception as e:
+            log.warning(f"Expired forecast check error: {e}")
 
     def _init_schedule_times(self):
         """Set next_run_at for all enabled schedules."""

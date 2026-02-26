@@ -31,6 +31,11 @@ CREATE CONSTRAINT analysis_id IF NOT EXISTS FOR (a:Analysis) REQUIRE a.id IS UNI
 CREATE CONSTRAINT trade_id IF NOT EXISTS FOR (t:Trade) REQUIRE t.id IS UNIQUE;
 CREATE CONSTRAINT learning_id IF NOT EXISTS FOR (l:Learning) REQUIRE l.id IS UNIQUE;
 
+// Post-Earnings Review & Report Validation (IPLAN-001)
+CREATE CONSTRAINT post_earnings_review_id IF NOT EXISTS FOR (r:PostEarningsReview) REQUIRE r.id IS UNIQUE;
+CREATE CONSTRAINT validation_id IF NOT EXISTS FOR (v:Validation) REQUIRE v.id IS UNIQUE;
+CREATE CONSTRAINT ticker_profile_id IF NOT EXISTS FOR (p:TickerProfile) REQUIRE p.ticker IS UNIQUE;
+
 // Provenance
 CREATE CONSTRAINT document_id IF NOT EXISTS FOR (d:Document) REQUIRE d.id IS UNIQUE;
 
@@ -63,6 +68,12 @@ CREATE INDEX learning_category_idx IF NOT EXISTS FOR (l:Learning) ON (l.category
 
 // Extraction tracking
 CREATE INDEX analysis_extract_ver_idx IF NOT EXISTS FOR (a:Analysis) ON (a.extraction_version);
+
+// Post-Earnings Review & Validation (IPLAN-001)
+CREATE INDEX post_earnings_review_ticker_idx IF NOT EXISTS FOR (r:PostEarningsReview) ON (r.ticker);
+CREATE INDEX post_earnings_review_grade_idx IF NOT EXISTS FOR (r:PostEarningsReview) ON (r.grade);
+CREATE INDEX validation_ticker_idx IF NOT EXISTS FOR (v:Validation) ON (v.ticker);
+CREATE INDEX validation_result_idx IF NOT EXISTS FOR (v:Validation) ON (v.result);
 
 // ============================================================
 // FULL-TEXT SEARCH
@@ -118,3 +129,11 @@ CALL db.index.fulltext.createNodeIndex(
 //
 // PROVENANCE (1):
 //   (any)-[:EXTRACTED_FROM {field_path, confidence, extracted_at}]->(Document)
+//
+// POST-EARNINGS REVIEW & VALIDATION (IPLAN-001):
+//   (Analysis)-[:HAS_REVIEW {grade, review_date}]->(PostEarningsReview)
+//   (Analysis)-[:VALIDATED_BY {result, validation_date}]->(Validation)
+//   (Analysis)-[:SUPERSEDES]->(Analysis)
+//   (Analysis)-[:INVALIDATES {reason}]->(Analysis)
+//   (PostEarningsReview)-[:UPDATES_PROFILE]->(TickerProfile)
+//   (Validation)-[:INVALIDATES_WATCHLIST {reason}]->(:WatchlistEntry)
