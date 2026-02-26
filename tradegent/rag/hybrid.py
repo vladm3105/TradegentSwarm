@@ -495,7 +495,7 @@ def get_bias_warnings(ticker: str) -> list[dict]:
                 bias_history = graph.run_cypher(
                     """
                     MATCH (b:Bias)-[:DETECTED_IN]->(t:Trade)-[:TRADED]->(tk:Ticker {symbol: $symbol})
-                    RETURN b.name AS bias, t.outcome AS outcome, count(*) AS occurrences
+                    RETURN b.name AS bias, COALESCE(t.outcome, 'unknown') AS outcome, count(*) AS occurrences
                     ORDER BY occurrences DESC
                 """,
                     {"symbol": ticker.upper()},

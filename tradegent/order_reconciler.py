@@ -125,6 +125,17 @@ class OrderReconciler:
                 data={"order_id": order_id, "filled_qty": filled_qty, "avg_fill": float(avg_fill) if avg_fill else None}
             ))
 
+        # Queue fill analysis if enabled
+        if self.db.cfg._get("fill_analysis_enabled", "skills", "true").lower() == "true":
+            self.db.queue_task(
+                task_type="fill_analysis",
+                ticker=ticker,
+                prompt=f"Analyze fill for order {order_id}",
+                priority=5,
+                cooldown_key=f"fill_analysis:{order_id}",
+                cooldown_hours=24
+            )
+
     def _handle_partial_fill(self, trade: dict, status: dict):
         """Handle partially filled order."""
         import json

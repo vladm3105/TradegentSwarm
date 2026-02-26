@@ -117,10 +117,12 @@ class ExpirationMonitor:
 
                 if needs_review:
                     self.db.queue_task(
-                        task_type="review_expired_option",
+                        task_type="expiration_review",
                         ticker=ticker,
                         prompt=f"Option {opt['full_symbol']} expired - verify if exercised/assigned",
-                        priority=7
+                        priority=7,
+                        cooldown_key=f"expiration_review:{opt.get('full_symbol', ticker)}",
+                        cooldown_hours=24
                     )
                     results["needs_review"] += 1
                     continue
@@ -181,6 +183,17 @@ class ExpirationMonitor:
                     "option_type": opt.get("option_type")
                 }
             ))
+
+            # Queue options management task for expiring options
+            self.db.queue_task(
+                task_type="options_management",
+                ticker=ticker,
+                prompt=f"Options expiring: {full_symbol} in {days_left} days",
+                priority=8 if days_left <= 3 else 6,
+                cooldown_key=f"options_management:{ticker}",
+                cooldown_hours=24
+            )
+
             warnings_sent += 1
 
         return warnings_sent
@@ -236,10 +249,12 @@ class ExpirationMonitor:
         # Queue tasks for detected assignments
         for assignment in assignments:
             self.db.queue_task(
-                task_type="review_assignment",
+                task_type="expiration_review",
                 ticker=assignment["underlying"],
-                prompt=f"{assignment['type']}: {assignment['full_symbol']} may have been assigned - verify positions",
-                priority=8
+                prompt=f"Assignment: {assignment['type']}: {assignment['full_symbol']} may have been assigned - verify positions",
+                priority=8,
+                cooldown_key=f"expiration_review:{assignment.get('full_symbol', assignment['underlying'])}",
+                cooldown_hours=24
             )
 
         return assignments

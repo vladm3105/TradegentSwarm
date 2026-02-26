@@ -33,12 +33,14 @@ class MockDB:
     def conn(self):
         return self._conn
 
-    def queue_task(self, task_type, ticker, prompt, priority):
+    def queue_task(self, task_type, ticker, prompt, priority, cooldown_key=None, cooldown_hours=0):
         self.queued_tasks.append({
             "task_type": task_type,
             "ticker": ticker,
             "prompt": prompt,
             "priority": priority,
+            "cooldown_key": cooldown_key,
+            "cooldown_hours": cooldown_hours,
         })
         return len(self.queued_tasks)
 
@@ -168,7 +170,7 @@ class TestExpirationMonitor:
 
         assert result["needs_review"] == 1
         assert len(db.queued_tasks) == 1
-        assert db.queued_tasks[0]["task_type"] == "review_expired_option"
+        assert db.queued_tasks[0]["task_type"] == "expiration_review"
 
     def test_process_expirations_fallback_high_premium(self):
         """Verify high premium options are flagged for review without price function."""

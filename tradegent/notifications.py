@@ -34,7 +34,7 @@ import smtplib
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from enum import Enum
 from queue import Queue, Empty
@@ -169,12 +169,45 @@ class NotificationRouter:
         self._channels: list[NotificationChannel] = []
         self._min_priority = NotificationPriority.MEDIUM
         self._queue: Queue[Notification] = Queue()
-        self._seen_ids: set[str] = set()  # Deduplication
+        self._seen_ids: set[str] = set()  # Deduplication by notification_id
         self._seen_max = 1000
         self._rate_limiter = RateLimiter(rate=rate, burst=burst)
         self._db = db
         self._worker_thread: threading.Thread | None = None
         self._running = False
+        # Time-based deduplication: prevents same event_type+ticker within window
+        self._recent_notifications: dict[str, datetime] = {}
+        self._dedup_window_seconds = 300  # 5 minutes
+
+    def _is_time_duplicate(self, notification: Notification) -> bool:
+        """Check if same notification type was sent recently for this ticker.
+
+        Uses event_type + ticker as dedup key with configurable time window.
+        """
+        ticker = notification.data.get("ticker", "") if notification.data else ""
+        if not ticker and notification.ticker:
+            ticker = notification.ticker
+
+        key = f"{notification.event_type}:{ticker}"
+        last_sent = self._recent_notifications.get(key)
+
+        if last_sent:
+            elapsed = (datetime.now() - last_sent).total_seconds()
+            if elapsed < self._dedup_window_seconds:
+                log.debug(f"Skipping time-duplicate notification: {key} (sent {elapsed:.0f}s ago)")
+                return True
+
+        self._recent_notifications[key] = datetime.now()
+
+        # Prune old entries to prevent memory growth
+        if len(self._recent_notifications) > 500:
+            cutoff = datetime.now() - timedelta(seconds=self._dedup_window_seconds * 2)
+            self._recent_notifications = {
+                k: v for k, v in self._recent_notifications.items()
+                if v > cutoff
+            }
+
+        return False
 
     def start(self):
         """Start background worker thread."""
@@ -208,15 +241,22 @@ class NotificationRouter:
         Queue notification for async sending (non-blocking).
 
         Notifications below minimum priority or duplicates are skipped.
+        Uses two levels of deduplication:
+        1. Exact notification_id match (prevents reprocessing)
+        2. Time-based event_type+ticker match (prevents spam)
         """
         # Priority filter
         if notification.priority.value < self._min_priority.value:
             log.debug(f"Notification below min priority: {notification.title}")
             return
 
-        # Deduplication
+        # Deduplication by notification_id (exact match)
         if notification.notification_id in self._seen_ids:
             log.debug(f"Duplicate notification skipped: {notification.notification_id}")
+            return
+
+        # Time-based deduplication (same event+ticker within window)
+        if self._is_time_duplicate(notification):
             return
 
         self._seen_ids.add(notification.notification_id)

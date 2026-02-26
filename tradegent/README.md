@@ -13,7 +13,7 @@ A database-driven, uninterrupted trading orchestrator that uses Claude Code CLI 
 │    │                                                                  │
 │    ├─ Tick loop: refresh cfg → due schedules → earnings → heartbeat   │
 │    │                                                                  │
-│    └─ orchestrator.py                                                 │
+│    └─ tradegent.py (orchestrator)                                     │
 │         │                                                             │
 │         ├─ Stage 1: Analysis  ──→  subprocess: claude --print ...     │
 │         │   prompt includes:          └─ uses MCP servers:            │
@@ -28,7 +28,7 @@ A database-driven, uninterrupted trading orchestrator that uses Claude Code CLI 
 │              only if gate PASS          └─ mcp__ib-gateway            │
 │              only if stock state=paper       (paper account)          │
 │                                                                       │
-│  orchestrator.py CLI (separate terminal)                              │
+│  tradegent.py CLI (separate terminal)                                 │
 │    └─ manage stocks, settings, scanners, one-off analyses             │
 │                                                                       │
 │  MCP Servers (run on host via Claude Code):                           │
@@ -57,7 +57,9 @@ A database-driven, uninterrupted trading orchestrator that uses Claude Code CLI 
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
-**Why the orchestrator runs on the host, not in Docker:** Claude Code CLI requires Node.js, the `~/.claude/` auth session, and MCP server configurations — all of which live on the host. The orchestrator calls `claude` via subprocess, and Claude Code starts the MCP servers (IB Gateway, trading-rag, trading-graph) which connect to Docker services via localhost.
+**Why Tradegent runs on the host, not in Docker:** Claude Code CLI requires Node.js, the `~/.claude/` auth session, and MCP server configurations — all of which live on the host. Tradegent calls `claude` via subprocess, and Claude Code starts the MCP servers (IB Gateway, trading-rag, trading-graph) which connect to Docker services via localhost.
+
+**CLI naming:** `tradegent.py` is the official CLI entry point. The legacy name `orchestrator.py` still works and contains the implementation.
 
 ---
 
@@ -65,8 +67,9 @@ A database-driven, uninterrupted trading orchestrator that uses Claude Code CLI 
 
 ```
 tradegent/
+├── tradegent.py            CLI entry point (equivalent to orchestrator.py)
 ├── service.py              Main entry point — long-running daemon
-├── orchestrator.py         Pipeline engine + CLI commands
+├── orchestrator.py         Pipeline engine + CLI implementation
 ├── db_layer.py             PostgreSQL access layer (NexusDB class)
 │
 ├── # Monitoring Modules (v2.3)
@@ -76,6 +79,7 @@ tradegent/
 ├── watchlist_monitor.py    Evaluates watchlist trigger/invalidation conditions
 ├── expiration_monitor.py   Tracks options approaching expiration
 ├── notifications.py        Multi-channel alert system (Telegram, Webhook, Email)
+├── skill_handlers.py       Skill invocation infrastructure (Python + Claude Code)
 │
 ├── # Utilities
 ├── trading_calendar.py     Market hours detection, trading day checks
@@ -85,12 +89,13 @@ tradegent/
 │
 ├── db/
 │   ├── init.sql            Schema, seed data, views, functions
-│   └── migrations/         Schema migrations (002-007)
+│   └── migrations/         Schema migrations (002-008)
 │       ├── 003_trades_watchlist_taskqueue.sql
 │       ├── 004_task_retry_columns.sql
 │       ├── 005_position_detection.sql
 │       ├── 006_options_trades.sql
-│       └── 007_notification_log.sql
+│       ├── 007_notification_log.sql
+│       └── 008_skill_settings.sql      # Skill integration (v2.3)
 │
 ├── scripts/
 │   ├── apply_migration.py      Apply database migrations
@@ -147,13 +152,13 @@ cp .env.template .env
 bash setup.sh
 
 # 4. Verify
-python3 orchestrator.py status
-python3 orchestrator.py stock list
-python3 orchestrator.py settings list
+python3 tradegent.py status
+python3 tradegent.py stock list
+python3 tradegent.py settings list
 
 # 5. Run a single analysis (dry run mode is ON by default)
-python3 orchestrator.py settings set dry_run_mode false
-python3 orchestrator.py analyze NFLX --type earnings
+python3 tradegent.py settings set dry_run_mode false
+python3 tradegent.py analyze NFLX --type earnings
 
 # 6. Start the service
 python3 service.py
@@ -345,6 +350,14 @@ Key-value pairs read by the service on every tick. Changes take effect immediate
 | feature_flags | scanner_auto_route | true | Auto-route scanner results to analysis/watchlist |
 | feature_flags | task_queue_enabled | true | Enable async task queue processing |
 | rate_limits | analysis_cooldown_hours | 4 | Hours between re-analyzing same ticker |
+| skills | skill_auto_invoke_enabled | true | Auto-process skill tasks from monitors |
+| skills | skill_use_claude_code | false | Use Claude Code for complex skills (costs $) |
+| skills | skill_daily_cost_limit | 5.00 | Max daily spend on Claude Code skills |
+| skills | skill_cooldown_hours | 1 | Hours between same skill for same ticker |
+| skills | detected_position_auto_create_trade | true | Auto-create trade for detected positions |
+| skills | fill_analysis_enabled | true | Enable fill quality analysis |
+| skills | position_close_review_enabled | true | Enable position close review |
+| skills | expiration_review_enabled | true | Enable expiration review |
 
 **Important:** `dry_run_mode` starts as `true`. The service will log what it *would* do but won't call Claude Code until you explicitly disable it.
 
@@ -457,7 +470,7 @@ Queue for background task processing with cooldown support.
 
 | Column | Type | Description |
 |--------|------|-------------|
-| task_type | VARCHAR | analysis, post_trade_review, scan |
+| task_type | VARCHAR | See task types below |
 | ticker | VARCHAR | Stock symbol |
 | analysis_type | VARCHAR | stock, earnings |
 | prompt | TEXT | Task prompt/instructions |
@@ -468,6 +481,39 @@ Queue for background task processing with cooldown support.
 | started_at | TIMESTAMPTZ | When task started |
 | completed_at | TIMESTAMPTZ | When task finished |
 | error_message | TEXT | Error details if failed |
+
+**Task Types:**
+
+| Type | Source | Handler | Skill |
+|------|--------|---------|-------|
+| `analysis` | CLI, scheduler | `_process_analysis_task` | stock-analysis, earnings-analysis |
+| `post_trade_review` | position close | `_process_post_trade_review_task` | post-trade-review |
+| `detected_position` | position_monitor | `_process_detected_position_task` | detected-position |
+| `position_close_review` | position_monitor | `_process_position_close_review_task` | position-close-review |
+| `fill_analysis` | order_reconciler | `_process_fill_analysis_task` | fill-analysis |
+| `options_management` | expiration_monitor | `_process_options_management_task` | options-management |
+| `expiration_review` | expiration_monitor | `_process_expiration_review_task` | expiration-review |
+
+### nexus.skill_invocations — Skill Execution Tracking
+
+Tracks all skill invocations for cost monitoring and debugging.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| skill_name | VARCHAR(50) | Skill name (detected_position, fill_analysis, etc.) |
+| ticker | VARCHAR(20) | Stock symbol |
+| invocation_type | VARCHAR(20) | `python` (free) or `claude_code` (paid) |
+| cost_estimate | DECIMAL | Estimated cost for Claude Code invocations |
+| status | VARCHAR(20) | started, completed, failed |
+| started_at | TIMESTAMPTZ | When invocation started |
+| completed_at | TIMESTAMPTZ | When invocation finished |
+| error_message | TEXT | Error details if failed |
+| output_path | VARCHAR(255) | Path to generated output file |
+| trigger_source | VARCHAR(50) | What triggered the skill (position_monitor, etc.) |
+| task_id | INTEGER | Link to task_queue entry |
+
+**Views:**
+- `v_skill_daily_costs` — Daily cost aggregation by skill and type
 
 ### Views
 
@@ -585,13 +631,13 @@ Claude Code reads the analysis, re-validates the trade plan, checks current pric
 
 ```bash
 # Analysis only (default safe mode)
-python3 orchestrator.py settings set dry_run_mode false
-python3 orchestrator.py settings set auto_execute_enabled false
+python3 tradegent.py settings set dry_run_mode false
+python3 tradegent.py settings set auto_execute_enabled false
 
 # Enable paper trading for specific stocks
-python3 orchestrator.py settings set auto_execute_enabled true
-python3 orchestrator.py stock set-state NVDA paper
-python3 orchestrator.py stock set-state AAPL paper
+python3 tradegent.py settings set auto_execute_enabled true
+python3 tradegent.py stock set-state NVDA paper
+python3 tradegent.py stock set-state AAPL paper
 
 # Live trading — NOT AVAILABLE
 # Blocked in orchestrator.py for safety. Requires:
@@ -611,128 +657,128 @@ All commands connect to PostgreSQL and read settings from the database.
 
 ```bash
 # Single stock analysis
-python3 orchestrator.py analyze NFLX --type earnings
-python3 orchestrator.py analyze NVDA --type stock
+python3 tradegent.py analyze NFLX --type earnings
+python3 tradegent.py analyze NVDA --type stock
 
 # Execute a previous analysis (Stage 2 only)
-python3 orchestrator.py execute analyses/NFLX_earnings_20260217_0630.md
+python3 tradegent.py execute analyses/NFLX_earnings_20260217_0630.md
 
 # Full pipeline (Stage 1 → Gate → Stage 2)
-python3 orchestrator.py pipeline NFLX --type earnings
-python3 orchestrator.py pipeline NFLX --type earnings --no-execute  # Stage 1 only
+python3 tradegent.py pipeline NFLX --type earnings
+python3 tradegent.py pipeline NFLX --type earnings --no-execute  # Stage 1 only
 ```
 
 ### Bulk Operations
 
 ```bash
 # Analyze all enabled stocks
-python3 orchestrator.py watchlist
-python3 orchestrator.py watchlist --auto-execute   # with Stage 2
+python3 tradegent.py watchlist
+python3 tradegent.py watchlist --auto-execute   # with Stage 2
 
 # Run IB market scanners
-python3 orchestrator.py scan                       # all enabled scanners
-python3 orchestrator.py scan --scanner HIGH_OPT_IMP_VOLAT  # specific scanner
+python3 tradegent.py scan                       # all enabled scanners
+python3 tradegent.py scan --scanner HIGH_OPT_IMP_VOLAT  # specific scanner
 
 # Portfolio review
-python3 orchestrator.py review
+python3 tradegent.py review
 ```
 
 ### Stock Management
 
 ```bash
 # List watchlist
-python3 orchestrator.py stock list
+python3 tradegent.py stock list
 
 # Add a stock
-python3 orchestrator.py stock add DOCU --state paper --priority 7 \
+python3 tradegent.py stock add DOCU --state paper --priority 7 \
     --tags earnings_play --earnings-date 2026-03-15 --comment "Cloud earnings play"
 
 # Promote to paper trading
-python3 orchestrator.py stock set-state NFLX --state paper
+python3 tradegent.py stock set-state NFLX --state paper
 
 # Enable/disable
-python3 orchestrator.py stock enable TSLA
-python3 orchestrator.py stock disable TSLA
+python3 tradegent.py stock enable TSLA
+python3 tradegent.py stock disable TSLA
 ```
 
 ### Settings Management
 
 ```bash
 # View all settings
-python3 orchestrator.py settings list
+python3 tradegent.py settings list
 
 # Get a single setting
-python3 orchestrator.py settings get dry_run_mode
+python3 tradegent.py settings get dry_run_mode
 
 # Change a setting (takes effect on next service tick)
-python3 orchestrator.py settings set dry_run_mode false
-python3 orchestrator.py settings set scheduler_poll_seconds 30
-python3 orchestrator.py settings set max_daily_analyses 20
+python3 tradegent.py settings set dry_run_mode false
+python3 tradegent.py settings set scheduler_poll_seconds 30
+python3 tradegent.py settings set max_daily_analyses 20
 ```
 
 ### Scheduler
 
 ```bash
 # Run all due schedules now
-python3 orchestrator.py run-due
+python3 tradegent.py run-due
 
 # Check earnings triggers
-python3 orchestrator.py earnings-check
+python3 tradegent.py earnings-check
 ```
 
 ### Trade Management
 
 ```bash
 # Add a new trade
-python3 orchestrator.py trade add NVDA --price 450.00 --size 100 --type stock \
+python3 tradegent.py trade add NVDA --price 450.00 --size 100 --type stock \
     --thesis "AI momentum play" --analysis "analyses/NVDA_stock_20260224.md"
 
 # Close a trade
-python3 orchestrator.py trade close 1 --price 475.00 --reason target
+python3 tradegent.py trade close 1 --price 475.00 --reason target
 # Auto-chains to post-trade review task queue
 
 # List trades
-python3 orchestrator.py trade list                    # Open trades (default)
-python3 orchestrator.py trade list --status closed    # Closed trades
-python3 orchestrator.py trade list --status all       # All trades
+python3 tradegent.py trade list                    # Open trades (default)
+python3 tradegent.py trade list --status closed    # Closed trades
+python3 tradegent.py trade list --status all       # All trades
 
 # View pending reviews
-python3 orchestrator.py trade pending-reviews
+python3 tradegent.py trade pending-reviews
 ```
 
 ### Watchlist DB Commands
 
 ```bash
 # List active watchlist entries
-python3 orchestrator.py watchlist-db list
-python3 orchestrator.py watchlist-db list --status all   # Include inactive
+python3 tradegent.py watchlist-db list
+python3 tradegent.py watchlist-db list --status all   # Include inactive
 
 # Check for expirations and triggers
-python3 orchestrator.py watchlist-db check
+python3 tradegent.py watchlist-db check
 
 # Process expired entries
-python3 orchestrator.py watchlist-db process-expired
+python3 tradegent.py watchlist-db process-expired
 ```
 
 ### Task Queue
 
 ```bash
 # Process pending tasks
-python3 orchestrator.py process-queue              # Up to 5 tasks (default)
-python3 orchestrator.py process-queue --max 10     # Up to 10 tasks
+python3 tradegent.py process-queue              # Up to 5 tasks (default)
+python3 tradegent.py process-queue --max 10     # Up to 10 tasks
 
 # View queue status
-python3 orchestrator.py queue-status
+python3 tradegent.py queue-status
 ```
 
 ### System
 
 ```bash
 # Status dashboard
-python3 orchestrator.py status
+python3 tradegent.py status
 
 # Initialize database schema (first time or reset)
-python3 orchestrator.py db-init
+python3 tradegent.py db-init
 ```
 
 ### Service
@@ -785,8 +831,8 @@ Scanner results are automatically routed based on score thresholds:
 
 ```bash
 # Scanner routing is automatic when scanner_auto_route=true
-python3 orchestrator.py scan
-# High-scoring results appear in: python3 orchestrator.py queue-status
+python3 tradegent.py scan
+# High-scoring results appear in: python3 tradegent.py queue-status
 ```
 
 ### Trade → Review Chain
@@ -794,9 +840,9 @@ python3 orchestrator.py scan
 When a trade is closed, a post-trade review is automatically queued:
 
 ```bash
-python3 orchestrator.py trade close 1 --price 475.00 --reason target
+python3 tradegent.py trade close 1 --price 475.00 --reason target
 # → Queues post-trade review task
-# → Process with: python3 orchestrator.py process-queue
+# → Process with: python3 tradegent.py process-queue
 ```
 
 ### T-7/T-2/T+1 Earnings Schedules
@@ -826,9 +872,9 @@ psql -d lightrag -f scripts/setup_earnings_schedules.sql
 
 ```bash
 # Disable all automation
-python3 orchestrator.py settings set auto_viz_enabled false
-python3 orchestrator.py settings set auto_watchlist_chain false
-python3 orchestrator.py settings set scanner_auto_route false
+python3 tradegent.py settings set auto_viz_enabled false
+python3 tradegent.py settings set auto_watchlist_chain false
+python3 tradegent.py settings set scanner_auto_route false
 ```
 
 ---
@@ -976,6 +1022,53 @@ results = expiration_monitor.process_expirations()
 | `options_expiry_critical_days` | 3 | Critical threshold |
 | `auto_close_expired_options` | true | Auto-close expired worthless |
 
+### Skill Handlers
+
+The `skill_handlers.py` module bridges monitoring modules with Claude Code skills. It implements a **hybrid model**: Python handlers (free) for routine tasks, with optional Claude Code enhancement (paid) for complex analysis.
+
+**Invocation flow:**
+```
+Monitor detects event → queue_task() → process_task_queue() → skill_handler()
+                                                                    │
+                                              ┌─────────────────────┴─────────────────────┐
+                                              │                                           │
+                                    skill_use_claude_code=false           skill_use_claude_code=true
+                                              │                                           │
+                                    invoke_skill_python()                   invoke_skill_claude()
+                                              │                                           │
+                                    Python handler (free)                Claude Code CLI ($0.20-0.50)
+```
+
+**Python handlers:**
+| Handler | Purpose |
+|---------|---------|
+| `python_fill_analysis` | Calculates slippage, grades fill quality |
+| `python_position_close_review` | Calculates P&L, queues full review |
+| `python_detected_position_basic` | Creates basic trade entry |
+| `python_options_summary` | Lists expiring positions with Greeks |
+| `python_expiration_review` | Updates trade status, calculates final P&L |
+
+**Enable Claude Code mode:**
+```bash
+# Enable for higher quality analysis (costs money)
+python tradegent.py settings set skill_use_claude_code true
+
+# Set daily cost limit
+python tradegent.py settings set skill_daily_cost_limit 10.00
+```
+
+**Cost tracking:**
+```sql
+-- Today's skill costs
+SELECT skill_name, invocation_type, SUM(cost_estimate) as total_cost
+FROM nexus.skill_invocations
+WHERE started_at >= CURRENT_DATE
+GROUP BY skill_name, invocation_type;
+
+-- Daily cost summary
+SELECT * FROM nexus.v_skill_daily_costs ORDER BY date DESC LIMIT 7;
+```
+
 ### Notifications
 
 Multi-channel alert system for trading events:
@@ -1006,7 +1099,7 @@ Multi-channel alert system for trading events:
 
 ```bash
 # Enable notifications
-python orchestrator.py settings set notifications_enabled true
+python tradegent.py settings set notifications_enabled true
 
 # Set Telegram credentials (in .env or export)
 export TELEGRAM_BOT_TOKEN=123456789:ABCdefGHI...
@@ -1362,7 +1455,7 @@ Check Docker is running: `docker compose ps`. Verify PG_HOST=localhost and crede
 Connect via VNC (localhost:5900) to check the login screen. Paper account credentials must be correct. The gateway may need manual 2FA approval on first connect.
 
 **Dry run mode:**
-If analyses aren't running, check: `python3 orchestrator.py settings get dry_run_mode`. Disable with: `python3 orchestrator.py settings set dry_run_mode false`.
+If analyses aren't running, check: `python3 tradegent.py settings get dry_run_mode`. Disable with: `python3 tradegent.py settings set dry_run_mode false`.
 
 **Schedule not firing:**
 Check next_run_at: `SELECT name, next_run_at FROM nexus.schedules WHERE is_enabled`. Re-initialize: `python3 service.py init`. Check circuit breaker: `SELECT name, consecutive_fails FROM nexus.schedules`.

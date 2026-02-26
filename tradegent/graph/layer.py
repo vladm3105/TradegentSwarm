@@ -358,7 +358,7 @@ class TradingGraph:
         if bias_name:
             query = """
             MATCH (b:Bias {name: $bias_name})-[:DETECTED_IN]->(t:Trade)
-            RETURN b.name AS bias, t.id AS trade_id, t.outcome AS outcome
+            RETURN b.name AS bias, t.id AS trade_id, COALESCE(t.outcome, 'unknown') AS outcome
             """
             params = {"bias_name": bias_name}
         else:

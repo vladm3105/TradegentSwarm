@@ -2709,6 +2709,21 @@ def process_task_queue(db: NexusDB, max_tasks: int = 5) -> dict:
             elif task_type == "post_trade_review":
                 _process_post_trade_review_task(db, task)
 
+            elif task_type == "detected_position":
+                _process_detected_position_task(db, task)
+
+            elif task_type == "fill_analysis":
+                _process_fill_analysis_task(db, task)
+
+            elif task_type == "position_close_review":
+                _process_position_close_review_task(db, task)
+
+            elif task_type == "options_management":
+                _process_options_management_task(db, task)
+
+            elif task_type == "expiration_review":
+                _process_expiration_review_task(db, task)
+
             else:
                 log.warning(f"Unknown task type: {task_type}")
                 raise ValueError(f"Unknown task type: {task_type}")
@@ -2798,6 +2813,167 @@ def _extract_review_path(output: str) -> str | None:
         if match:
             return match.group(1)
     return None
+
+
+# ─── Skill Task Handlers (Monitoring Integration) ────────────────────────────
+
+def _process_detected_position_task(db: NexusDB, task: dict):
+    """Process detected position task.
+
+    Triggered by position_monitor when a new position is detected externally.
+    Uses Claude Code for full analysis if enabled, otherwise basic Python handler.
+    """
+    from skill_handlers import (
+        invoke_skill_python,
+        invoke_skill_claude,
+        _parse_detected_position_prompt,
+    )
+
+    ticker = task["ticker"]
+    prompt = task.get("prompt", "")
+    task_id = task["id"]
+
+    # Parse context from prompt
+    context = _parse_detected_position_prompt(prompt)
+    context["ticker"] = ticker
+    context["source"] = "position_monitor"
+
+    # Check if Claude Code is enabled
+    use_claude = db.cfg._get("skill_use_claude_code", "skills", "false").lower() == "true"
+    auto_create = db.cfg._get("detected_position_auto_create_trade", "skills", "true").lower() == "true"
+
+    if use_claude:
+        # Full AI analysis
+        result = invoke_skill_claude(db, "detected-position", context, task_id)
+        log.info(f"  ✓ Claude analysis complete for detected {ticker} position")
+    elif auto_create:
+        # Python fallback: create basic trade entry
+        result = invoke_skill_python(db, "detected-position", context, task_id)
+        log.info(f"  ✓ Basic trade entry created for detected {ticker} position")
+    else:
+        # Just log, don't create trade
+        log.info(f"Detected position for {ticker} logged but not auto-created (setting disabled)")
+        result = {"status": "logged_only"}
+
+
+def _process_fill_analysis_task(db: NexusDB, task: dict):
+    """Process fill analysis task (Python only).
+
+    Triggered by order_reconciler when an order is filled.
+    Analyzes fill quality: slippage, timing, execution efficiency.
+    """
+    from skill_handlers import invoke_skill_python
+
+    ticker = task.get("ticker")
+    prompt = task.get("prompt", "")
+    task_id = task["id"]
+
+    # Extract order_id from prompt if present
+    import re
+    match = re.search(r'order[_\s]?(?:id)?[:\s]*(\d+)', prompt, re.IGNORECASE)
+    order_id = match.group(1) if match else None
+
+    context = {
+        "ticker": ticker,
+        "order_id": order_id,
+        "source": "order_reconciler"
+    }
+
+    result = invoke_skill_python(db, "fill-analysis", context, task_id)
+
+    if result.get("status") == "analyzed":
+        log.info(f"  ✓ Fill analysis: {ticker} grade {result.get('grade', 'N/A')}")
+    else:
+        log.info(f"  ✓ Fill analysis: {result.get('status', 'unknown')}")
+
+
+def _process_position_close_review_task(db: NexusDB, task: dict):
+    """Process position close review task (Python only).
+
+    Triggered by position_monitor when a position is fully closed.
+    Calculates P&L and queues full post-trade review if significant.
+    """
+    from skill_handlers import invoke_skill_python
+
+    ticker = task.get("ticker")
+    task_id = task["id"]
+
+    context = {
+        "ticker": ticker,
+        "prompt": task.get("prompt", ""),
+        "source": "position_monitor"
+    }
+
+    result = invoke_skill_python(db, "position-close-review", context, task_id)
+
+    if result.get("is_significant"):
+        log.info(f"  ✓ Position close review: {ticker} (significant, queued full review)")
+    else:
+        log.info(f"  ✓ Position close review: {ticker} (not significant)")
+
+
+def _process_options_management_task(db: NexusDB, task: dict):
+    """Process options management task.
+
+    Triggered by expiration_monitor for expiring options, or by user request.
+    Uses Claude Code for full analysis if enabled, otherwise basic Python summary.
+    """
+    from skill_handlers import invoke_skill_python, invoke_skill_claude
+
+    ticker = task.get("ticker")
+    prompt = task.get("prompt", "")
+    task_id = task["id"]
+
+    context = {
+        "ticker": ticker,
+        "trigger": "expiration_warning",
+        "prompt": prompt,
+        "source": "expiration_monitor"
+    }
+
+    # Options management can use Claude Code for complex roll decisions
+    use_claude = db.cfg._get("skill_use_claude_code", "skills", "false").lower() == "true"
+
+    if use_claude:
+        result = invoke_skill_claude(db, "options-management", context, task_id)
+        log.info(f"  ✓ Options management analysis complete for {ticker}")
+    else:
+        result = invoke_skill_python(db, "options-management", context, task_id)
+        log.info(f"  ✓ Options summary: {result.get('count', 0)} positions")
+
+
+def _process_expiration_review_task(db: NexusDB, task: dict):
+    """Process expiration review task.
+
+    Triggered by expiration_monitor when options expire.
+    Always runs Python for P&L calculation, optionally uses Claude for lesson extraction.
+    """
+    from skill_handlers import invoke_skill_python, invoke_skill_claude
+
+    ticker = task.get("ticker")
+    task_id = task["id"]
+
+    context = {
+        "ticker": ticker,
+        "prompt": task.get("prompt", ""),
+        "source": "expiration_monitor"
+    }
+
+    # Always run Python for P&L calculation
+    result = invoke_skill_python(db, "expiration-review", context, task_id)
+
+    # Optionally use Claude for lesson extraction
+    use_claude = db.cfg._get("skill_use_claude_code", "skills", "false").lower() == "true"
+    if use_claude and result.get("status") == "reviewed":
+        try:
+            context["outcome"] = result.get("outcome")
+            context["pnl"] = result.get("pnl")
+            claude_result = invoke_skill_claude(db, "expiration-review", context, task_id)
+            log.info(f"  ✓ Expiration review with lessons: {ticker}")
+        except Exception as e:
+            log.warning(f"Claude lesson extraction failed: {e}")
+    else:
+        log.info(f"  ✓ Expiration review: {ticker} {result.get('outcome', '')}")
 
 
 def process_pending_reviews(db: NexusDB) -> int:

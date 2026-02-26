@@ -509,8 +509,15 @@ class PositionMonitor:
                 data={"exit_price": exit_price, "pnl_pct": pnl_pct, "trade_id": delta.trade_id}
             ))
 
-        # Trigger post-trade review
-        self._trigger_review(delta.trade_id)
+        # Queue position close review (will queue full review if significant)
+        self.db.queue_task(
+            task_type="position_close_review",
+            ticker=delta.ticker,
+            prompt=f"Position closed: {delta.ticker} (trade {delta.trade_id})",
+            priority=7,
+            cooldown_key=f"position_close_review:{delta.ticker}",
+            cooldown_hours=1
+        )
 
     def _handle_partial(self, delta: PositionDelta):
         """Handle partial position close."""
@@ -588,10 +595,12 @@ class PositionMonitor:
             # Queue task for user review
             display = option_data.display_name if option_data else delta.ticker
             self.db.queue_task(
-                task_type="review_detected_position",
+                task_type="detected_position",
                 ticker=delta.ticker,
                 prompt=f"Position detected: {display} +{delta.size_difference} @ ${entry_price}",
-                priority=6
+                priority=6,
+                cooldown_key=f"detected_position:{delta.ticker}",
+                cooldown_hours=1
             )
 
             # Record detection for idempotency (use full_symbol)

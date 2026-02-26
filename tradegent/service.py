@@ -233,7 +233,7 @@ class NexusService:
     def start(self):
         """Initialize and enter the main service loop."""
         log.info("╔══════════════════════════════════════════╗")
-        log.info("║  NEXUS LIGHT SERVICE v2.1                ║")
+        log.info("║  TRADEGENT SERVICE v2.1                  ║")
         log.info("╚══════════════════════════════════════════╝")
 
         # Connect to database
@@ -575,7 +575,7 @@ def show_health(db: NexusDB):
     settings = db.get_all_settings()
 
     print(f"\n{'═' * 55}")
-    print("  NEXUS LIGHT SERVICE HEALTH")
+    print("  TRADEGENT SERVICE HEALTH")
     print(f"{'═' * 55}")
     print(f"  State:          {status.get('state', 'unknown')}")
     print(f"  PID:            {status.get('pid', '—')}")

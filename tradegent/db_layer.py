@@ -1310,16 +1310,58 @@ class NexusDB:
         self.conn.commit()
         return task_id
 
-    def queue_task(self, task_type: str, ticker: str | None, prompt: str, priority: int = 5) -> int:
-        """Queue a generic task."""
+    def queue_task(
+        self,
+        task_type: str,
+        ticker: str | None,
+        prompt: str,
+        priority: int = 5,
+        cooldown_key: str | None = None,
+        cooldown_hours: int = 0
+    ) -> int | None:
+        """Queue a task with optional cooldown deduplication.
+
+        Args:
+            task_type: Type of task (analysis, post_trade_review, fill_analysis, etc.)
+            ticker: Stock ticker (optional for some task types)
+            prompt: Task prompt/description
+            priority: Task priority (1-10, higher = more urgent)
+            cooldown_key: Unique key for deduplication (e.g., "fill_analysis:NVDA")
+            cooldown_hours: Hours to suppress duplicate tasks with same cooldown_key
+
+        Returns:
+            Task ID if queued, None if suppressed by cooldown
+        """
+        # Check cooldown if specified
+        if cooldown_key and cooldown_hours > 0:
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    SELECT id FROM nexus.task_queue
+                    WHERE cooldown_key = %s
+                    AND cooldown_until > NOW()
+                    AND status IN ('pending', 'running')
+                """, [cooldown_key])
+                existing = cur.fetchone()
+                if existing:
+                    log.debug(f"Task {cooldown_key} on cooldown, skipping (existing: {existing['id']})")
+                    return None
+
+        # Calculate cooldown_until
+        cooldown_until = None
+        if cooldown_key and cooldown_hours > 0:
+            cooldown_until = datetime.now() + timedelta(hours=cooldown_hours)
+
+        # Queue the task
         with self.conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO nexus.task_queue (task_type, ticker, prompt, priority)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO nexus.task_queue (task_type, ticker, prompt, priority, cooldown_key, cooldown_until)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 RETURNING id
-            """, [task_type, ticker.upper() if ticker else None, prompt, priority])
+            """, [task_type, ticker.upper() if ticker else None, prompt, priority, cooldown_key, cooldown_until])
             task_id = cur.fetchone()["id"]
         self.conn.commit()
+
+        log.info(f"Queued task {task_id}: {task_type} for {ticker or 'N/A'}")
         return task_id
 
     def get_pending_tasks(self, limit: int = 10) -> list[dict]:
