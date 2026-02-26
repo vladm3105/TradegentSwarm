@@ -49,8 +49,9 @@ mkdir -p tmp/IPLAN
 tradegent/
 ├── .claude/skills/          # Claude Code skills (auto-invoke enabled)
 ├── tradegent/               # Tradegent Platform (Python)
+│   ├── tradegent.py         # CLI entry point (main command)
 │   ├── service.py           # Long-running daemon
-│   ├── orchestrator.py      # Pipeline engine + CLI
+│   ├── orchestrator.py      # Pipeline engine + CLI implementation
 │   ├── db_layer.py          # PostgreSQL access layer
 │   ├── docker-compose.yml   # Infrastructure services
 │   ├── rag/                 # RAG module (embeddings, search)
@@ -76,17 +77,65 @@ Skills in `.claude/skills/` auto-invoke based on context. Each skill has:
 
 ### Skill Index
 
-| Skill                 | Version | Triggers                                                 | Category   |
-| --------------------- | ------- | -------------------------------------------------------- | ---------- |
-| **stock-analysis**    | v2.6    | "stock analysis", "technical analysis", "value analysis" | Analysis   |
-| **earnings-analysis** | v2.4    | "earnings analysis", "pre-earnings", "before earnings"   | Analysis   |
-| **research-analysis** | v2.1    | "research", "macro analysis", "sector analysis"          | Research   |
-| **ticker-profile**    | v2.1    | "ticker profile", "what do I know about"                 | Knowledge  |
-| **trade-journal**     | v2.1    | "log trade", "bought", "sold", "entered position"        | Trade Mgmt |
-| **watchlist**         | v2.1    | "watchlist", "add to watchlist", "watch this"            | Trade Mgmt |
-| **post-trade-review** | v2.1    | "review trade", "closed trade", "what did I learn"       | Learning   |
-| **scan**              | v1.0    | "scan", "find opportunities", "what should I trade"      | Scanning   |
-| **visualize-analysis**| v1.0    | "visualize", "create svg", "visual dashboard"            | Utility    |
+| Skill                     | Version | Triggers                                                 | Category   |
+| ------------------------- | ------- | -------------------------------------------------------- | ---------- |
+| **stock-analysis**        | v2.6    | "stock analysis", "technical analysis", "value analysis" | Analysis   |
+| **earnings-analysis**     | v2.4    | "earnings analysis", "pre-earnings", "before earnings"   | Analysis   |
+| **research-analysis**     | v2.1    | "research", "macro analysis", "sector analysis"          | Research   |
+| **ticker-profile**        | v2.1    | "ticker profile", "what do I know about"                 | Knowledge  |
+| **trade-journal**         | v2.1    | "log trade", "bought", "sold", "entered position"        | Trade Mgmt |
+| **watchlist**             | v2.1    | "watchlist", "add to watchlist", "watch this"            | Trade Mgmt |
+| **post-trade-review**     | v2.1    | "review trade", "closed trade", "what did I learn"       | Learning   |
+| **scan**                  | v1.0    | "scan", "find opportunities", "what should I trade"      | Scanning   |
+| **visualize-analysis**    | v1.0    | "visualize", "create svg", "visual dashboard"            | Utility    |
+| **detected-position**     | v1.0    | Auto: position increase detected                         | Monitoring |
+| **options-management**    | v1.0    | Auto: expiring + "check options"                         | Options    |
+| **fill-analysis**         | v1.0    | Auto: order filled                                       | Learning   |
+| **position-close-review** | v1.0    | Auto: position closed                                    | Monitoring |
+| **expiration-review**     | v1.0    | Auto: option expired                                     | Learning   |
+
+### Monitoring Skills (v1.0)
+
+The monitoring skills integrate with v2.3 monitoring modules (position_monitor, order_reconciler, expiration_monitor). They use a **hybrid implementation model**:
+
+| Skill | Implementation | Cost | Purpose |
+|-------|----------------|------|---------|
+| detected-position | Python/Claude | Free/$0.25-0.40 | Documents externally-added positions |
+| options-management | Python/Claude | Free/$0.30-0.50 | Manages expiring options, roll decisions |
+| fill-analysis | Python only | Free | Analyzes fill quality (slippage, grade) |
+| position-close-review | Python only | Free | Reviews closed positions, queues full review |
+| expiration-review | Python/Claude | Free/$0.20 | Reviews expired options, extracts lessons |
+
+**CLI Commands:**
+```bash
+# Enable Claude Code mode (costs money)
+python tradegent.py settings set skill_use_claude_code true
+
+# Set daily cost limit
+python tradegent.py settings set skill_daily_cost_limit 10.00
+
+# Disable specific skills
+python tradegent.py settings set fill_analysis_enabled false
+
+# View skill invocation history
+psql -d lightrag -c "SELECT skill_name, ticker, invocation_type, status, cost_estimate FROM nexus.skill_invocations ORDER BY started_at DESC LIMIT 10;"
+
+# View daily costs
+psql -d lightrag -c "SELECT * FROM nexus.v_skill_daily_costs ORDER BY date DESC LIMIT 7;"
+
+# Process pending skill tasks manually
+python tradegent.py process-queue --max 5
+
+# View queue status
+python tradegent.py queue-status
+```
+
+**Task Queue Flow:**
+```
+position_monitor → detected_position task → skill_handler → trade entry
+order_reconciler → fill_analysis task → skill_handler → fill grade
+expiration_monitor → options_management task → skill_handler → roll advice
+```
 
 ### v2.6 Key Features (stock-analysis) - PRODUCTION
 
@@ -507,6 +556,9 @@ export LLM_API_KEY=<api-key>          # Required for openrouter/openai/claude_ap
 > **Note**: We use 1536 dimensions (not 3072) because pgvector's HNSW index has a 2000 dimension limit. The OpenAI API truncates embeddings to the requested dimension.
 
 ### Running Commands
+
+> **CLI:** `tradegent.py` is the official CLI entry point. Legacy `orchestrator.py` still works.
+
 ```bash
 cd tradegent
 
@@ -514,8 +566,8 @@ cd tradegent
 export PG_USER=lightrag PG_PASS=... PG_DB=lightrag PG_HOST=localhost PG_PORT=5433
 export NEO4J_URI=bolt://localhost:7688 NEO4J_USER=neo4j NEO4J_PASS=...
 
-python orchestrator.py --help     # CLI commands
-python orchestrator.py analyze NVDA --type stock  # Run analysis
+python tradegent.py --help        # CLI commands
+python tradegent.py analyze NVDA --type stock  # Run analysis
 python service.py                 # Start daemon
 ```
 
@@ -537,20 +589,20 @@ Stocks are stored in `nexus.stocks` table with state machine: `analysis` → `pa
 
 ```bash
 # List all stocks
-python orchestrator.py stock list
+python tradegent.py stock list
 
 # Add a stock
-python orchestrator.py stock add PLTR --priority 6 --tags ai defense --comment "Palantir"
+python tradegent.py stock add PLTR --priority 6 --tags ai defense --comment "Palantir"
 
 # Enable/disable for automated runs
-python orchestrator.py stock enable NVDA
-python orchestrator.py stock disable TSLA
+python tradegent.py stock enable NVDA
+python tradegent.py stock disable TSLA
 
 # Change state (analysis → paper enables paper trading)
-python orchestrator.py stock set-state NVDA paper
+python tradegent.py stock set-state NVDA paper
 
 # Analyze all enabled stocks
-python orchestrator.py watchlist
+python tradegent.py watchlist
 ```
 
 | Column | Purpose |
@@ -581,14 +633,14 @@ python orchestrator.py watchlist
 
 ```bash
 # Step 1: Disable dry run mode (required for any real operation)
-python orchestrator.py settings set dry_run_mode false
+python tradegent.py settings set dry_run_mode false
 
 # Step 2a: Analysis only (no auto-execute)
-python orchestrator.py settings set auto_execute_enabled false
+python tradegent.py settings set auto_execute_enabled false
 
 # Step 2b: Enable paper trading for a stock
-python orchestrator.py settings set auto_execute_enabled true
-python orchestrator.py stock set-state NVDA paper
+python tradegent.py settings set auto_execute_enabled true
+python tradegent.py stock set-state NVDA paper
 ```
 
 ## Code Standards
@@ -990,7 +1042,8 @@ PYTHONPATH=src \
 IB_GATEWAY_HOST=localhost \
 IB_GATEWAY_PORT=4002 \
 IB_CLIENT_ID=2 \
-IB_READONLY=true \
+IB_READONLY=false \
+IB_OUTSIDE_RTH=true \
 nohup python -m ibmcp --transport streamable-http --host 0.0.0.0 --port 8100 > /tmp/ib-mcp.log 2>&1 &
 ```
 
@@ -1092,7 +1145,8 @@ Input: {"pattern": "NVDA"}
 | `IB_GATEWAY_HOST` | localhost | TWS/Gateway hostname |
 | `IB_GATEWAY_PORT` | 4002 | API port (7496=TWS live, 7497=TWS paper, 4001=Gateway live, 4002=Gateway paper) |
 | `IB_CLIENT_ID` | 2 | Unique client ID |
-| `IB_READONLY` | true | Read-only mode (blocks order placement) |
+| `IB_READONLY` | false | Read-only mode (set `true` to block order placement) |
+| `IB_OUTSIDE_RTH` | true | Allow orders outside regular trading hours (pre-market/after-hours) |
 | `IB_RATE_LIMIT` | 45 | Requests per second limit |
 
 ## Auto-Ingest Hook

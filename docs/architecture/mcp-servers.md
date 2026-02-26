@@ -13,7 +13,7 @@ MCP (Model Context Protocol) servers provide tool access for Claude Code. Tradeg
 │                                                                 │
 │  Claude Code CLI                                                │
 │       │                                                         │
-│       ├──▶ ib-mcp (SSE) ────▶ IB Gateway ────▶ IB Servers      │
+│       ├──▶ ib-mcp (HTTP) ───▶ IB Gateway ────▶ IB Servers      │
 │       │    :8100              :4002                             │
 │       │                                                         │
 │       ├──▶ trading-rag (stdio) ────▶ PostgreSQL                │
@@ -36,7 +36,7 @@ MCP (Model Context Protocol) servers provide tool access for Claude Code. Tradeg
 
 | Server | Transport | Port | Purpose |
 |--------|-----------|------|---------|
-| `ib-mcp` | SSE | 8100 | Market data, orders |
+| `ib-mcp` | streamable-http | 8100 | Market data, orders |
 | `trading-rag` | stdio | — | Semantic search |
 | `trading-graph` | stdio | — | Entity queries |
 | `brave-browser` | stdio | — | Web scraping (protected content) |
@@ -54,7 +54,7 @@ Interactive Brokers integration for market data and trading.
 {
   "mcpServers": {
     "ib-mcp": {
-      "url": "http://localhost:8100/sse"
+      "url": "http://localhost:8100/mcp"
     }
   }
 }
@@ -68,8 +68,9 @@ PYTHONPATH=src \
 IB_GATEWAY_HOST=localhost \
 IB_GATEWAY_PORT=4002 \
 IB_CLIENT_ID=2 \
-IB_READONLY=true \
-python -m ibmcp --transport sse --port 8100
+IB_READONLY=false \
+IB_OUTSIDE_RTH=true \
+python -m ibmcp --transport streamable-http --host 0.0.0.0 --port 8100
 ```
 
 ### Environment Variables
@@ -79,7 +80,8 @@ python -m ibmcp --transport sse --port 8100
 | `IB_GATEWAY_HOST` | localhost | TWS/Gateway host |
 | `IB_GATEWAY_PORT` | 4002 | Paper: 4002, Live: 4001 |
 | `IB_CLIENT_ID` | 2 | Unique client ID |
-| `IB_READONLY` | true | Block order placement |
+| `IB_READONLY` | false | Set `true` to block order placement |
+| `IB_OUTSIDE_RTH` | true | Allow orders outside regular trading hours |
 | `IB_RATE_LIMIT` | 45 | Requests/second |
 
 ### Available Tools (22)
@@ -320,7 +322,7 @@ Complete `~/.claude/mcp.json`:
 {
   "mcpServers": {
     "ib-mcp": {
-      "url": "http://localhost:8100/sse"
+      "url": "http://localhost:8100/mcp"
     },
     "trading-rag": {
       "command": "python",

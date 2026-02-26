@@ -15,7 +15,7 @@ Deploy TradegentSwarm for production use with Docker and systemd.
 │  │    └─ python service.py                                 │   │
 │  │                                                         │   │
 │  │  tradegent-ib-mcp.service                               │   │
-│  │    └─ python -m ibmcp --transport sse --port 8100       │   │
+│  │    └─ python -m ibmcp --transport streamable-http      │   │
 │  │                                                         │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                                                                │
@@ -204,8 +204,9 @@ Environment=PYTHONPATH=/opt/data/trading/mcp_ib/src
 Environment=IB_GATEWAY_HOST=localhost
 Environment=IB_GATEWAY_PORT=4002
 Environment=IB_CLIENT_ID=2
-Environment=IB_READONLY=true
-ExecStart=/usr/bin/python3 -m ibmcp --transport sse --port 8100
+Environment=IB_READONLY=false
+Environment=IB_OUTSIDE_RTH=true
+ExecStart=/usr/bin/python3 -m ibmcp --transport streamable-http --host 0.0.0.0 --port 8100
 Restart=always
 RestartSec=10
 
@@ -263,7 +264,8 @@ sudo systemctl stop tradegent
 |----------|---------|-------------|
 | `EMBED_PROVIDER` | openai | Embedding provider |
 | `EXTRACT_PROVIDER` | openai | Extraction provider |
-| `IB_READONLY` | true | Block orders |
+| `IB_READONLY` | false | Set `true` to block orders |
+| `IB_OUTSIDE_RTH` | true | Allow orders outside regular trading hours |
 
 ---
 
