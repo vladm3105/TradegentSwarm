@@ -609,11 +609,13 @@ def validate_data_source_effectiveness(doc: dict, result: ValidationResult):
 def validate_meta_learning_patterns(doc: dict, result: ValidationResult):
     """Validate meta_learning.pattern_identified and comparison_to_past for SVG ROW 5.
 
-    Pattern Identified (left box, 100px height):
-      - Title with subtitle: "Recurring behavior from meta-learning analysis"
-      - Word-wrapped at 80 chars, first line dark bold, up to 3 lines (16px spacing)
+    Both boxes are 110px height for symmetric layout.
 
-    Historical Comparison (right box, 110px height):
+    Pattern Identified (left box, 560px × 110px):
+      - Title with subtitle: "Recurring behavior from meta-learning analysis"
+      - Word-wrapped at 80 chars, first line dark bold, up to 5 lines (14px spacing)
+
+    Historical Comparison (right box, 540px × 110px):
       - Word-wrapped at 80 chars, first line dark bold, up to 6 lines (14px spacing)
     """
     meta_learning = doc.get("meta_learning", {})
