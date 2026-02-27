@@ -744,10 +744,19 @@ db.close()
 | `stocks` | Watchlist stocks | ticker, state, is_enabled, priority |
 | `schedules` | Automated tasks | name, task_type, frequency, next_run_at |
 | `settings` | Config key-values | section, key, value |
+| `service_status` | Service health | **state** (not status!), current_task, last_heartbeat |
 | `analysis_results` | Analysis history | ticker, analysis_type, created_at |
 | `trades` | Trade journal | ticker, entry_date, exit_date, pnl |
 | `skill_invocations` | Skill usage log | skill_name, ticker, cost_estimate |
 | `task_queue` | Pending skill tasks | task_type, ticker, status |
+
+**Service Status Table Columns:**
+```
+id, started_at, last_heartbeat, last_tick_duration_ms, state, current_task,
+pid, hostname, version, ticks_total, analyses_total, executions_total,
+errors_total, today_analyses, today_executions, today_errors, today_date
+```
+⚠️ **Note:** Column is `state`, NOT `status`!
 
 **Schedules Table Columns:**
 ```
