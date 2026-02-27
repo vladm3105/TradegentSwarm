@@ -969,29 +969,44 @@ def generate_svg(data: dict, source_file: str = '') -> str:
     # ROW 8: KEY LEVELS table (v2.7)
     svg += render_key_levels_section(summary_key_levels, 40, 1300)
 
-    # ROW 9: Data Source Effectiveness (full width)
+    # ROW 9: Data Source Effectiveness (full width, same format as Rationale)
     svg += f'''
   <!-- ROW 9: Data Source Effectiveness (full width) -->
   <rect x="40" y="1470" width="1120" height="100" rx="10" fill="#fff" filter="url(#shadow)"/>
   <text x="60" y="1500" font-size="14" font-weight="bold" fill="#212529">Data Source Effectiveness</text>
-  <text x="1140" y="1500" font-size="10" fill="#868e96" text-anchor="end">{len(data_sources)} sources</text>
 '''
 
-    # Render data sources as table rows (up to 4)
-    y_ds = 1520
+    # Render data sources with word wrapping (like Rationale)
+    y_ds = 1525
     for src in data_sources[:4]:
-        src_name = src.get('source', '')[:40]
+        src_name = src.get('source', '')
         predictive = src.get('actual_predictive', 'medium')
-        weight = src.get('expected_weight', 0)
         adjustment = src.get('weight_adjustment', 'keep')
-        notes = src.get('notes', '')[:80]
+        notes = src.get('notes', '')
         color = '#51cf66' if predictive == 'high' else '#ffd43b' if predictive == 'medium' else '#868e96'
         adj_icon = '↑' if adjustment == 'increase' else '↓' if adjustment == 'decrease' else '='
-        svg += f'''  <text x="60" y="{y_ds}" font-size="11" fill="{color}">• {escape_xml(src_name)}</text>
-  <text x="320" y="{y_ds}" font-size="10" fill="#495057">[{predictive}] {adj_icon}</text>
-  <text x="400" y="{y_ds}" font-size="10" fill="#868e96">{escape_xml(notes)}</text>
+
+        # Build full line: "• Source Name [high] ↑: Notes..."
+        full_line = f"• {src_name} [{predictive}] {adj_icon}: {notes}"
+
+        # Word wrap if needed (120 chars like Rationale)
+        ds_words = full_line.split()
+        ds_lines = []
+        ds_curr = []
+        for w in ds_words:
+            ds_curr.append(w)
+            if len(' '.join(ds_curr)) > 120:
+                ds_lines.append(' '.join(ds_curr[:-1]))
+                ds_curr = [w]
+        if ds_curr:
+            ds_lines.append(' '.join(ds_curr))
+
+        # Render lines (max 2 per source)
+        for i, line in enumerate(ds_lines[:2]):
+            fill_color = color if i == 0 else '#868e96'
+            svg += f'''  <text x="60" y="{y_ds}" font-size="11" fill="{fill_color}">{escape_xml(line)}</text>
 '''
-        y_ds += 18
+            y_ds += 18
 
     svg += f'''
   <!-- ROW 10: Rationale Text Box -->
