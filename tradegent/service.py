@@ -45,6 +45,7 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, str(Path(__file__).parent))
 import orchestrator
 from db_layer import NexusDB
+from psycopg import errors as pg_errors
 from expiration_monitor import ExpirationMonitor
 from ib_client import IBClient
 from notifications import (
@@ -296,18 +297,50 @@ class NexusService:
 
     def _main_loop(self):
         """The core tick loop."""
+        consecutive_db_errors = 0
+        max_consecutive_db_errors = 5
+
         while self._running:
             tick_start = time.monotonic()
 
             try:
                 self._tick()
+                consecutive_db_errors = 0  # Reset on success
+            except pg_errors.InFailedSqlTransaction as e:
+                # Transaction aborted - rollback and continue
+                log.warning(f"Transaction aborted, rolling back: {e}")
+                try:
+                    self._db._conn.rollback()
+                except Exception:
+                    pass
+                self._db.increment_service_counter("errors_total")
+            except (pg_errors.OperationalError, pg_errors.AdminShutdown) as e:
+                # Database connection issue - attempt reconnect
+                log.error(f"Database connection error: {e}")
+                consecutive_db_errors += 1
+                self._db.increment_service_counter("errors_total")
+                self._db.increment_service_counter("today_errors")
+
+                if consecutive_db_errors >= max_consecutive_db_errors:
+                    log.critical(f"Too many consecutive DB errors ({consecutive_db_errors}), stopping")
+                    self._running = False
+                    break
+
+                # Wait before retry (exponential backoff)
+                wait_time = min(30, 2 ** consecutive_db_errors)
+                log.info(f"Waiting {wait_time}s before retry (attempt {consecutive_db_errors}/{max_consecutive_db_errors})")
+                self._interruptible_sleep(wait_time)
+                continue  # Skip normal sleep, retry immediately
             except Exception as e:
                 log.error(f"Tick error: {e}", exc_info=True)
                 self._db.increment_service_counter("errors_total")
                 self._db.increment_service_counter("today_errors")
 
             tick_ms = int((time.monotonic() - tick_start) * 1000)
-            self._db.heartbeat("running", tick_duration_ms=tick_ms)
+            try:
+                self._db.heartbeat("running", tick_duration_ms=tick_ms)
+            except Exception as hb_err:
+                log.warning(f"Heartbeat failed: {hb_err}")
 
             # Sleep for configured interval (re-read from DB each cycle)
             poll_seconds = orchestrator.cfg.scheduler_poll_seconds

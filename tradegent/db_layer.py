@@ -9,6 +9,7 @@ Falls back to psycopg2 sync if async not available.
 import json
 import logging
 import os
+import time as time_module
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
@@ -18,6 +19,7 @@ from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 import psycopg
 from psycopg.rows import dict_row
+from psycopg import errors as pg_errors
 
 # Load .env file for credentials
 _env_path = Path(__file__).parent / ".env"
@@ -842,19 +844,46 @@ class NexusDB:
 
     # ─── Connection Resilience ───────────────────────────────────────────
 
-    def ensure_connection(self):
-        """Reconnect if the connection is dead. Call before each tick."""
-        try:
-            with self.conn.cursor() as cur:
-                cur.execute("SELECT 1")
-        except Exception:
-            log.warning("DB connection lost — reconnecting")
+    def ensure_connection(self, max_retries: int = 3, base_delay: float = 1.0):
+        """Reconnect if the connection is dead. Call before each tick.
+
+        Handles:
+        - Connection lost (OperationalError)
+        - Transaction aborted (InFailedSqlTransaction) - rolls back
+        - Retries with exponential backoff
+        """
+        for attempt in range(max_retries):
             try:
-                self._conn.close()
-            except Exception:
-                pass
-            self._conn = None
-            self.connect()
+                with self.conn.cursor() as cur:
+                    cur.execute("SELECT 1")
+                return  # Connection is healthy
+            except pg_errors.InFailedSqlTransaction:
+                # Transaction aborted - rollback and continue
+                log.warning("Transaction aborted — rolling back")
+                try:
+                    self._conn.rollback()
+                except Exception:
+                    pass
+                return  # After rollback, connection should be usable
+            except (pg_errors.OperationalError, pg_errors.AdminShutdown, Exception) as e:
+                log.warning(f"DB connection issue (attempt {attempt + 1}/{max_retries}): {e}")
+                try:
+                    self._conn.close()
+                except Exception:
+                    pass
+                self._conn = None
+
+                if attempt < max_retries - 1:
+                    delay = base_delay * (2 ** attempt)  # Exponential backoff
+                    log.info(f"Retrying connection in {delay:.1f}s...")
+                    time_module.sleep(delay)
+                    try:
+                        self.connect()
+                    except Exception as conn_err:
+                        log.error(f"Reconnection failed: {conn_err}")
+                else:
+                    log.error("Max reconnection attempts reached")
+                    raise
 
     # ─── Utility ─────────────────────────────────────────────────────────
 
