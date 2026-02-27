@@ -13,6 +13,9 @@ Components:
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from enum import Enum
+from zoneinfo import ZoneInfo
+
+ET = ZoneInfo("America/New_York")
 from typing import Callable, TYPE_CHECKING
 import logging
 import re
@@ -364,7 +367,12 @@ class WatchlistMonitor:
         elif isinstance(expires_at, date) and not isinstance(expires_at, datetime):
             expires_at = datetime.combine(expires_at, datetime.max.time())
 
-        return datetime.now() > expires_at
+        # Ensure both datetimes are timezone-aware for comparison
+        now = datetime.now(ET)
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=ET)
+
+        return now > expires_at
 
     def _is_invalidated(self, entry: dict, quote) -> tuple[bool, str]:
         """Check if entry's invalidation condition is met."""
