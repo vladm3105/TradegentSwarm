@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 """
-Stock Analysis Validator v2.6
+Stock Analysis Validator v2.7
 
-Validates stock analysis reports against the v2.6 schema requirements.
+Validates stock analysis reports against v2.6/v2.7 schema requirements.
 Blocks reports missing required professional sections.
+
+v2.7 additions:
+- Alert level derivations (methodology, source_field, source_value, calculation)
+- Summary key_levels derivations
+- Data source effectiveness validation (for SVG visualization)
 
 Usage:
     python scripts/validate_analysis.py <file.yaml>
@@ -90,6 +95,10 @@ VALID_DERIVATION_METHODS = {
 }
 
 MIN_SIGNIFICANCE_LENGTH = 100
+
+# Valid data source predictive values
+VALID_PREDICTIVE_VALUES = {"high", "medium", "low"}
+VALID_WEIGHT_ADJUSTMENTS = {"increase", "keep", "decrease"}
 
 
 # ============================================================
@@ -549,6 +558,54 @@ def validate_summary_key_levels(doc: dict, result: ValidationResult):
                 )
 
 
+def validate_data_source_effectiveness(doc: dict, result: ValidationResult):
+    """Validate meta_learning.data_source_effectiveness for SVG visualization (v2.7).
+
+    Data sources are displayed in a full-width section in the SVG visualization.
+    Each source should have: source name, actual_predictive, weight_adjustment, notes.
+    """
+    meta_learning = doc.get("meta_learning", {})
+    data_sources = meta_learning.get("data_source_effectiveness", [])
+
+    if not data_sources:
+        result.add_warning(
+            "meta_learning.data_source_effectiveness is empty. "
+            "Add at least 1 data source for SVG visualization."
+        )
+        return
+
+    for i, src in enumerate(data_sources):
+        prefix = f"meta_learning.data_source_effectiveness[{i}]"
+
+        # Validate source name
+        source_name = src.get("source", "")
+        if not source_name or len(str(source_name).strip()) < 3:
+            result.add_warning(f"{prefix}.source is required (min 3 chars)")
+
+        # Validate actual_predictive
+        predictive = src.get("actual_predictive", "")
+        if predictive and predictive not in VALID_PREDICTIVE_VALUES:
+            result.add_warning(
+                f"{prefix}.actual_predictive must be one of {VALID_PREDICTIVE_VALUES} "
+                f"(found: '{predictive}')"
+            )
+
+        # Validate weight_adjustment
+        adjustment = src.get("weight_adjustment", "")
+        if adjustment and adjustment not in VALID_WEIGHT_ADJUSTMENTS:
+            result.add_warning(
+                f"{prefix}.weight_adjustment must be one of {VALID_WEIGHT_ADJUSTMENTS} "
+                f"(found: '{adjustment}')"
+            )
+
+        # Validate notes (should be descriptive for SVG display)
+        notes = src.get("notes", "")
+        if not notes or len(str(notes).strip()) < 10:
+            result.add_warning(
+                f"{prefix}.notes should be at least 10 chars for SVG display"
+            )
+
+
 def validate_document(file_path: Path) -> ValidationResult:
     """Main validation function."""
     result = ValidationResult(str(file_path))
@@ -585,6 +642,9 @@ def validate_document(file_path: Path) -> ValidationResult:
     # v2.7 derivation requirements
     validate_alert_levels_derivations(doc, result)
     validate_summary_key_levels(doc, result)
+
+    # v2.7 data source effectiveness (for SVG visualization)
+    validate_data_source_effectiveness(doc, result)
 
     return result
 
