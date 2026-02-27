@@ -462,7 +462,7 @@ def generate_svg(data: dict, source_file: str = '') -> str:
     offset_bear = -(seg_sb + seg_bb)
     offset_disaster = -(seg_sb + seg_bb + seg_bear)
 
-    # Build SVG (Light Theme) - 9 rows + footer = 1630px height (v2.7 extended boxes)
+    # Build SVG (Light Theme) - 9 rows + footer = 1660px height (v2.7 extended boxes)
     svg = f'''<?xml version="1.0" encoding="UTF-8"?>
 <!--
   Stock Analysis Visualization v{version}
@@ -470,7 +470,7 @@ def generate_svg(data: dict, source_file: str = '') -> str:
   Document ID: {escape_xml(doc_id)}
   Generated: {escape_xml(analysis_date)}
 -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1630" font-family="Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1660" font-family="Arial, sans-serif">
   <defs>
     <linearGradient id="headerGrad" x1="0%" y1="0%" x2="100%" y2="0%">
       <stop offset="0%" style="stop-color:#1a1a2e"/>
@@ -490,7 +490,7 @@ def generate_svg(data: dict, source_file: str = '') -> str:
   </defs>
 
   <!-- Background -->
-  <rect width="1200" height="1630" fill="#f8f9fa"/>
+  <rect width="1200" height="1660" fill="#f8f9fa"/>
 
   <!-- Header -->
   <rect x="0" y="0" width="1200" height="100" fill="url(#headerGrad)"/>
@@ -762,23 +762,24 @@ def generate_svg(data: dict, source_file: str = '') -> str:
   <text x="800" y="838" font-size="11" fill="#868e96">• {escape_xml(str(immediate_actions[0])[:45]) if immediate_actions else 'See analysis'}</text>
   <text x="800" y="855" font-size="11" fill="#868e96">• {escape_xml(str(immediate_actions[1])[:45]) if len(immediate_actions) > 1 else ''}</text>
 
-  <!-- ROW 5: Meta-Learning -->
-  <rect x="40" y="880" width="380" height="100" rx="10" fill="#fff" filter="url(#shadow)"/>
+  <!-- ROW 5: Meta-Learning (height 130px) -->
+  <rect x="40" y="880" width="380" height="130" rx="10" fill="#fff" filter="url(#shadow)"/>
   <text x="60" y="910" font-size="14" font-weight="bold" fill="#212529">Pattern Identified</text>
-  <text x="60" y="935" font-size="16" font-weight="bold" fill="#228be6">{escape_xml(str(pattern_identified)[:40]) if pattern_identified else 'None'}</text>
-  <text x="60" y="960" font-size="11" fill="#868e96">{escape_xml(str(comparison_summary)[:55])}</text>
+  <text x="60" y="935" font-size="16" font-weight="bold" fill="#228be6">{escape_xml(str(pattern_identified)[:45]) if pattern_identified else 'None'}</text>
+  <text x="60" y="960" font-size="11" fill="#868e96">{escape_xml(str(comparison_summary)[:60])}</text>
+  <text x="60" y="980" font-size="10" fill="#868e96">{escape_xml(str(comparison_summary)[60:120]) if len(str(comparison_summary)) > 60 else ''}</text>
 
   <!-- Data Source Effectiveness -->
-  <rect x="440" y="880" width="360" height="100" rx="10" fill="#fff" filter="url(#shadow)"/>
+  <rect x="440" y="880" width="360" height="130" rx="10" fill="#fff" filter="url(#shadow)"/>
   <text x="460" y="910" font-size="14" font-weight="bold" fill="#212529">Data Source Effectiveness</text>
 '''
 
-    # Add data source rows
+    # Add data source rows (up to 3)
     y_src = 935
-    for src in data_sources[:2]:
-        src_name = src.get('source', '')[:20]
+    for src in data_sources[:3]:
+        src_name = src.get('source', '')[:25]
         predictive = src.get('actual_predictive', 'medium')
-        notes = src.get('notes', '')[:35]
+        notes = src.get('notes', '')[:45]
         color = '#51cf66' if predictive == 'high' else '#ffd43b' if predictive == 'medium' else '#868e96'
         svg += f'''  <text x="460" y="{y_src}" font-size="11" fill="{color}">• {escape_xml(src_name)}: {escape_xml(notes)}</text>
 '''
@@ -786,7 +787,7 @@ def generate_svg(data: dict, source_file: str = '') -> str:
 
     svg += f'''
   <!-- Comparison to Past -->
-  <rect x="820" y="880" width="340" height="100" rx="10" fill="#fff" filter="url(#shadow)"/>
+  <rect x="820" y="880" width="340" height="130" rx="10" fill="#fff" filter="url(#shadow)"/>
   <text x="840" y="910" font-size="14" font-weight="bold" fill="#212529">Historical Comparison</text>
 '''
     # Word wrap comparison text into 3 lines of ~45 chars
@@ -806,17 +807,17 @@ def generate_svg(data: dict, source_file: str = '') -> str:
   <text x="840" y="953" font-size="11" fill="#868e96">{escape_xml(comp_lines[1]) if len(comp_lines) > 1 else ''}</text>
   <text x="840" y="971" font-size="10" fill="#868e96">{escape_xml(comp_lines[2]) if len(comp_lines) > 2 else ''}</text>
 
-  <!-- ROW 6: News & Data, Fundamentals, Sentiment (height 130px) -->
+  <!-- ROW 6: News & Data, Fundamentals, Sentiment (y=1030, height 130px) -->
 
   <!-- News & Data Quality -->
-  <rect x="40" y="1000" width="380" height="130" rx="10" fill="#fff" filter="url(#shadow)"/>
-  <text x="60" y="1030" font-size="14" font-weight="bold" fill="#212529">News &amp; Data Quality</text>
-  <circle cx="350" cy="1025" r="8" fill="{'#51cf66' if fresh_catalyst else '#ffd43b'}"/>
-  <text x="370" y="1030" font-size="11" fill="{'#51cf66' if fresh_catalyst else '#ffd43b'}">{'Fresh' if fresh_catalyst else 'Stale'}</text>
+  <rect x="40" y="1030" width="380" height="130" rx="10" fill="#fff" filter="url(#shadow)"/>
+  <text x="60" y="1060" font-size="14" font-weight="bold" fill="#212529">News &amp; Data Quality</text>
+  <circle cx="350" cy="1055" r="8" fill="{'#51cf66' if fresh_catalyst else '#ffd43b'}"/>
+  <text x="370" y="1060" font-size="11" fill="{'#51cf66' if fresh_catalyst else '#ffd43b'}">{'Fresh' if fresh_catalyst else 'Stale'}</text>
 '''
 
     # Add news items
-    y_news = 1055
+    y_news = 1085
     for item in news_items[:3]:
         if isinstance(item, dict):
             headline = item.get('headline', item.get('title', ''))[:40]
@@ -830,68 +831,68 @@ def generate_svg(data: dict, source_file: str = '') -> str:
 
     # Add limitations
     if limitations:
-        svg += f'''  <text x="60" y="1105" font-size="10" fill="#868e96">Limits: {escape_xml(str(limitations[0])[:50])}</text>
+        svg += f'''  <text x="60" y="1135" font-size="10" fill="#868e96">Limits: {escape_xml(str(limitations[0])[:50])}</text>
 '''
         if len(limitations) > 1:
-            svg += f'''  <text x="60" y="1120" font-size="10" fill="#868e96">       {escape_xml(str(limitations[1])[:50])}</text>
+            svg += f'''  <text x="60" y="1150" font-size="10" fill="#868e96">       {escape_xml(str(limitations[1])[:50])}</text>
 '''
 
     svg += f'''
   <!-- Fundamentals Growth -->
-  <rect x="440" y="1000" width="360" height="130" rx="10" fill="#fff" filter="url(#shadow)"/>
-  <text x="460" y="1030" font-size="14" font-weight="bold" fill="#212529">Fundamentals</text>
+  <rect x="440" y="1030" width="360" height="130" rx="10" fill="#fff" filter="url(#shadow)"/>
+  <text x="460" y="1060" font-size="14" font-weight="bold" fill="#212529">Fundamentals</text>
 
-  <text x="460" y="1055" font-size="12" fill="#868e96">Revenue Growth YoY</text>
-  <text x="620" y="1055" font-size="12" font-weight="bold" fill="{'#51cf66' if isinstance(rev_growth, (int, float)) and rev_growth > 0 else '#ff6b6b'}">{escape_xml(str(rev_growth))}{'%' if isinstance(rev_growth, (int, float)) else ''}</text>
+  <text x="460" y="1085" font-size="12" fill="#868e96">Revenue Growth YoY</text>
+  <text x="620" y="1085" font-size="12" font-weight="bold" fill="{'#51cf66' if isinstance(rev_growth, (int, float)) and rev_growth > 0 else '#ff6b6b'}">{escape_xml(str(rev_growth))}{'%' if isinstance(rev_growth, (int, float)) else ''}</text>
 
-  <text x="460" y="1075" font-size="12" fill="#868e96">EPS Growth YoY</text>
-  <text x="620" y="1075" font-size="12" font-weight="bold" fill="{'#51cf66' if isinstance(eps_growth, (int, float)) and eps_growth > 0 else '#ff6b6b'}">{escape_xml(str(eps_growth))}{'%' if isinstance(eps_growth, (int, float)) else ''}</text>
+  <text x="460" y="1105" font-size="12" fill="#868e96">EPS Growth YoY</text>
+  <text x="620" y="1105" font-size="12" font-weight="bold" fill="{'#51cf66' if isinstance(eps_growth, (int, float)) and eps_growth > 0 else '#ff6b6b'}">{escape_xml(str(eps_growth))}{'%' if isinstance(eps_growth, (int, float)) else ''}</text>
 
-  <text x="460" y="1095" font-size="12" fill="#868e96">Gross Margin</text>
-  <text x="620" y="1095" font-size="12" fill="#212529">{escape_xml(str(gross_margin))}{'%' if isinstance(gross_margin, (int, float)) else ''}</text>
+  <text x="460" y="1125" font-size="12" fill="#868e96">Gross Margin</text>
+  <text x="620" y="1125" font-size="12" fill="#212529">{escape_xml(str(gross_margin))}{'%' if isinstance(gross_margin, (int, float)) else ''}</text>
 
-  <text x="700" y="1055" font-size="12" fill="#868e96">Op Margin</text>
-  <text x="760" y="1055" font-size="12" fill="#212529">{escape_xml(str(operating_margin))}{'%' if isinstance(operating_margin, (int, float)) else ''}</text>
+  <text x="700" y="1085" font-size="12" fill="#868e96">Op Margin</text>
+  <text x="760" y="1085" font-size="12" fill="#212529">{escape_xml(str(operating_margin))}{'%' if isinstance(operating_margin, (int, float)) else ''}</text>
 
   <!-- Sentiment Details -->
-  <rect x="820" y="1000" width="340" height="130" rx="10" fill="#fff" filter="url(#shadow)"/>
-  <text x="840" y="1030" font-size="14" font-weight="bold" fill="#212529">Sentiment Details</text>
+  <rect x="820" y="1030" width="340" height="130" rx="10" fill="#fff" filter="url(#shadow)"/>
+  <text x="840" y="1060" font-size="14" font-weight="bold" fill="#212529">Sentiment Details</text>
 
-  <text x="840" y="1055" font-size="11" fill="#868e96">Analyst Ratings:</text>
-  <text x="925" y="1055" font-size="11" fill="#51cf66">{buy_count}B</text>
-  <text x="955" y="1055" font-size="11" fill="#ffd43b">{hold_count}H</text>
-  <text x="985" y="1055" font-size="11" fill="#ff6b6b">{sell_count}S</text>
+  <text x="840" y="1085" font-size="11" fill="#868e96">Analyst Ratings:</text>
+  <text x="925" y="1085" font-size="11" fill="#51cf66">{buy_count}B</text>
+  <text x="955" y="1085" font-size="11" fill="#ffd43b">{hold_count}H</text>
+  <text x="985" y="1085" font-size="11" fill="#ff6b6b">{sell_count}S</text>
 
-  <text x="840" y="1075" font-size="11" fill="#868e96">Short Interest:</text>
-  <text x="925" y="1075" font-size="11" fill="{'#ff6b6b' if short_pct > 10 else '#495057'}">{short_pct:.1f}% of float</text>
+  <text x="840" y="1105" font-size="11" fill="#868e96">Short Interest:</text>
+  <text x="925" y="1105" font-size="11" fill="{'#ff6b6b' if short_pct > 10 else '#495057'}">{short_pct:.1f}% of float</text>
 
-  <text x="840" y="1095" font-size="11" fill="#868e96">P/C Ratio:</text>
-  <text x="905" y="1095" font-size="11" fill="#495057">{escape_xml(str(put_call_ratio))}</text>
-  <text x="1000" y="1095" font-size="10" fill="#228be6">{escape_xml(str(unusual_activity)[:20])}</text>
+  <text x="840" y="1125" font-size="11" fill="#868e96">P/C Ratio:</text>
+  <text x="905" y="1125" font-size="11" fill="#495057">{escape_xml(str(put_call_ratio))}</text>
+  <text x="1000" y="1125" font-size="10" fill="#228be6">{escape_xml(str(unusual_activity)[:20])}</text>
 
-  <text x="840" y="1115" font-size="11" fill="#868e96">Options Activity:</text>
-  <text x="935" y="1115" font-size="10" fill="#228be6">{escape_xml(str(unusual_activity)[:30]) if unusual_activity else 'None detected'}</text>
+  <text x="840" y="1145" font-size="11" fill="#868e96">Options Activity:</text>
+  <text x="935" y="1145" font-size="10" fill="#228be6">{escape_xml(str(unusual_activity)[:30]) if unusual_activity else 'None detected'}</text>
 
-  <!-- ROW 7: Trade Plan, Alerts, Falsification (y=1150, height 130px) -->
+  <!-- ROW 7: Trade Plan, Alerts, Falsification (y=1180, height 130px) -->
 
   <!-- Trade Plan or Pass Reasoning -->
-  <rect x="40" y="1150" width="380" height="130" rx="10" fill="#fff" filter="url(#shadow)"/>
-  <text x="60" y="1180" font-size="14" font-weight="bold" fill="#212529">{'Trade Plan' if has_trade else 'No Trade - Pass'}</text>
+  <rect x="40" y="1180" width="380" height="130" rx="10" fill="#fff" filter="url(#shadow)"/>
+  <text x="60" y="1210" font-size="14" font-weight="bold" fill="#212529">{'Trade Plan' if has_trade else 'No Trade - Pass'}</text>
 '''
 
     if has_trade:
-        svg += f'''  <text x="60" y="1205" font-size="12" fill="#868e96">Entry:</text>
-  <text x="110" y="1205" font-size="12" font-weight="bold" fill="#212529">${entry_price:.2f} ({entry_size_pct:.1f}% port)</text>
+        svg += f'''  <text x="60" y="1235" font-size="12" fill="#868e96">Entry:</text>
+  <text x="110" y="1235" font-size="12" font-weight="bold" fill="#212529">${entry_price:.2f} ({entry_size_pct:.1f}% port)</text>
 
-  <text x="60" y="1225" font-size="12" fill="#868e96">Stop:</text>
-  <text x="110" y="1225" font-size="12" font-weight="bold" fill="#ff6b6b">${stop_price:.2f}</text>
+  <text x="60" y="1255" font-size="12" fill="#868e96">Stop:</text>
+  <text x="110" y="1255" font-size="12" font-weight="bold" fill="#ff6b6b">${stop_price:.2f}</text>
 
-  <text x="200" y="1225" font-size="12" fill="#868e96">Targets:</text>
-  <text x="260" y="1225" font-size="12" font-weight="bold" fill="#51cf66">${target_1:.0f} / ${target_2:.0f}</text>
+  <text x="200" y="1255" font-size="12" fill="#868e96">Targets:</text>
+  <text x="260" y="1255" font-size="12" font-weight="bold" fill="#51cf66">${target_1:.0f} / ${target_2:.0f}</text>
 
-  <text x="60" y="1245" font-size="10" fill="#228be6">{escape_xml(str(opt_structure)[:40]) if opt_structure else 'Stock position'}</text>
+  <text x="60" y="1275" font-size="10" fill="#228be6">{escape_xml(str(opt_structure)[:40]) if opt_structure else 'Stock position'}</text>
 
-  <text x="60" y="1265" font-size="10" fill="#868e96">R:R {escape_xml(str(rr_actual))} | EV {ev_actual:.1f}%</text>
+  <text x="60" y="1295" font-size="10" fill="#868e96">R:R {escape_xml(str(rr_actual))} | EV {ev_actual:.1f}%</text>
 '''
     else:
         # Show why passing
@@ -905,17 +906,17 @@ def generate_svg(data: dict, source_file: str = '') -> str:
         if not edge_check:
             pass_reasons.append("Edge already priced in")
         for i, reason in enumerate(pass_reasons[:4]):
-            svg += f'''  <text x="60" y="{1205 + i*20}" font-size="11" fill="#ff6b6b">• {escape_xml(reason)}</text>
+            svg += f'''  <text x="60" y="{1235 + i*20}" font-size="11" fill="#ff6b6b">• {escape_xml(reason)}</text>
 '''
 
     svg += f'''
   <!-- Alert Levels -->
-  <rect x="440" y="1150" width="360" height="130" rx="10" fill="#fff" filter="url(#shadow)"/>
-  <text x="460" y="1180" font-size="14" font-weight="bold" fill="#212529">Alert Levels</text>
+  <rect x="440" y="1180" width="360" height="130" rx="10" fill="#fff" filter="url(#shadow)"/>
+  <text x="460" y="1210" font-size="14" font-weight="bold" fill="#212529">Alert Levels</text>
 '''
 
     # Price alerts with direction and tag
-    y_alert = 1205
+    y_alert = 1235
     for alert in price_alerts[:3]:
         if isinstance(alert, dict):
             price = alert.get('price', alert.get('level', 0))
@@ -954,9 +955,9 @@ def generate_svg(data: dict, source_file: str = '') -> str:
 
     svg += f'''
   <!-- Falsification Criteria -->
-  <rect x="820" y="1150" width="340" height="130" rx="10" fill="#fff" filter="url(#shadow)"/>
-  <text x="840" y="1180" font-size="14" font-weight="bold" fill="#212529">Falsification</text>
-  <text x="840" y="1205" font-size="11" fill="#495057">Thesis invalid if:</text>
+  <rect x="820" y="1180" width="340" height="130" rx="10" fill="#fff" filter="url(#shadow)"/>
+  <text x="840" y="1210" font-size="14" font-weight="bold" fill="#212529">Falsification</text>
+  <text x="840" y="1235" font-size="11" fill="#495057">Thesis invalid if:</text>
 '''
 
     # Falsification details
@@ -973,23 +974,23 @@ def generate_svg(data: dict, source_file: str = '') -> str:
         if curr:
             lines_f.append(' '.join(curr))
 
-        y_f = 1220
+        y_f = 1250
         for line in lines_f[:3]:
             svg += f'''  <text x="840" y="{y_f}" font-size="10" fill="#ff6b6b">{escape_xml(line)}</text>
 '''
             y_f += 14
 
     for i, cond in enumerate(bull_wrong_if[:2]):
-        svg += f'''  <text x="840" y="{1262 + 14 * i}" font-size="10" fill="#868e96">• {escape_xml(str(cond)[:38])}</text>
+        svg += f'''  <text x="840" y="{1292 + 14 * i}" font-size="10" fill="#868e96">• {escape_xml(str(cond)[:38])}</text>
 '''
 
     # ROW 8: KEY LEVELS table (v2.7)
-    svg += render_key_levels_section(summary_key_levels, 40, 1300)
+    svg += render_key_levels_section(summary_key_levels, 40, 1330)
 
     svg += f'''
   <!-- ROW 9: Rationale Text Box -->
-  <rect x="40" y="1470" width="1120" height="120" rx="10" fill="#fff" filter="url(#shadow)"/>
-  <text x="60" y="1500" font-size="14" font-weight="bold" fill="#212529">Rationale</text>
+  <rect x="40" y="1500" width="1120" height="120" rx="10" fill="#fff" filter="url(#shadow)"/>
+  <text x="60" y="1530" font-size="14" font-weight="bold" fill="#212529">Rationale</text>
 '''
 
     # Word wrap rationale into multiple lines
@@ -1005,7 +1006,7 @@ def generate_svg(data: dict, source_file: str = '') -> str:
     if r_curr:
         r_lines.append(' '.join(r_curr))
 
-    y_rat = 1525
+    y_rat = 1555
     for line in r_lines[:4]:
         svg += f'''  <text x="60" y="{y_rat}" font-size="11" fill="#495057">{escape_xml(line)}</text>
 '''
@@ -1013,14 +1014,14 @@ def generate_svg(data: dict, source_file: str = '') -> str:
 
     # Add watchlist trigger if present
     if watchlist_trigger:
-        svg += f'''  <text x="60" y="1580" font-size="11" fill="#228be6">Watchlist Trigger: {escape_xml(str(watchlist_trigger)[:80])}</text>
+        svg += f'''  <text x="60" y="1610" font-size="11" fill="#228be6">Watchlist Trigger: {escape_xml(str(watchlist_trigger)[:80])}</text>
 '''
 
     svg += f'''
   <!-- Footer -->
-  <rect x="0" y="1610" width="1200" height="20" fill="#1a1a2e"/>
-  <text x="40" y="1624" font-size="9" fill="#868e96">Source: {escape_xml(source_file.split('/')[-1]) if source_file else doc_id}</text>
-  <text x="1160" y="1624" font-size="9" fill="#868e96" text-anchor="end">Tradegent v{version} | {escape_xml(analysis_date)}</text>
+  <rect x="0" y="1640" width="1200" height="20" fill="#1a1a2e"/>
+  <text x="40" y="1654" font-size="9" fill="#868e96">Source: {escape_xml(source_file.split('/')[-1]) if source_file else doc_id}</text>
+  <text x="1160" y="1654" font-size="9" fill="#868e96" text-anchor="end">Tradegent v{version} | {escape_xml(analysis_date)}</text>
 </svg>'''
 
     return svg
