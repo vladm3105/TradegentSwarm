@@ -82,19 +82,23 @@ def render_key_levels_section(key_levels: dict, x: int, y: int) -> str:
         ('target_2', 'Target 2', '#8BC34A'),
     ]
 
+    # Count levels to calculate dynamic height
+    level_count = sum(1 for key, _, _ in level_defs if key in key_levels)
+    box_height = 60 + (level_count * 18)  # Header + rows
+
     svg = f'''
   <!-- KEY LEVELS (v2.7) -->
-  <rect x="{x}" y="{y}" width="1120" height="100" rx="10" fill="#fff" filter="url(#shadow)"/>
+  <rect x="{x}" y="{y}" width="1120" height="{box_height}" rx="10" fill="#fff" filter="url(#shadow)"/>
   <text x="{x + 20}" y="{y + 25}" font-size="14" font-weight="bold" fill="#212529">Key Levels</text>
   <text x="{x + 1100}" y="{y + 25}" font-size="10" fill="#868e96" text-anchor="end">v2.7 Derivations</text>
 
   <!-- Table header -->
   <rect x="{x + 20}" y="{y + 35}" width="1080" height="20" fill="#f1f3f5"/>
   <text x="{x + 40}" y="{y + 49}" font-size="10" font-weight="bold" fill="#495057">Level</text>
-  <text x="{x + 140}" y="{y + 49}" font-size="10" font-weight="bold" fill="#495057">Price</text>
-  <text x="{x + 220}" y="{y + 49}" font-size="10" font-weight="bold" fill="#495057">Method</text>
-  <text x="{x + 380}" y="{y + 49}" font-size="10" font-weight="bold" fill="#495057">Source Field</text>
-  <text x="{x + 620}" y="{y + 49}" font-size="10" font-weight="bold" fill="#495057">Calculation</text>
+  <text x="{x + 120}" y="{y + 49}" font-size="10" font-weight="bold" fill="#495057">Price</text>
+  <text x="{x + 190}" y="{y + 49}" font-size="10" font-weight="bold" fill="#495057">Method</text>
+  <text x="{x + 340}" y="{y + 49}" font-size="10" font-weight="bold" fill="#495057">Source Field</text>
+  <text x="{x + 580}" y="{y + 49}" font-size="10" font-weight="bold" fill="#495057">Calculation</text>
 '''
 
     row_y = y + 68
@@ -104,15 +108,15 @@ def render_key_levels_section(key_levels: dict, x: int, y: int) -> str:
             derivation = key_levels.get(f'{level_key}_derivation', {})
             method = derivation.get('methodology', 'N/A')
             source_field = derivation.get('source_field', 'N/A')
-            calculation = derivation.get('calculation', '')[:45]
+            calculation = derivation.get('calculation', '')[:60]
 
             svg += f'''  <text x="{x + 40}" y="{row_y}" font-size="10" fill="{color}">{escape_xml(label)}</text>
-  <text x="{x + 140}" y="{row_y}" font-size="10" font-weight="bold" fill="#212529">${price:.2f}</text>
-  <text x="{x + 220}" y="{row_y}" font-size="10" fill="#495057">{escape_xml(method)}</text>
-  <text x="{x + 380}" y="{row_y}" font-size="10" fill="#868e96">{escape_xml(source_field[:30])}</text>
-  <text x="{x + 620}" y="{row_y}" font-size="10" fill="#868e96">{escape_xml(calculation)}</text>
+  <text x="{x + 120}" y="{row_y}" font-size="10" font-weight="bold" fill="#212529">${price:.2f}</text>
+  <text x="{x + 190}" y="{row_y}" font-size="10" fill="#495057">{escape_xml(method)}</text>
+  <text x="{x + 340}" y="{row_y}" font-size="10" fill="#868e96">{escape_xml(source_field[:35])}</text>
+  <text x="{x + 580}" y="{row_y}" font-size="10" fill="#868e96">{escape_xml(calculation)}</text>
 '''
-            row_y += 16
+            row_y += 18
 
     return svg
 
@@ -458,7 +462,7 @@ def generate_svg(data: dict, source_file: str = '') -> str:
     offset_bear = -(seg_sb + seg_bb)
     offset_disaster = -(seg_sb + seg_bb + seg_bear)
 
-    # Build SVG (Light Theme) - 9 rows + footer = 1520px height (v2.7 adds KEY LEVELS)
+    # Build SVG (Light Theme) - 9 rows + footer = 1570px height (v2.7 adds KEY LEVELS with dynamic height)
     svg = f'''<?xml version="1.0" encoding="UTF-8"?>
 <!--
   Stock Analysis Visualization v{version}
@@ -466,7 +470,7 @@ def generate_svg(data: dict, source_file: str = '') -> str:
   Document ID: {escape_xml(doc_id)}
   Generated: {escape_xml(analysis_date)}
 -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1520" font-family="Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1570" font-family="Arial, sans-serif">
   <defs>
     <linearGradient id="headerGrad" x1="0%" y1="0%" x2="100%" y2="0%">
       <stop offset="0%" style="stop-color:#1a1a2e"/>
@@ -486,7 +490,7 @@ def generate_svg(data: dict, source_file: str = '') -> str:
   </defs>
 
   <!-- Background -->
-  <rect width="1200" height="1520" fill="#f8f9fa"/>
+  <rect width="1200" height="1570" fill="#f8f9fa"/>
 
   <!-- Header -->
   <rect x="0" y="0" width="1200" height="100" fill="url(#headerGrad)"/>
@@ -976,8 +980,8 @@ def generate_svg(data: dict, source_file: str = '') -> str:
 
     svg += f'''
   <!-- ROW 9: Rationale Text Box -->
-  <rect x="40" y="1360" width="1120" height="120" rx="10" fill="#fff" filter="url(#shadow)"/>
-  <text x="60" y="1390" font-size="14" font-weight="bold" fill="#212529">Rationale</text>
+  <rect x="40" y="1410" width="1120" height="120" rx="10" fill="#fff" filter="url(#shadow)"/>
+  <text x="60" y="1440" font-size="14" font-weight="bold" fill="#212529">Rationale</text>
 '''
 
     # Word wrap rationale into multiple lines
@@ -993,7 +997,7 @@ def generate_svg(data: dict, source_file: str = '') -> str:
     if r_curr:
         r_lines.append(' '.join(r_curr))
 
-    y_rat = 1415
+    y_rat = 1465
     for line in r_lines[:4]:
         svg += f'''  <text x="60" y="{y_rat}" font-size="11" fill="#495057">{escape_xml(line)}</text>
 '''
@@ -1001,14 +1005,14 @@ def generate_svg(data: dict, source_file: str = '') -> str:
 
     # Add watchlist trigger if present
     if watchlist_trigger:
-        svg += f'''  <text x="60" y="1470" font-size="11" fill="#228be6">Watchlist Trigger: {escape_xml(str(watchlist_trigger)[:80])}</text>
+        svg += f'''  <text x="60" y="1520" font-size="11" fill="#228be6">Watchlist Trigger: {escape_xml(str(watchlist_trigger)[:80])}</text>
 '''
 
     svg += f'''
   <!-- Footer -->
-  <rect x="0" y="1500" width="1200" height="20" fill="#1a1a2e"/>
-  <text x="40" y="1514" font-size="9" fill="#868e96">Source: {escape_xml(source_file.split('/')[-1]) if source_file else doc_id}</text>
-  <text x="1160" y="1514" font-size="9" fill="#868e96" text-anchor="end">Tradegent v{version} | {escape_xml(analysis_date)}</text>
+  <rect x="0" y="1550" width="1200" height="20" fill="#1a1a2e"/>
+  <text x="40" y="1564" font-size="9" fill="#868e96">Source: {escape_xml(source_file.split('/')[-1]) if source_file else doc_id}</text>
+  <text x="1160" y="1564" font-size="9" fill="#868e96" text-anchor="end">Tradegent v{version} | {escape_xml(analysis_date)}</text>
 </svg>'''
 
     return svg
