@@ -462,7 +462,7 @@ def generate_svg(data: dict, source_file: str = '') -> str:
     offset_bear = -(seg_sb + seg_bb)
     offset_disaster = -(seg_sb + seg_bb + seg_bear)
 
-    # Build SVG (Light Theme) - 9 rows + footer = 1570px height (v2.7 adds KEY LEVELS with dynamic height)
+    # Build SVG (Light Theme) - 9 rows + footer = 1630px height (v2.7 extended boxes)
     svg = f'''<?xml version="1.0" encoding="UTF-8"?>
 <!--
   Stock Analysis Visualization v{version}
@@ -470,7 +470,7 @@ def generate_svg(data: dict, source_file: str = '') -> str:
   Document ID: {escape_xml(doc_id)}
   Generated: {escape_xml(analysis_date)}
 -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1570" font-family="Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1630" font-family="Arial, sans-serif">
   <defs>
     <linearGradient id="headerGrad" x1="0%" y1="0%" x2="100%" y2="0%">
       <stop offset="0%" style="stop-color:#1a1a2e"/>
@@ -490,7 +490,7 @@ def generate_svg(data: dict, source_file: str = '') -> str:
   </defs>
 
   <!-- Background -->
-  <rect width="1200" height="1570" fill="#f8f9fa"/>
+  <rect width="1200" height="1630" fill="#f8f9fa"/>
 
   <!-- Header -->
   <rect x="0" y="0" width="1200" height="100" fill="url(#headerGrad)"/>
@@ -806,10 +806,10 @@ def generate_svg(data: dict, source_file: str = '') -> str:
   <text x="840" y="953" font-size="11" fill="#868e96">{escape_xml(comp_lines[1]) if len(comp_lines) > 1 else ''}</text>
   <text x="840" y="971" font-size="10" fill="#868e96">{escape_xml(comp_lines[2]) if len(comp_lines) > 2 else ''}</text>
 
-  <!-- ROW 6: News & Data, Fundamentals, Sentiment -->
+  <!-- ROW 6: News & Data, Fundamentals, Sentiment (height 130px) -->
 
   <!-- News & Data Quality -->
-  <rect x="40" y="1000" width="380" height="100" rx="10" fill="#fff" filter="url(#shadow)"/>
+  <rect x="40" y="1000" width="380" height="130" rx="10" fill="#fff" filter="url(#shadow)"/>
   <text x="60" y="1030" font-size="14" font-weight="bold" fill="#212529">News &amp; Data Quality</text>
   <circle cx="350" cy="1025" r="8" fill="{'#51cf66' if fresh_catalyst else '#ffd43b'}"/>
   <text x="370" y="1030" font-size="11" fill="{'#51cf66' if fresh_catalyst else '#ffd43b'}">{'Fresh' if fresh_catalyst else 'Stale'}</text>
@@ -830,12 +830,15 @@ def generate_svg(data: dict, source_file: str = '') -> str:
 
     # Add limitations
     if limitations:
-        svg += f'''  <text x="60" y="1090" font-size="10" fill="#868e96">Limits: {escape_xml(str(limitations[0])[:50])}</text>
+        svg += f'''  <text x="60" y="1105" font-size="10" fill="#868e96">Limits: {escape_xml(str(limitations[0])[:50])}</text>
+'''
+        if len(limitations) > 1:
+            svg += f'''  <text x="60" y="1120" font-size="10" fill="#868e96">       {escape_xml(str(limitations[1])[:50])}</text>
 '''
 
     svg += f'''
   <!-- Fundamentals Growth -->
-  <rect x="440" y="1000" width="360" height="100" rx="10" fill="#fff" filter="url(#shadow)"/>
+  <rect x="440" y="1000" width="360" height="130" rx="10" fill="#fff" filter="url(#shadow)"/>
   <text x="460" y="1030" font-size="14" font-weight="bold" fill="#212529">Fundamentals</text>
 
   <text x="460" y="1055" font-size="12" fill="#868e96">Revenue Growth YoY</text>
@@ -851,7 +854,7 @@ def generate_svg(data: dict, source_file: str = '') -> str:
   <text x="760" y="1055" font-size="12" fill="#212529">{escape_xml(str(operating_margin))}{'%' if isinstance(operating_margin, (int, float)) else ''}</text>
 
   <!-- Sentiment Details -->
-  <rect x="820" y="1000" width="340" height="100" rx="10" fill="#fff" filter="url(#shadow)"/>
+  <rect x="820" y="1000" width="340" height="130" rx="10" fill="#fff" filter="url(#shadow)"/>
   <text x="840" y="1030" font-size="14" font-weight="bold" fill="#212529">Sentiment Details</text>
 
   <text x="840" y="1055" font-size="11" fill="#868e96">Analyst Ratings:</text>
@@ -866,24 +869,29 @@ def generate_svg(data: dict, source_file: str = '') -> str:
   <text x="905" y="1095" font-size="11" fill="#495057">{escape_xml(str(put_call_ratio))}</text>
   <text x="1000" y="1095" font-size="10" fill="#228be6">{escape_xml(str(unusual_activity)[:20])}</text>
 
-  <!-- ROW 7: Trade Plan, Alerts, Falsification -->
+  <text x="840" y="1115" font-size="11" fill="#868e96">Options Activity:</text>
+  <text x="935" y="1115" font-size="10" fill="#228be6">{escape_xml(str(unusual_activity)[:30]) if unusual_activity else 'None detected'}</text>
+
+  <!-- ROW 7: Trade Plan, Alerts, Falsification (y=1150, height 130px) -->
 
   <!-- Trade Plan or Pass Reasoning -->
-  <rect x="40" y="1120" width="380" height="100" rx="10" fill="#fff" filter="url(#shadow)"/>
-  <text x="60" y="1150" font-size="14" font-weight="bold" fill="#212529">{'Trade Plan' if has_trade else 'No Trade - Pass'}</text>
+  <rect x="40" y="1150" width="380" height="130" rx="10" fill="#fff" filter="url(#shadow)"/>
+  <text x="60" y="1180" font-size="14" font-weight="bold" fill="#212529">{'Trade Plan' if has_trade else 'No Trade - Pass'}</text>
 '''
 
     if has_trade:
-        svg += f'''  <text x="60" y="1175" font-size="12" fill="#868e96">Entry:</text>
-  <text x="110" y="1175" font-size="12" font-weight="bold" fill="#212529">${entry_price:.2f} ({entry_size_pct:.1f}% port)</text>
+        svg += f'''  <text x="60" y="1205" font-size="12" fill="#868e96">Entry:</text>
+  <text x="110" y="1205" font-size="12" font-weight="bold" fill="#212529">${entry_price:.2f} ({entry_size_pct:.1f}% port)</text>
 
-  <text x="60" y="1195" font-size="12" fill="#868e96">Stop:</text>
-  <text x="110" y="1195" font-size="12" font-weight="bold" fill="#ff6b6b">${stop_price:.2f}</text>
+  <text x="60" y="1225" font-size="12" fill="#868e96">Stop:</text>
+  <text x="110" y="1225" font-size="12" font-weight="bold" fill="#ff6b6b">${stop_price:.2f}</text>
 
-  <text x="200" y="1195" font-size="12" fill="#868e96">Targets:</text>
-  <text x="260" y="1195" font-size="12" font-weight="bold" fill="#51cf66">${target_1:.0f} / ${target_2:.0f}</text>
+  <text x="200" y="1225" font-size="12" fill="#868e96">Targets:</text>
+  <text x="260" y="1225" font-size="12" font-weight="bold" fill="#51cf66">${target_1:.0f} / ${target_2:.0f}</text>
 
-  <text x="60" y="1212" font-size="10" fill="#228be6">{escape_xml(str(opt_structure)[:40]) if opt_structure else 'Stock position'}</text>
+  <text x="60" y="1245" font-size="10" fill="#228be6">{escape_xml(str(opt_structure)[:40]) if opt_structure else 'Stock position'}</text>
+
+  <text x="60" y="1265" font-size="10" fill="#868e96">R:R {escape_xml(str(rr_actual))} | EV {ev_actual:.1f}%</text>
 '''
     else:
         # Show why passing
@@ -896,18 +904,18 @@ def generate_svg(data: dict, source_file: str = '') -> str:
             pass_reasons.append(f"R:R {rr_actual} insufficient")
         if not edge_check:
             pass_reasons.append("Edge already priced in")
-        for i, reason in enumerate(pass_reasons[:3]):
-            svg += f'''  <text x="60" y="{1175 + i*20}" font-size="11" fill="#ff6b6b">• {escape_xml(reason)}</text>
+        for i, reason in enumerate(pass_reasons[:4]):
+            svg += f'''  <text x="60" y="{1205 + i*20}" font-size="11" fill="#ff6b6b">• {escape_xml(reason)}</text>
 '''
 
     svg += f'''
   <!-- Alert Levels -->
-  <rect x="440" y="1120" width="360" height="100" rx="10" fill="#fff" filter="url(#shadow)"/>
-  <text x="460" y="1150" font-size="14" font-weight="bold" fill="#212529">Alert Levels</text>
+  <rect x="440" y="1150" width="360" height="130" rx="10" fill="#fff" filter="url(#shadow)"/>
+  <text x="460" y="1180" font-size="14" font-weight="bold" fill="#212529">Alert Levels</text>
 '''
 
     # Price alerts with direction and tag
-    y_alert = 1175
+    y_alert = 1205
     for alert in price_alerts[:3]:
         if isinstance(alert, dict):
             price = alert.get('price', alert.get('level', 0))
@@ -946,9 +954,9 @@ def generate_svg(data: dict, source_file: str = '') -> str:
 
     svg += f'''
   <!-- Falsification Criteria -->
-  <rect x="820" y="1120" width="340" height="100" rx="10" fill="#fff" filter="url(#shadow)"/>
-  <text x="840" y="1150" font-size="14" font-weight="bold" fill="#212529">Falsification</text>
-  <text x="840" y="1175" font-size="11" fill="#495057">Thesis invalid if:</text>
+  <rect x="820" y="1150" width="340" height="130" rx="10" fill="#fff" filter="url(#shadow)"/>
+  <text x="840" y="1180" font-size="14" font-weight="bold" fill="#212529">Falsification</text>
+  <text x="840" y="1205" font-size="11" fill="#495057">Thesis invalid if:</text>
 '''
 
     # Falsification details
@@ -965,23 +973,23 @@ def generate_svg(data: dict, source_file: str = '') -> str:
         if curr:
             lines_f.append(' '.join(curr))
 
-        y_f = 1190
-        for line in lines_f[:2]:
+        y_f = 1220
+        for line in lines_f[:3]:
             svg += f'''  <text x="840" y="{y_f}" font-size="10" fill="#ff6b6b">{escape_xml(line)}</text>
 '''
             y_f += 14
 
     for i, cond in enumerate(bull_wrong_if[:2]):
-        svg += f'''  <text x="840" y="{1190 + 14 * (2 + i)}" font-size="10" fill="#868e96">• {escape_xml(str(cond)[:38])}</text>
+        svg += f'''  <text x="840" y="{1262 + 14 * i}" font-size="10" fill="#868e96">• {escape_xml(str(cond)[:38])}</text>
 '''
 
     # ROW 8: KEY LEVELS table (v2.7)
-    svg += render_key_levels_section(summary_key_levels, 40, 1240)
+    svg += render_key_levels_section(summary_key_levels, 40, 1300)
 
     svg += f'''
   <!-- ROW 9: Rationale Text Box -->
-  <rect x="40" y="1410" width="1120" height="120" rx="10" fill="#fff" filter="url(#shadow)"/>
-  <text x="60" y="1440" font-size="14" font-weight="bold" fill="#212529">Rationale</text>
+  <rect x="40" y="1470" width="1120" height="120" rx="10" fill="#fff" filter="url(#shadow)"/>
+  <text x="60" y="1500" font-size="14" font-weight="bold" fill="#212529">Rationale</text>
 '''
 
     # Word wrap rationale into multiple lines
@@ -997,7 +1005,7 @@ def generate_svg(data: dict, source_file: str = '') -> str:
     if r_curr:
         r_lines.append(' '.join(r_curr))
 
-    y_rat = 1465
+    y_rat = 1525
     for line in r_lines[:4]:
         svg += f'''  <text x="60" y="{y_rat}" font-size="11" fill="#495057">{escape_xml(line)}</text>
 '''
@@ -1005,14 +1013,14 @@ def generate_svg(data: dict, source_file: str = '') -> str:
 
     # Add watchlist trigger if present
     if watchlist_trigger:
-        svg += f'''  <text x="60" y="1520" font-size="11" fill="#228be6">Watchlist Trigger: {escape_xml(str(watchlist_trigger)[:80])}</text>
+        svg += f'''  <text x="60" y="1580" font-size="11" fill="#228be6">Watchlist Trigger: {escape_xml(str(watchlist_trigger)[:80])}</text>
 '''
 
     svg += f'''
   <!-- Footer -->
-  <rect x="0" y="1550" width="1200" height="20" fill="#1a1a2e"/>
-  <text x="40" y="1564" font-size="9" fill="#868e96">Source: {escape_xml(source_file.split('/')[-1]) if source_file else doc_id}</text>
-  <text x="1160" y="1564" font-size="9" fill="#868e96" text-anchor="end">Tradegent v{version} | {escape_xml(analysis_date)}</text>
+  <rect x="0" y="1610" width="1200" height="20" fill="#1a1a2e"/>
+  <text x="40" y="1624" font-size="9" fill="#868e96">Source: {escape_xml(source_file.split('/')[-1]) if source_file else doc_id}</text>
+  <text x="1160" y="1624" font-size="9" fill="#868e96" text-anchor="end">Tradegent v{version} | {escape_xml(analysis_date)}</text>
 </svg>'''
 
     return svg
