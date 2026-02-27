@@ -770,6 +770,37 @@ cols = [r['column_name'] for r in cur.fetchall()]
 print(cols)
 ```
 
+**Database Error Handling:**
+
+The service includes automatic recovery for common database errors:
+
+| Error | Handling |
+|-------|----------|
+| `OperationalError` | Auto-reconnect with exponential backoff (1s, 2s, 4s) |
+| `AdminShutdown` | Auto-reconnect (DB restart detected) |
+| `InFailedSqlTransaction` | Auto-rollback and continue |
+| 5+ consecutive DB errors | Service stops gracefully |
+
+**Key Methods:**
+- `db.ensure_connection()` - Call before each tick, handles reconnect/rollback
+- Service tracks `consecutive_db_errors` and stops after 5 failures
+
+**Timezone Handling:**
+
+All datetime comparisons must use timezone-aware objects:
+
+```python
+from zoneinfo import ZoneInfo
+ET = ZoneInfo("America/New_York")
+
+# Correct - timezone-aware
+now = datetime.now(ET)
+
+# If comparing with DB value, ensure both are aware
+if db_datetime.tzinfo is None:
+    db_datetime = db_datetime.replace(tzinfo=ET)
+```
+
 ### Watchlist Management
 
 Stocks are stored in `nexus.stocks` table with state machine: `analysis` → `paper` → `live`

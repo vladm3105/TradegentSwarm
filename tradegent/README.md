@@ -1473,6 +1473,28 @@ The Claude Code CLI isn't on PATH. If using nvm: `export PATH="$HOME/.nvm/versio
 **Database connection failed:**
 Check Docker is running: `docker compose ps`. Verify PG_HOST=localhost and credentials in .env match docker-compose.yml.
 
+**Service crashes on database restart:**
+The service now auto-recovers from database disconnections:
+- `OperationalError` / `AdminShutdown`: Auto-reconnect with exponential backoff (1s, 2s, 4s, max 3 retries)
+- `InFailedSqlTransaction`: Auto-rollback and continue
+- After 5 consecutive DB errors, service stops gracefully
+
+Check logs: `tail -f logs/service.log | grep -i "error\|reconnect\|rollback"`
+
+**"can't compare offset-naive and offset-aware datetimes":**
+All datetime comparisons must use timezone-aware objects. The fix:
+```python
+from zoneinfo import ZoneInfo
+ET = ZoneInfo("America/New_York")
+now = datetime.now(ET)  # NOT datetime.now()
+```
+
+**"current transaction is aborted, commands ignored":**
+This happens after a schema change or failed query. The service auto-rolls back, but if running manual queries:
+```python
+db._conn.rollback()  # Reset transaction state
+```
+
 **IB Gateway not connecting:**
 Connect via VNC (localhost:5900) to check the login screen. Paper account credentials must be correct. The gateway may need manual 2FA approval on first connect.
 
