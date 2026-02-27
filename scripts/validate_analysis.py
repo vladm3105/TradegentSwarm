@@ -609,12 +609,16 @@ def validate_data_source_effectiveness(doc: dict, result: ValidationResult):
 def validate_meta_learning_patterns(doc: dict, result: ValidationResult):
     """Validate meta_learning.pattern_identified and comparison_to_past for SVG ROW 5.
 
-    Pattern Identified: Word-wrapped at 80 chars, first line dark bold, up to 3 lines
-    Historical Comparison: Word-wrapped at 80 chars, first line dark bold, up to 4 lines
+    Pattern Identified (left box, 100px height):
+      - Title with subtitle: "Recurring behavior from meta-learning analysis"
+      - Word-wrapped at 80 chars, first line dark bold, up to 3 lines (16px spacing)
+
+    Historical Comparison (right box, 110px height):
+      - Word-wrapped at 80 chars, first line dark bold, up to 6 lines (14px spacing)
     """
     meta_learning = doc.get("meta_learning", {})
 
-    # Validate pattern_identified (SVG ROW 5 left box)
+    # Validate pattern_identified (SVG ROW 5 left box, 3 lines max)
     pattern = meta_learning.get("pattern_identified", "")
     pattern_str = str(pattern).strip() if pattern else ""
 
@@ -624,14 +628,14 @@ def validate_meta_learning_patterns(doc: dict, result: ValidationResult):
             "Describe the recurring pattern or behavior identified."
         )
 
-    # Validate comparison_to_past (SVG ROW 5 right box)
+    # Validate comparison_to_past (SVG ROW 5 right box, 6 lines max @ 80 chars = ~480 chars)
     comparison = meta_learning.get("comparison_to_past", "")
     comparison_str = str(comparison).strip() if comparison else ""
 
-    if not comparison_str or len(comparison_str) < 30:
+    if not comparison_str or len(comparison_str) < 50:
         result.add_warning(
-            "meta_learning.comparison_to_past should be at least 30 chars for SVG display. "
-            "Describe how this compares to similar past analyses."
+            "meta_learning.comparison_to_past should be at least 50 chars for SVG display. "
+            "Box supports up to 6 lines (480 chars). Describe how this compares to similar past analyses."
         )
 
 
