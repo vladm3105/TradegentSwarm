@@ -791,8 +791,8 @@ def generate_svg(data: dict, source_file: str = '') -> str:
 
     svg += f'''
   <!-- Historical Comparison -->
-  <rect x="620" y="880" width="540" height="100" rx="10" fill="#fff" filter="url(#shadow)"/>
-  <text x="640" y="910" font-size="14" font-weight="bold" fill="#212529">Historical Comparison:</text>
+  <rect x="620" y="880" width="540" height="110" rx="10" fill="#fff" filter="url(#shadow)"/>
+  <text x="640" y="905" font-size="14" font-weight="bold" fill="#212529">Historical Comparison:</text>
 '''
     # Word wrap comparison text (80 chars, dark bold first line)
     comp_text = str(comparison_to_past).replace('\n', ' ').strip()
@@ -807,13 +807,13 @@ def generate_svg(data: dict, source_file: str = '') -> str:
     if current_line:
         comp_lines.append(' '.join(current_line))
 
-    # Render comparison lines (max 4 lines, first line dark bold)
-    y_comp = 935
-    for i, line in enumerate(comp_lines[:4]):
+    # Render comparison lines (max 6 lines, first line dark bold)
+    y_comp = 925
+    for i, line in enumerate(comp_lines[:6]):
         weight = 'font-weight="bold"' if i == 0 else ''
         svg += f'''  <text x="640" y="{y_comp}" font-size="11" {weight} fill="#495057">{escape_xml(line)}</text>
 '''
-        y_comp += 16
+        y_comp += 14
 
     svg += f'''
   <!-- ROW 6: News & Data, Fundamentals, Sentiment (y=1000, height 130px) -->
