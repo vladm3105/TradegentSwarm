@@ -2101,11 +2101,13 @@ class NexusDB:
         ticker = self._validate_ticker(ticker, "stock analysis")
 
         meta = data.get("_meta", {})
-        decision = data.get("decision", {})
-        gate = decision.get("do_nothing_gate", {})
-        scenarios = data.get("scenario_analysis", {})
-        trade = data.get("trade_structure", {})
-        risk = data.get("risk_assessment", {})
+        # v2.7 template: fields at top level, not under "decision"
+        gate = data.get("do_nothing_gate", {})
+        scenarios = data.get("scenarios", {})
+        trade = data.get("trade_plan", {})
+        summary = data.get("summary", {})
+        scoring = data.get("scoring", {})
+        threat = data.get("threat_assessment", {})
 
         try:
             with self.conn.cursor() as cur:
@@ -2123,10 +2125,24 @@ class NexusDB:
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                     )
                     ON CONFLICT (file_path) DO UPDATE SET
+                        current_price = EXCLUDED.current_price,
                         recommendation = EXCLUDED.recommendation,
                         confidence = EXCLUDED.confidence,
                         expected_value_pct = EXCLUDED.expected_value_pct,
                         gate_result = EXCLUDED.gate_result,
+                        gate_criteria_met = EXCLUDED.gate_criteria_met,
+                        bull_probability = EXCLUDED.bull_probability,
+                        base_probability = EXCLUDED.base_probability,
+                        bear_probability = EXCLUDED.bear_probability,
+                        entry_price = EXCLUDED.entry_price,
+                        stop_price = EXCLUDED.stop_price,
+                        target_1_price = EXCLUDED.target_1_price,
+                        target_2_price = EXCLUDED.target_2_price,
+                        catalyst_score = EXCLUDED.catalyst_score,
+                        technical_score = EXCLUDED.technical_score,
+                        fundamental_score = EXCLUDED.fundamental_score,
+                        sentiment_score = EXCLUDED.sentiment_score,
+                        total_threat_level = EXCLUDED.total_threat_level,
                         yaml_content = EXCLUDED.yaml_content,
                         updated_at = now()
                     RETURNING id
@@ -2136,23 +2152,23 @@ class NexusDB:
                     meta.get("schema_version") or meta.get("version"),
                     file_path,
                     data.get("current_price"),
-                    decision.get("recommendation"),
-                    decision.get("confidence"),
-                    decision.get("expected_value_pct"),
-                    gate.get("result"),
-                    gate.get("criteria_met"),
-                    scenarios.get("bull", {}).get("probability"),
-                    scenarios.get("base", {}).get("probability"),
-                    scenarios.get("bear", {}).get("probability"),
-                    trade.get("entry", {}).get("price"),
-                    trade.get("stop_loss", {}).get("price"),
-                    trade.get("targets", [{}])[0].get("price") if trade.get("targets") else None,
-                    trade.get("targets", [{}, {}])[1].get("price") if len(trade.get("targets", [])) > 1 else None,
-                    data.get("catalyst_analysis", {}).get("score"),
-                    data.get("technical_analysis", {}).get("score"),
-                    data.get("fundamental_analysis", {}).get("score"),
-                    data.get("sentiment_analysis", {}).get("score"),
-                    risk.get("total_threat_level"),
+                    data.get("recommendation"),  # v2.7: top level
+                    data.get("confidence", {}).get("level"),  # v2.7: confidence.level
+                    gate.get("ev_actual"),  # v2.7: do_nothing_gate.ev_actual
+                    gate.get("gate_result"),  # v2.7: do_nothing_gate.gate_result
+                    gate.get("gates_passed"),  # v2.7: do_nothing_gate.gates_passed
+                    scenarios.get("strong_bull", {}).get("probability"),
+                    scenarios.get("base_bull", {}).get("probability"),
+                    scenarios.get("base_bear", {}).get("probability"),
+                    summary.get("key_levels", {}).get("entry"),  # v2.7: summary.key_levels
+                    summary.get("key_levels", {}).get("stop"),
+                    summary.get("key_levels", {}).get("target_1"),
+                    summary.get("key_levels", {}).get("target_2"),
+                    scoring.get("catalyst_score"),  # v2.7: scoring section
+                    scoring.get("technical_score"),
+                    scoring.get("fundamental_score"),
+                    scoring.get("sentiment_score"),
+                    threat.get("total_threat_level"),  # v2.7: threat_assessment
                     json.dumps(data, default=str),
                 ])
                 result = cur.fetchone()
