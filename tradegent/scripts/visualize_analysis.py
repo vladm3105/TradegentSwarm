@@ -902,16 +902,31 @@ def generate_svg(data: dict, source_file: str = '') -> str:
   <text x="460" y="1150" font-size="14" font-weight="bold" fill="#212529">Alert Levels</text>
 '''
 
-    # Price alerts
+    # Price alerts with direction and tag
     y_alert = 1175
     for alert in price_alerts[:3]:
         if isinstance(alert, dict):
             price = alert.get('price', alert.get('level', 0))
-            action = alert.get('action', alert.get('description', ''))[:25]
+            direction = alert.get('direction', 'above')
+            # Get tag, or fall back to derivation methodology, or action_if_triggered
+            tag = alert.get('tag', '')
+            if not tag:
+                derivation = alert.get('derivation', {})
+                tag = derivation.get('methodology', '')
+                if tag:
+                    tag = tag.replace('_', ' ').title()[:15]
+            if not tag:
+                tag = alert.get('action_if_triggered', '')[:20]
+            # Direction indicator and color
+            arrow = '↑' if direction == 'above' else '↓'
+            color = '#51cf66' if direction == 'above' else '#ff6b6b'
         else:
             price = alert
-            action = ''
-        svg += f'''  <text x="460" y="{y_alert}" font-size="11" fill="#495057">${price:.2f} → {escape_xml(action)}</text>
+            arrow = '•'
+            color = '#495057'
+            tag = ''
+        svg += f'''  <text x="460" y="{y_alert}" font-size="11" fill="{color}">{arrow} ${price:.2f}</text>
+  <text x="530" y="{y_alert}" font-size="10" fill="#868e96">{escape_xml(tag)}</text>
 '''
         y_alert += 18
 
