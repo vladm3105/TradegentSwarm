@@ -1,7 +1,7 @@
 # TradegentSwarm - Claude Code Instructions
 
 > **Skills Version**: v2.7 (stock-analysis), v2.4 (earnings-analysis), v2.1 (other skills)
-> **Last Updated**: 2026-02-26
+> **Last Updated**: 2026-02-27
 > **PRODUCTION START**: 2026-02-23
 
 **Tradegent** — AI-driven trading platform using Claude Code CLI, Interactive Brokers, and a hybrid RAG+Graph knowledge system. A multi-agent swarm for market analysis, trade execution, and knowledge persistence.
@@ -704,9 +704,71 @@ docker compose logs -f            # View logs
 ```
 
 ### Database
+
 - PostgreSQL stores all pipeline config, tickers, and results
 - Schema in `tradegent/db/init.sql`
 - Use `db_layer.py` for all database operations
+
+**Database Access Pattern (psycopg3):**
+
+```python
+import sys
+sys.path.insert(0, '.')
+from db_layer import NexusDB  # NOT TradingDB
+
+db = NexusDB()
+db.connect()
+
+# psycopg3 returns DICTS, not tuples - use row['column_name']
+with db._conn.cursor() as cur:
+    cur.execute("SELECT * FROM nexus.schedules")
+    for row in cur.fetchall():
+        print(row['name'])  # ✅ Correct
+        # print(row[0])     # ❌ KeyError - rows are dicts
+
+db.close()
+```
+
+**Common Mistakes to Avoid:**
+| Mistake | Correct |
+|---------|---------|
+| `from db_layer import TradingDB` | `from db_layer import NexusDB` |
+| `row[0]` (tuple access) | `row['column_name']` (dict access) |
+| `db.execute_query(...)` | `db._conn.cursor().execute(...)` |
+| Guessing column names | Query `information_schema.columns` first |
+
+**Key Tables (nexus schema):**
+
+| Table | Purpose | Key Columns |
+|-------|---------|-------------|
+| `stocks` | Watchlist stocks | ticker, state, is_enabled, priority |
+| `schedules` | Automated tasks | name, task_type, frequency, next_run_at |
+| `settings` | Config key-values | section, key, value |
+| `analysis_results` | Analysis history | ticker, analysis_type, created_at |
+| `trades` | Trade journal | ticker, entry_date, exit_date, pnl |
+| `skill_invocations` | Skill usage log | skill_name, ticker, cost_estimate |
+| `task_queue` | Pending skill tasks | task_type, ticker, status |
+
+**Schedules Table Columns:**
+```
+id, name, description, is_enabled, task_type, target_ticker,
+target_scanner_id, target_tags, analysis_type, auto_execute,
+frequency, time_of_day, day_of_week, interval_minutes,
+days_before_earnings, days_after_earnings, market_hours_only,
+trading_days_only, priority, last_run_at, next_run_at
+```
+
+**Query Schema First Pattern:**
+```python
+# Always check columns before querying unfamiliar tables
+cur.execute("""
+    SELECT column_name FROM information_schema.columns
+    WHERE table_schema = 'nexus' AND table_name = 'your_table'
+    ORDER BY ordinal_position
+""")
+cols = [r['column_name'] for r in cur.fetchall()]
+print(cols)
+```
 
 ### Watchlist Management
 
