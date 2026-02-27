@@ -764,7 +764,8 @@ def generate_svg(data: dict, source_file: str = '') -> str:
 
   <!-- ROW 5: Meta-Learning (2-column layout, height 100px) -->
   <rect x="40" y="880" width="560" height="100" rx="10" fill="#fff" filter="url(#shadow)"/>
-  <text x="60" y="910" font-size="14" font-weight="bold" fill="#212529">Pattern Identified:</text>
+  <text x="60" y="905" font-size="14" font-weight="bold" fill="#212529">Pattern Identified:</text>
+  <text x="60" y="920" font-size="10" fill="#868e96">Recurring behavior from meta-learning analysis</text>
 '''
 
     # Word wrap pattern_identified text (80 chars, dark bold first line)
@@ -780,8 +781,8 @@ def generate_svg(data: dict, source_file: str = '') -> str:
     if pattern_curr:
         pattern_lines.append(' '.join(pattern_curr))
 
-    # Render pattern lines (max 4 lines, first line dark bold)
-    y_pattern = 935
+    # Render pattern lines (max 3 lines to fit with explanation)
+    y_pattern = 940
     for i, line in enumerate(pattern_lines[:4]):
         weight = 'font-weight="bold"' if i == 0 else ''
         svg += f'''  <text x="60" y="{y_pattern}" font-size="11" {weight} fill="#495057">{escape_xml(line)}</text>
