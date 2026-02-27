@@ -1001,4 +1001,4 @@ python preflight.py            # Quick check
 
 ---
 
-*Last updated: 2026-02-26 (IPLAN-002)*
+*Last updated: 2026-02-27 (KB tables added)*

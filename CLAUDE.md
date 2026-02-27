@@ -738,8 +738,17 @@ docker compose logs -f            # View logs
 ### Database
 
 - PostgreSQL stores all pipeline config, tickers, and results
-- Schema in `tradegent/db/init.sql`
+- Schema in `tradegent/db/init.sql` + migrations in `tradegent/db/migrations/`
 - Use `db_layer.py` for all database operations
+
+**Database Credentials:**
+```bash
+export PG_USER=tradegent
+export PG_PASS=<password>
+export PG_DB=tradegent
+export PG_HOST=localhost
+export PG_PORT=5433
+```
 
 **Database Access Pattern (psycopg3):**
 
@@ -863,6 +872,44 @@ cur.execute("""
 """)
 cols = [r['column_name'] for r in cur.fetchall()]
 print(cols)
+```
+
+**Knowledge Base Tables (Migration 009):**
+
+Full YAML content storage for SQL querying alongside files.
+
+| Table | Purpose | Key Columns |
+|-------|---------|-------------|
+| `kb_stock_analyses` | Stock analysis storage | ticker, recommendation, confidence, gate_result, yaml_content |
+| `kb_earnings_analyses` | Earnings analysis storage | ticker, earnings_date, p_beat, yaml_content |
+| `kb_research_analyses` | Research analysis storage | tickers[], sectors[], themes[], yaml_content |
+| `kb_ticker_profiles` | Ticker profile storage | ticker, win_rate, total_pnl, yaml_content |
+| `kb_trade_journals` | Trade journal storage | ticker, outcome, return_pct, biases_detected[] |
+| `kb_watchlist_entries` | Watchlist storage | ticker, status, entry_trigger, yaml_content |
+| `kb_reviews` | All review types | ticker, review_type, overall_grade, yaml_content |
+| `kb_learnings` | Bias/pattern/rule storage | category, description, validation_status |
+| `kb_strategies` | Strategy storage | strategy_id, win_rate, entry_conditions[] |
+| `kb_scanner_configs` | Scanner config storage | scanner_code, scanner_type, scoring_criteria |
+
+**KB Table Queries:**
+```bash
+# Count records by table
+docker exec tradegent-postgres-1 psql -U tradegent -d tradegent -c "
+SELECT 'kb_stock_analyses', COUNT(*) FROM nexus.kb_stock_analyses
+UNION ALL SELECT 'kb_earnings_analyses', COUNT(*) FROM nexus.kb_earnings_analyses
+UNION ALL SELECT 'kb_trade_journals', COUNT(*) FROM nexus.kb_trade_journals;"
+
+# Query PASS analyses
+docker exec tradegent-postgres-1 psql -U tradegent -d tradegent -c "
+SELECT ticker, recommendation, confidence, gate_result
+FROM nexus.kb_stock_analyses
+WHERE gate_result = 'PASS' ORDER BY analysis_date DESC LIMIT 5;"
+
+# Search YAML content (JSONB)
+docker exec tradegent-postgres-1 psql -U tradegent -d tradegent -c "
+SELECT ticker, yaml_content->'catalyst'->>'type' as catalyst_type
+FROM nexus.kb_stock_analyses
+WHERE yaml_content->'catalyst'->>'type' = 'earnings';"
 ```
 
 **Database Error Handling:**
