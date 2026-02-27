@@ -762,8 +762,8 @@ def generate_svg(data: dict, source_file: str = '') -> str:
   <text x="800" y="838" font-size="11" fill="#868e96">• {escape_xml(str(immediate_actions[0])[:45]) if immediate_actions else 'See analysis'}</text>
   <text x="800" y="855" font-size="11" fill="#868e96">• {escape_xml(str(immediate_actions[1])[:45]) if len(immediate_actions) > 1 else ''}</text>
 
-  <!-- ROW 5: Meta-Learning (2-column layout, height 100px) -->
-  <rect x="40" y="880" width="560" height="100" rx="10" fill="#fff" filter="url(#shadow)"/>
+  <!-- ROW 5: Meta-Learning (2-column layout, height 110px) -->
+  <rect x="40" y="880" width="560" height="110" rx="10" fill="#fff" filter="url(#shadow)"/>
   <text x="60" y="905" font-size="14" font-weight="bold" fill="#212529">Pattern Identified:</text>
   <text x="60" y="920" font-size="10" fill="#868e96">Recurring behavior from meta-learning analysis</text>
 '''
@@ -781,13 +781,13 @@ def generate_svg(data: dict, source_file: str = '') -> str:
     if pattern_curr:
         pattern_lines.append(' '.join(pattern_curr))
 
-    # Render pattern lines (max 3 lines to fit with explanation)
-    y_pattern = 940
-    for i, line in enumerate(pattern_lines[:4]):
+    # Render pattern lines (max 5 lines, 14px spacing to match Historical Comparison)
+    y_pattern = 938
+    for i, line in enumerate(pattern_lines[:5]):
         weight = 'font-weight="bold"' if i == 0 else ''
         svg += f'''  <text x="60" y="{y_pattern}" font-size="11" {weight} fill="#495057">{escape_xml(line)}</text>
 '''
-        y_pattern += 16
+        y_pattern += 14
 
     svg += f'''
   <!-- Historical Comparison -->
