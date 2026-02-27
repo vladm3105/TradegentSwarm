@@ -17,6 +17,7 @@ python scripts/validate_analysis.py --all  # Validate all
 
 **v2.7 Requirements** (in addition to v2.6):
 - `alert_levels.price_alerts[]` must include `derivation` object with methodology, source_field, source_value, calculation
+- `alert_levels.price_alerts[]` must include `tag` field (max 15 chars) for visualization (e.g., "20-day MA", "52-week Low")
 - `summary.key_levels` must include `*_derivation` objects for entry, stop, target_1, and optionally hard_stop, target_2
 - `significance` field minimum 100 characters
 - Valid methodologies: support_resistance, moving_average, pivot_point, round_number, stop_buffer, scenario_target, peer_valuation
@@ -203,8 +204,10 @@ python tradegent.py calibration ticker NVDA           # Ticker-specific calibrat
 
 - **Phase 11.5: Alert Level Design** - Explicit derivations for all price alerts and key levels
 - **Derivation objects** - methodology, source_field, source_value, calculation for traceability
+- **Alert tags** - Short labels (max 15 chars) for quick identification (e.g., "20-day MA", "52-week Low")
 - **Valid methodologies** - support_resistance, moving_average, pivot_point, round_number, stop_buffer, scenario_target, peer_valuation
-- **KEY LEVELS table in SVG** - Visualization now shows derivation info for entry, stop, hard_stop, targets
+- **Enhanced Alert Levels in SVG** - Direction arrows (↑/↓), color-coded (green/red), with tags
+- **KEY LEVELS table in SVG** - Visualization shows derivation info for entry, stop, hard_stop, targets
 - **Backward compatible** - v2.6 analyses show warnings, v2.7+ requires derivations
 
 ### v2.6 Key Features (stock-analysis)
