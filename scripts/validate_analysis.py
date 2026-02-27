@@ -78,6 +78,19 @@ GATE_THRESHOLDS = {
     "rr_threshold": 2.0,
 }
 
+# v2.7 Derivation validation
+VALID_DERIVATION_METHODS = {
+    "support_resistance",
+    "moving_average",
+    "pivot_point",
+    "round_number",
+    "stop_buffer",
+    "scenario_target",
+    "peer_valuation"
+}
+
+MIN_SIGNIFICANCE_LENGTH = 100
+
 
 # ============================================================
 # VALIDATION FUNCTIONS
@@ -425,6 +438,117 @@ def validate_forecast_validity(doc: dict, result: ValidationResult):
             )
 
 
+def _validate_derivation_fields(derivation: dict, prefix: str, strict: bool, result: ValidationResult):
+    """Validate a derivation object structure."""
+    methodology = derivation.get("methodology", "")
+    if methodology and methodology not in VALID_DERIVATION_METHODS:
+        msg = f"{prefix}.derivation.methodology '{methodology}' not valid"
+        if strict:
+            result.add_error(msg)
+        else:
+            result.add_warning(msg)
+
+    required_fields = ["source_field", "calculation"]
+    for field in required_fields:
+        if not derivation.get(field):
+            msg = f"{prefix}.derivation.{field} is required"
+            if strict:
+                result.add_error(msg)
+            else:
+                result.add_warning(msg)
+
+    # source_value can be 0, so check for None specifically
+    if derivation.get("source_value") is None:
+        msg = f"{prefix}.derivation.source_value is required"
+        if strict:
+            result.add_error(msg)
+        else:
+            result.add_warning(msg)
+
+
+def validate_alert_levels_derivations(doc: dict, result: ValidationResult):
+    """Validate alert_levels.price_alerts have proper derivations (v2.7)."""
+    version = result.version or 2.6
+    is_v27_plus = version >= 2.7
+
+    alert_levels = doc.get("alert_levels", {})
+    price_alerts = alert_levels.get("price_alerts", [])
+
+    for i, alert in enumerate(price_alerts):
+        # Skip empty placeholder alerts
+        if not alert.get("price") and not alert.get("significance"):
+            continue
+
+        prefix = f"alert_levels.price_alerts[{i}]"
+
+        # Check significance length
+        significance = alert.get("significance", "")
+        if len(str(significance)) < MIN_SIGNIFICANCE_LENGTH:
+            msg = f"{prefix}.significance too short ({len(str(significance))} chars, min {MIN_SIGNIFICANCE_LENGTH})"
+            if is_v27_plus:
+                result.add_error(msg)
+            else:
+                result.add_warning(msg)
+
+        # Check derivation object exists
+        derivation = alert.get("derivation")
+        if not derivation:
+            msg = f"{prefix} missing derivation object"
+            if is_v27_plus:
+                result.add_error(msg)
+            else:
+                result.add_warning(msg)
+            continue
+
+        # Validate derivation fields
+        _validate_derivation_fields(derivation, prefix, is_v27_plus, result)
+
+
+def validate_summary_key_levels(doc: dict, result: ValidationResult):
+    """Validate summary.key_levels have derivation objects (v2.7)."""
+    version = result.version or 2.6
+    is_v27_plus = version >= 2.7
+
+    summary = doc.get("summary", {})
+    key_levels = summary.get("key_levels", {})
+
+    if not key_levels:
+        return  # No key_levels section - other validators handle this
+
+    required_levels = ["entry", "stop", "target_1"]
+    optional_levels = ["hard_stop", "target_2"]
+
+    for level in required_levels:
+        if level not in key_levels:
+            # Required level missing - handled by other validators
+            continue
+
+        derivation_key = f"{level}_derivation"
+        if derivation_key not in key_levels:
+            msg = f"summary.key_levels.{derivation_key} is required for v2.7"
+            if is_v27_plus:
+                result.add_error(msg)
+            else:
+                result.add_warning(msg)
+        else:
+            derivation = key_levels[derivation_key]
+            if isinstance(derivation, dict):
+                _validate_derivation_fields(
+                    derivation,
+                    f"summary.key_levels.{derivation_key}",
+                    is_v27_plus,
+                    result
+                )
+
+    for level in optional_levels:
+        if level in key_levels and key_levels[level]:
+            derivation_key = f"{level}_derivation"
+            if derivation_key not in key_levels:
+                result.add_warning(
+                    f"summary.key_levels.{derivation_key} recommended when {level} is set"
+                )
+
+
 def validate_document(file_path: Path) -> ValidationResult:
     """Main validation function."""
     result = ValidationResult(str(file_path))
@@ -457,6 +581,10 @@ def validate_document(file_path: Path) -> ValidationResult:
     validate_news_age_check(doc, result)
     validate_scenarios(doc, result)
     validate_forecast_validity(doc, result)
+
+    # v2.7 derivation requirements
+    validate_alert_levels_derivations(doc, result)
+    validate_summary_key_levels(doc, result)
 
     return result
 

@@ -1,12 +1,12 @@
 # TradegentSwarm - Claude Code Instructions
 
-> **Skills Version**: v2.6 (stock-analysis), v2.4 (earnings-analysis), v2.1 (other skills)
-> **Last Updated**: 2026-02-25
+> **Skills Version**: v2.7 (stock-analysis), v2.4 (earnings-analysis), v2.1 (other skills)
+> **Last Updated**: 2026-02-26
 > **PRODUCTION START**: 2026-02-23
 
 **Tradegent** — AI-driven trading platform using Claude Code CLI, Interactive Brokers, and a hybrid RAG+Graph knowledge system. A multi-agent swarm for market analysis, trade execution, and knowledge persistence.
 
-## Schema Validation (v2.6)
+## Schema Validation (v2.7)
 
 All stock analyses MUST pass validation before commit:
 
@@ -15,6 +15,12 @@ python scripts/validate_analysis.py <file.yaml>
 python scripts/validate_analysis.py --all  # Validate all
 ```
 
+**v2.7 Requirements** (in addition to v2.6):
+- `alert_levels.price_alerts[]` must include `derivation` object with methodology, source_field, source_value, calculation
+- `summary.key_levels` must include `*_derivation` objects for entry, stop, target_1, and optionally hard_stop, target_2
+- `significance` field minimum 100 characters
+- Valid methodologies: support_resistance, moving_average, pivot_point, round_number, stop_buffer, scenario_target, peer_valuation
+
 **v2.6 Requirements:**
 - `comparable_companies` section (min 3 peers with P/E, P/S, EV/EBITDA)
 - `liquidity_analysis` section (ADV, bid-ask spread, slippage estimates)
@@ -22,7 +28,7 @@ python scripts/validate_analysis.py --all  # Validate all
 - Minimum 3 arguments in bull/bear case analysis
 - Normalized Do Nothing gate thresholds (EV>5%, Confidence>60%, R:R>2:1)
 
-**DEPRECATED**: Versions <2.6 are read-only. New analyses require v2.6.
+**DEPRECATED**: Versions <2.6 are read-only. New analyses require v2.7.
 
 ## Temporary Files and Implementation Plans
 
@@ -79,7 +85,7 @@ Skills in `.claude/skills/` auto-invoke based on context. Each skill has:
 
 | Skill                     | Version | Triggers                                                 | Category   |
 | ------------------------- | ------- | -------------------------------------------------------- | ---------- |
-| **stock-analysis**        | v2.6    | "stock analysis", "technical analysis", "value analysis" | Analysis   |
+| **stock-analysis**        | v2.7    | "stock analysis", "technical analysis", "value analysis" | Analysis   |
 | **earnings-analysis**     | v2.4    | "earnings analysis", "pre-earnings", "before earnings"   | Analysis   |
 | **research-analysis**     | v2.1    | "research", "macro analysis", "sector analysis"          | Research   |
 | **ticker-profile**        | v2.1    | "ticker profile", "what do I know about"                 | Knowledge  |
@@ -120,10 +126,10 @@ python tradegent.py settings set skill_daily_cost_limit 10.00
 python tradegent.py settings set fill_analysis_enabled false
 
 # View skill invocation history
-psql -d lightrag -c "SELECT skill_name, ticker, invocation_type, status, cost_estimate FROM nexus.skill_invocations ORDER BY started_at DESC LIMIT 10;"
+psql -d tradegent -c "SELECT skill_name, ticker, invocation_type, status, cost_estimate FROM nexus.skill_invocations ORDER BY started_at DESC LIMIT 10;"
 
 # View daily costs
-psql -d lightrag -c "SELECT * FROM nexus.v_skill_daily_costs ORDER BY date DESC LIMIT 7;"
+psql -d tradegent -c "SELECT * FROM nexus.v_skill_daily_costs ORDER BY date DESC LIMIT 7;"
 
 # Process pending skill tasks manually
 python tradegent.py process-queue --max 5
@@ -193,7 +199,15 @@ python tradegent.py calibration ticker NVDA           # Ticker-specific calibrat
 | `post_earnings_delay_hours` | 4 | Hours after market open to queue review |
 | `invalidation_alerts_enabled` | true | Log alerts on INVALIDATE |
 
-### v2.6 Key Features (stock-analysis) - PRODUCTION
+### v2.7 Key Features (stock-analysis) - CURRENT
+
+- **Phase 11.5: Alert Level Design** - Explicit derivations for all price alerts and key levels
+- **Derivation objects** - methodology, source_field, source_value, calculation for traceability
+- **Valid methodologies** - support_resistance, moving_average, pivot_point, round_number, stop_buffer, scenario_target, peer_valuation
+- **KEY LEVELS table in SVG** - Visualization now shows derivation info for entry, stop, hard_stop, targets
+- **Backward compatible** - v2.6 analyses show warnings, v2.7+ requires derivations
+
+### v2.6 Key Features (stock-analysis)
 
 - **Phase 4.5: Comparable Companies** - Peer valuation table (min 3 peers)
 - **Phase 4.6: Liquidity Analysis** - ADV, bid-ask spread, slippage estimates
@@ -255,13 +269,27 @@ cd tradegent && python preflight.py
 
 | Check Type | Services Verified | When to Use |
 |------------|-------------------|-------------|
-| **Full** | RAG, Graph, IB Gateway, IB MCP, Market Status | Start of trading day/session |
+| **Full** | Docker containers (PostgreSQL, Neo4j, IB Gateway), RAG, Graph, IB MCP (port 8100), IB Gateway port, Market Status | Start of trading day/session |
 | **Quick** | RAG, IB MCP, Market Status | Before each analysis |
+
+**Services Checked (Full):**
+
+| Service | Check | Description |
+|---------|-------|-------------|
+| `postgres_container` | Docker | tradegent-postgres-1 container running |
+| `neo4j_container` | Docker | tradegent-neo4j-1 container running |
+| `ib_gateway` | Docker | paper-ib-gateway container healthy |
+| `rag` | Python | pgvector connectivity (doc/chunk counts) |
+| `graph` | Python | Neo4j connectivity (node/edge counts) |
+| `ib_mcp` | HTTP | IB MCP server on port 8100 |
+| `ib_gateway_port` | TCP | IB Gateway API port (4002 paper, 4001 live) |
+| `market` | Time | Market hours status (ET timezone) |
 
 **Status Meanings:**
 - `healthy` - Service fully operational
 - `degraded` - Service available but with limitations (e.g., weekend, after-hours)
 - `unhealthy` - Service unavailable
+- `unknown` - Could not determine status
 - `READY` - Minimum requirements met (RAG working), can proceed with analysis
 - `NOT READY` - Cannot proceed, RAG unavailable
 
@@ -304,11 +332,35 @@ Every skill follows this integrated pattern:
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**Step 1: Pre-Analysis Context**
+**Step 1: Pre-Analysis Context (Learning Context Retrieval)**
 ```yaml
 Tool: rag_hybrid_context
 Input: {"ticker": "NVDA", "query": "earnings analysis", "analysis_type": "earnings-analysis"}
 ```
+
+The hybrid context returns a structured block with learning content:
+```
+## Context for NVDA
+
+### 📚 Learnings & Framework Lessons
+- Framework lesson: "When beat probability >90%, expect stock to fall on beat"
+- Pattern identified: sell-the-news-patterns
+
+### Knowledge Graph
+**📊 Known Patterns**: sell-the-news-patterns, profit-taking
+**🚦 Active Signals**: Priced For Perfection
+**⚡ Catalysts**: Strong Beat, Guidance Raises
+**Known Risks**: Negative Expected Value
+
+### Past Analyses
+- Similar analyses for this ticker
+```
+
+**How to apply learning context:**
+1. Read framework lessons and check if conditions match current setup
+2. Note any patterns or signals active for the ticker
+3. Adjust probabilities based on historical calibration
+4. Document which rules were applied in the analysis
 
 **Step 2: Real-Time Data**
 ```yaml
@@ -595,9 +647,9 @@ Required environment variables for running the orchestrator (set in `.env` or ex
 
 ```bash
 # PostgreSQL (pgvector for RAG embeddings)
-export PG_USER=lightrag
+export PG_USER=tradegent
 export PG_PASS=<password>
-export PG_DB=lightrag
+export PG_DB=tradegent
 export PG_HOST=localhost
 export PG_PORT=5433
 
@@ -633,7 +685,7 @@ export LLM_API_KEY=<api-key>          # Required for openrouter/openai/claude_ap
 cd tradegent
 
 # Set environment variables first (or source .env)
-export PG_USER=lightrag PG_PASS=... PG_DB=lightrag PG_HOST=localhost PG_PORT=5433
+export PG_USER=tradegent PG_PASS=... PG_DB=tradegent PG_HOST=localhost PG_PORT=5433
 export NEO4J_URI=bolt://localhost:7688 NEO4J_USER=neo4j NEO4J_PASS=...
 
 python tradegent.py --help        # CLI commands
@@ -764,7 +816,7 @@ Semantic search and embedding for trading knowledge with cross-encoder reranking
 cd tradegent && docker compose up -d postgres
 
 # 2. Set environment variables
-export PG_USER=lightrag PG_PASS=<password> PG_DB=lightrag PG_HOST=localhost PG_PORT=5433
+export PG_USER=tradegent PG_PASS=<password> PG_DB=tradegent PG_HOST=localhost PG_PORT=5433
 export EMBED_PROVIDER=openai OPENAI_API_KEY=<key>
 ```
 
@@ -890,11 +942,14 @@ Input: {"cypher": "MATCH (t:Ticker {symbol: $ticker})-[r]->(n) RETURN type(r), n
 
 ## MCP Configuration
 
-To use the Trading RAG and Graph MCP servers, add them to your Claude Code MCP settings (`~/.claude/mcp_settings.json`):
+To use the MCP servers, add them to your Claude Code MCP settings (`~/.claude/mcp.json`):
 
 ```json
 {
   "mcpServers": {
+    "ib-mcp": {
+      "url": "http://localhost:8100/mcp"
+    },
     "trading-rag": {
       "command": "python",
       "args": ["-m", "tradegent.rag.mcp_server"],
@@ -902,11 +957,9 @@ To use the Trading RAG and Graph MCP servers, add them to your Claude Code MCP s
       "env": {
         "PG_HOST": "localhost",
         "PG_PORT": "5433",
-        "PG_USER": "lightrag",
-        "PG_PASS": "<password>",
-        "PG_DB": "lightrag",
-        "EMBED_PROVIDER": "openai",
-        "OPENAI_API_KEY": "<key>"
+        "PG_USER": "tradegent",
+        "PG_DB": "tradegent",
+        "EMBED_PROVIDER": "openai"
       }
     },
     "trading-graph": {
@@ -916,14 +969,14 @@ To use the Trading RAG and Graph MCP servers, add them to your Claude Code MCP s
       "env": {
         "NEO4J_URI": "bolt://localhost:7688",
         "NEO4J_USER": "neo4j",
-        "NEO4J_PASS": "<password>",
-        "EXTRACT_PROVIDER": "openai",
-        "OPENAI_API_KEY": "<key>"
+        "EXTRACT_PROVIDER": "openai"
       }
     }
   }
 }
 ```
+
+> **Note**: The IB MCP server uses `url` (streamable-http transport) because it runs as a standalone HTTP server. RAG and Graph servers use `command` (stdio transport) and are spawned by Claude Code. API keys should be set via environment variables, not in the config file.
 
 ### Direct Python Usage (Alternative)
 
@@ -931,7 +984,7 @@ If MCP servers are not configured, use Python directly:
 
 ```bash
 # Set environment variables first
-export PG_USER=lightrag PG_PASS=<password> PG_DB=lightrag PG_HOST=localhost PG_PORT=5433
+export PG_USER=tradegent PG_PASS=<password> PG_DB=tradegent PG_HOST=localhost PG_PORT=5433
 export NEO4J_URI=bolt://localhost:7688 NEO4J_USER=neo4j NEO4J_PASS=<password>
 export EMBED_PROVIDER=openai EXTRACT_PROVIDER=openai OPENAI_API_KEY=<key>
 

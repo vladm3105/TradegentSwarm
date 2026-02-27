@@ -2,7 +2,10 @@
 """
 Stock Analysis SVG Visualization Generator
 
-Generates professional SVG dashboard from v2.6 stock analysis YAML files.
+Generates professional SVG dashboard from v2.6/v2.7 stock analysis YAML files.
+
+v2.7 additions:
+- KEY LEVELS table with derivation methodology, source field, and calculation
 
 Usage:
     python scripts/visualize_analysis.py <analysis.yaml>
@@ -66,6 +69,54 @@ def format_number(value, prefix='', suffix='', decimals=2) -> str:
     return f"{prefix}{value:.{decimals}f}{suffix}"
 
 
+def render_key_levels_section(key_levels: dict, x: int, y: int) -> str:
+    """Render KEY LEVELS table section with derivations (v2.7)."""
+    if not key_levels:
+        return ''
+
+    level_defs = [
+        ('entry', 'Entry', '#2196F3'),
+        ('stop', 'Stop', '#F44336'),
+        ('hard_stop', 'Hard Stop', '#B71C1C'),
+        ('target_1', 'Target 1', '#4CAF50'),
+        ('target_2', 'Target 2', '#8BC34A'),
+    ]
+
+    svg = f'''
+  <!-- KEY LEVELS (v2.7) -->
+  <rect x="{x}" y="{y}" width="1120" height="100" rx="10" fill="#fff" filter="url(#shadow)"/>
+  <text x="{x + 20}" y="{y + 25}" font-size="14" font-weight="bold" fill="#212529">Key Levels</text>
+  <text x="{x + 1100}" y="{y + 25}" font-size="10" fill="#868e96" text-anchor="end">v2.7 Derivations</text>
+
+  <!-- Table header -->
+  <rect x="{x + 20}" y="{y + 35}" width="1080" height="20" fill="#f1f3f5"/>
+  <text x="{x + 40}" y="{y + 49}" font-size="10" font-weight="bold" fill="#495057">Level</text>
+  <text x="{x + 140}" y="{y + 49}" font-size="10" font-weight="bold" fill="#495057">Price</text>
+  <text x="{x + 220}" y="{y + 49}" font-size="10" font-weight="bold" fill="#495057">Method</text>
+  <text x="{x + 380}" y="{y + 49}" font-size="10" font-weight="bold" fill="#495057">Source Field</text>
+  <text x="{x + 620}" y="{y + 49}" font-size="10" font-weight="bold" fill="#495057">Calculation</text>
+'''
+
+    row_y = y + 68
+    for level_key, label, color in level_defs:
+        if level_key in key_levels:
+            price = key_levels.get(level_key, 0)
+            derivation = key_levels.get(f'{level_key}_derivation', {})
+            method = derivation.get('methodology', 'N/A')
+            source_field = derivation.get('source_field', 'N/A')
+            calculation = derivation.get('calculation', '')[:45]
+
+            svg += f'''  <text x="{x + 40}" y="{row_y}" font-size="10" fill="{color}">{escape_xml(label)}</text>
+  <text x="{x + 140}" y="{row_y}" font-size="10" font-weight="bold" fill="#212529">${price:.2f}</text>
+  <text x="{x + 220}" y="{row_y}" font-size="10" fill="#495057">{escape_xml(method)}</text>
+  <text x="{x + 380}" y="{row_y}" font-size="10" fill="#868e96">{escape_xml(source_field[:30])}</text>
+  <text x="{x + 620}" y="{row_y}" font-size="10" fill="#868e96">{escape_xml(calculation)}</text>
+'''
+            row_y += 16
+
+    return svg
+
+
 def get_scenario_prob(scenario: dict) -> float:
     """Get scenario probability as percentage (0-100)."""
     prob = scenario.get('probability_pct', scenario.get('probability', 0))
@@ -105,6 +156,9 @@ def generate_svg(data: dict, source_file: str = '') -> str:
 
     # Summary for expected value and rationale
     summary = data.get('summary', {})
+
+    # Summary key levels with derivations (v2.7)
+    summary_key_levels = summary.get('key_levels', {})
 
     # Setup section contains 52-week range and other key metrics (v2.6)
     setup = data.get('setup', {})
@@ -404,7 +458,7 @@ def generate_svg(data: dict, source_file: str = '') -> str:
     offset_bear = -(seg_sb + seg_bb)
     offset_disaster = -(seg_sb + seg_bb + seg_bear)
 
-    # Build SVG (Light Theme) - 5 rows + footer = 1020px height
+    # Build SVG (Light Theme) - 9 rows + footer = 1520px height (v2.7 adds KEY LEVELS)
     svg = f'''<?xml version="1.0" encoding="UTF-8"?>
 <!--
   Stock Analysis Visualization v{version}
@@ -412,7 +466,7 @@ def generate_svg(data: dict, source_file: str = '') -> str:
   Document ID: {escape_xml(doc_id)}
   Generated: {escape_xml(analysis_date)}
 -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1400" font-family="Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1520" font-family="Arial, sans-serif">
   <defs>
     <linearGradient id="headerGrad" x1="0%" y1="0%" x2="100%" y2="0%">
       <stop offset="0%" style="stop-color:#1a1a2e"/>
@@ -432,7 +486,7 @@ def generate_svg(data: dict, source_file: str = '') -> str:
   </defs>
 
   <!-- Background -->
-  <rect width="1200" height="1400" fill="#f8f9fa"/>
+  <rect width="1200" height="1520" fill="#f8f9fa"/>
 
   <!-- Header -->
   <rect x="0" y="0" width="1200" height="100" fill="url(#headerGrad)"/>
@@ -902,10 +956,13 @@ def generate_svg(data: dict, source_file: str = '') -> str:
         svg += f'''  <text x="840" y="{1190 + 14 * (2 + i)}" font-size="10" fill="#868e96">• {escape_xml(str(cond)[:38])}</text>
 '''
 
+    # ROW 8: KEY LEVELS table (v2.7)
+    svg += render_key_levels_section(summary_key_levels, 40, 1240)
+
     svg += f'''
-  <!-- ROW 8: Rationale Text Box -->
-  <rect x="40" y="1240" width="1120" height="120" rx="10" fill="#fff" filter="url(#shadow)"/>
-  <text x="60" y="1270" font-size="14" font-weight="bold" fill="#212529">Rationale</text>
+  <!-- ROW 9: Rationale Text Box -->
+  <rect x="40" y="1360" width="1120" height="120" rx="10" fill="#fff" filter="url(#shadow)"/>
+  <text x="60" y="1390" font-size="14" font-weight="bold" fill="#212529">Rationale</text>
 '''
 
     # Word wrap rationale into multiple lines
@@ -921,7 +978,7 @@ def generate_svg(data: dict, source_file: str = '') -> str:
     if r_curr:
         r_lines.append(' '.join(r_curr))
 
-    y_rat = 1295
+    y_rat = 1415
     for line in r_lines[:4]:
         svg += f'''  <text x="60" y="{y_rat}" font-size="11" fill="#495057">{escape_xml(line)}</text>
 '''
@@ -929,14 +986,14 @@ def generate_svg(data: dict, source_file: str = '') -> str:
 
     # Add watchlist trigger if present
     if watchlist_trigger:
-        svg += f'''  <text x="60" y="1350" font-size="11" fill="#228be6">Watchlist Trigger: {escape_xml(str(watchlist_trigger)[:80])}</text>
+        svg += f'''  <text x="60" y="1470" font-size="11" fill="#228be6">Watchlist Trigger: {escape_xml(str(watchlist_trigger)[:80])}</text>
 '''
 
     svg += f'''
   <!-- Footer -->
-  <rect x="0" y="1380" width="1200" height="20" fill="#1a1a2e"/>
-  <text x="40" y="1394" font-size="9" fill="#868e96">Source: {escape_xml(source_file.split('/')[-1]) if source_file else doc_id}</text>
-  <text x="1160" y="1394" font-size="9" fill="#868e96" text-anchor="end">Tradegent v{version} | {escape_xml(analysis_date)}</text>
+  <rect x="0" y="1500" width="1200" height="20" fill="#1a1a2e"/>
+  <text x="40" y="1514" font-size="9" fill="#868e96">Source: {escape_xml(source_file.split('/')[-1]) if source_file else doc_id}</text>
+  <text x="1160" y="1514" font-size="9" fill="#868e96" text-anchor="end">Tradegent v{version} | {escape_xml(analysis_date)}</text>
 </svg>'''
 
     return svg
