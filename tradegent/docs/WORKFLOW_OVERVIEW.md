@@ -172,6 +172,28 @@ analysis   analysis
 - Scanner configs: `tradegent_knowledge/knowledge/scanners/`
 - Scan skill: `.claude/skills/scan.md`
 
+### 2.6 Scanner Output Logging
+
+Scanner results are stored in two locations:
+
+| Location | Content | Purpose |
+|----------|---------|---------|
+| **Database** (`nexus.run_history`) | Full candidates JSON in `raw_output` | Queryable history |
+| **Files** (`tradegent/analyses/`) | Markdown with JSON block | Human-readable archive |
+
+**Database `raw_output` format:**
+```json
+{
+    "scanner": "HIGH_OPT_IMP_VOLAT",
+    "scan_time": "2026-02-27T08:26:19-05:00",
+    "candidates_found": 6,
+    "candidates": [
+        {"ticker": "MSTZ", "score": 8, "price": 13.06, "notes": "..."},
+        {"ticker": "AGQ", "score": 7, "price": 186.43, "notes": "..."}
+    ]
+}
+```
+
 ---
 
 ## 3. Analysis Phase
@@ -329,7 +351,7 @@ Execute and document trades.
 - Watchlist trigger fired
 - Position detected (via monitoring)
 
-**Output:** `knowledge/trades/TICKER_DATE.yaml`
+**Output:** `knowledge/trades/{YYYY}/{MM}/TICKER_YYYYMMDDTHHMM.yaml`
 
 ### 6.2 Trade Entry Sources
 
@@ -462,33 +484,47 @@ exceeds 6 quarters, EXPECT THE STOCK TO FALL even on a strong beat.
 
 ### 8.5 Ingestion Pipeline
 
+Documents are ingested to three systems in parallel:
+
 ```
-Document Written → Auto-Ingest Hook
+Document Written → Auto-Ingest Hook (post-write-ingest.sh)
                           │
-          ┌───────────────┴───────────────┐
-          ▼                               ▼
-    RAG Embedding                   Graph Extraction
-    (pgvector)                      (Neo4j)
-          │                               │
-    ┌─────┴─────┐                  ┌──────┴──────┐
-    │ Chunking  │                  │ Entity      │
-    │ Section-  │                  │ Extraction  │
-    │ based     │                  │ LLM-based   │
-    └─────┬─────┘                  └──────┬──────┘
-          │                               │
-    ┌─────┴─────┐                  ┌──────┴──────┐
-    │ Embedding │                  │ Relation    │
-    │ OpenAI    │                  │ Mapping     │
-    └─────┬─────┘                  └──────┬──────┘
-          ▼                               ▼
-    rag_chunks table               Neo4j nodes/edges
+          ┌───────────────┼───────────────┐
+          ▼               ▼               ▼
+    RAG Embedding   Graph Extraction   DB Storage
+    (pgvector)      (Neo4j)            (PostgreSQL)
+          │               │               │
+    ┌─────┴─────┐   ┌─────┴─────┐   ┌─────┴─────┐
+    │ Chunking  │   │ Entity    │   │ YAML      │
+    │ Section-  │   │ Extraction│   │ Parsing   │
+    │ based     │   │ LLM-based │   │           │
+    └─────┬─────┘   └─────┬─────┘   └─────┬─────┘
+          │               │               │
+    ┌─────┴─────┐   ┌─────┴─────┐   ┌─────┴─────┐
+    │ Embedding │   │ Relation  │   │ Field     │
+    │ OpenAI    │   │ Mapping   │   │ Extraction│
+    └─────┬─────┘   └─────┬─────┘   └─────┬─────┘
+          ▼               ▼               ▼
+    rag_chunks      Neo4j nodes     nexus.kb_*
+    table           /edges          tables
 ```
+
+**Three Storage Systems:**
+
+| System | Purpose | Query Method |
+|--------|---------|--------------|
+| **RAG (pgvector)** | Semantic search, similarity | `rag_search`, `rag_hybrid_context` |
+| **Graph (Neo4j)** | Relationships, entity traversal | `graph_context`, `graph_peers` |
+| **Database (PostgreSQL)** | SQL queries, reporting, analytics | Direct SQL, `db_layer.py` methods |
 
 ### 8.6 CLI Commands
 
 ```bash
-# Manual ingestion
-python scripts/ingest.py ../tradegent_knowledge/knowledge/reviews/post-earnings/NVDA_20260226T1000.yaml
+# Manual ingestion (all three systems)
+python scripts/ingest.py ../tradegent_knowledge/knowledge/analysis/stock/NVDA_20260223T1100.yaml
+
+# Backfill all YAML files to database
+python scripts/backfill_kb_database.py --all
 
 # Check RAG stats
 python -c "from rag.search import get_rag_stats; print(get_rag_stats())"
@@ -496,11 +532,21 @@ python -c "from rag.search import get_rag_stats; print(get_rag_stats())"
 # Check Graph stats
 python -c "from graph.layer import TradingGraph; g=TradingGraph(); g.connect(); print(g.get_stats())"
 
+# Check DB stats (via docker)
+docker exec tradegent-postgres-1 psql -U tradegent -d tradegent -c "
+SELECT 'kb_stock_analyses', COUNT(*) FROM nexus.kb_stock_analyses
+UNION ALL SELECT 'kb_earnings_analyses', COUNT(*) FROM nexus.kb_earnings_analyses;"
+
 # Search for learnings
 python -c "from rag.search import get_learnings_for_topic; print(get_learnings_for_topic('priced for perfection'))"
 
 # Get ticker context with learnings
 python -c "from graph.layer import TradingGraph; g=TradingGraph(); g.connect(); print(g.get_ticker_context('NVDA'))"
+
+# Query KB database directly
+docker exec tradegent-postgres-1 psql -U tradegent -d tradegent -c "
+SELECT ticker, recommendation, confidence FROM nexus.kb_stock_analyses
+WHERE gate_result = 'PASS' ORDER BY analysis_date DESC LIMIT 5;"
 ```
 
 ### 8.7 Learning Feedback Loop
@@ -783,7 +829,7 @@ All 16 skills organized by workflow phase.
 | `nexus.stocks` | Ticker master with state machine |
 | `nexus.ib_scanners` | IB scanner configurations |
 | `nexus.schedules` | Analysis scheduling |
-| `nexus.run_history` | Execution audit log |
+| `nexus.run_history` | Execution audit log (scanner candidates in `raw_output` JSON) |
 | `nexus.analysis_results` | Analysis outputs |
 | `nexus.settings` | System configuration |
 | `nexus.service_status` | Daemon heartbeat |
@@ -793,6 +839,28 @@ All 16 skills organized by workflow phase.
 | `nexus.task_queue` | Async work queue |
 | `nexus.analysis_lineage` | Analysis chain tracking |
 | `nexus.confidence_calibration` | Prediction accuracy tracking |
+
+### Knowledge Base Tables (Migration 009)
+
+Full YAML content storage for queryable indexing alongside files.
+
+| Table | Purpose | Key Columns |
+|-------|---------|-------------|
+| `nexus.kb_stock_analyses` | Stock analysis YAML storage | ticker, recommendation, confidence, yaml_content |
+| `nexus.kb_earnings_analyses` | Earnings analysis storage | ticker, earnings_date, p_beat, yaml_content |
+| `nexus.kb_research_analyses` | Research analysis storage | tickers[], sectors[], themes[], yaml_content |
+| `nexus.kb_ticker_profiles` | Ticker profile storage | ticker, win_rate, total_pnl, yaml_content |
+| `nexus.kb_trade_journals` | Trade journal storage | ticker, outcome, return_pct, biases_detected[] |
+| `nexus.kb_watchlist_entries` | Watchlist YAML storage | ticker, status, entry_trigger, yaml_content |
+| `nexus.kb_reviews` | All review types | ticker, review_type, overall_grade, yaml_content |
+| `nexus.kb_learnings` | Bias/pattern/rule storage | category, description, validation_status |
+| `nexus.kb_strategies` | Strategy storage | strategy_id, win_rate, entry_conditions[] |
+| `nexus.kb_scanner_configs` | Scanner config storage | scanner_code, scanner_type, scoring_criteria |
+
+**Design Principles:**
+- Dual storage: YAML files remain source of truth; database provides queryable index
+- Full content: Complete YAML stored as JSONB plus extracted key fields for indexing
+- Auto-sync: Database updated via `ingest.py` hook when YAML files are saved
 
 ### Views
 

@@ -450,12 +450,44 @@ scan → earnings-analysis → watchlist → trade-journal → post-trade-review
 
 ## Key Conventions
 
-### File Naming
-All trading documents use ISO 8601 format:
+### File Naming (ISO 8601)
+
+All trading documents follow ISO 8601 basic format for timestamps:
+
+**Filename Format:**
 ```
 {TICKER}_{YYYYMMDDTHHMM}.yaml
 ```
-Example: `NVDA_20250120T0900.yaml`
+
+**Directory Structure by Content Type:**
+
+| Content Type | Directory Pattern | Example Path |
+|--------------|-------------------|--------------|
+| Stock Analysis | `analysis/stock/` | `analysis/stock/NVDA_20260223T1100.yaml` |
+| Earnings Analysis | `analysis/earnings/` | `analysis/earnings/NVDA_20260225T0800.yaml` |
+| Research Analysis | `analysis/research/` | `analysis/research/AI_CHIPS_20260220T0900.yaml` |
+| Ticker Profile | `analysis/ticker-profiles/` | `analysis/ticker-profiles/NVDA.yaml` |
+| **Trade Journal** | `trades/{YYYY}/{MM}/` | `trades/2025/01/NVDA_20250115T1000.yaml` |
+| Watchlist | `watchlist/` | `watchlist/WL-NVDA-2026-001.yaml` |
+| **Post-Trade Review** | `reviews/{YYYY}/{MM}/` | `reviews/2026/02/NVDA_20260225T1614_review.yaml` |
+| Post-Earnings Review | `reviews/post-earnings/` | `reviews/post-earnings/NVDA_20260226T1000.yaml` |
+| Report Validation | `reviews/validation/` | `reviews/validation/NVDA_20260226T1100.yaml` |
+| Learnings | `learnings/{category}/` | `learnings/biases/loss-aversion-pre-earnings.yaml` |
+| Strategies | `strategies/` | `strategies/earnings-momentum.yaml` |
+| Scanner Configs | `scanners/{type}/` | `scanners/daily/earnings-momentum.yaml` |
+
+**ISO 8601 Components:**
+- `YYYY` - 4-digit year (2026)
+- `MM` - 2-digit month (01-12)
+- `DD` - 2-digit day (01-31)
+- `T` - Time separator (literal)
+- `HHMM` - Hours (00-23) and minutes (00-59)
+
+**Examples:**
+```
+NVDA_20260223T1100.yaml    # Feb 23, 2026 at 11:00
+trades/2025/01/NVDA_20250115T1000.yaml  # Trade from Jan 15, 2025
+```
 
 ### Skill → Knowledge Mapping
 
@@ -465,9 +497,9 @@ Example: `NVDA_20250120T0900.yaml`
 | stock-analysis | `knowledge/analysis/stock/` |
 | research-analysis | `knowledge/analysis/research/` |
 | ticker-profile | `knowledge/analysis/ticker-profiles/` |
-| trade-journal | `knowledge/trades/` |
+| trade-journal | `knowledge/trades/{YYYY}/{MM}/` |
 | watchlist | `knowledge/watchlist/` |
-| post-trade-review | `knowledge/reviews/` |
+| post-trade-review | `knowledge/reviews/{YYYY}/{MM}/` |
 | post-earnings-review | `knowledge/reviews/post-earnings/` |
 | report-validation | `knowledge/reviews/validation/` |
 | market-scanning | Uses `knowledge/scanners/`, outputs to `watchlist/` |
@@ -736,6 +768,10 @@ db.close()
 | `row[0]` (tuple access) | `row['column_name']` (dict access) |
 | `db.execute_query(...)` | `db._conn.cursor().execute(...)` |
 | Guessing column names | Query `information_schema.columns` first |
+| `service_status.status` | `service_status.state` |
+| `run_history.result_summary` | `run_history.raw_output` |
+| `schedules.schedule_type` | `schedules.task_type` |
+| `task_type = 'scanner'` | `task_type = 'run_scanner'` (in run_history) |
 
 **Key Tables (nexus schema):**
 
@@ -749,6 +785,7 @@ db.close()
 | `trades` | Trade journal | ticker, entry_date, exit_date, pnl |
 | `skill_invocations` | Skill usage log | skill_name, ticker, cost_estimate |
 | `task_queue` | Pending skill tasks | task_type, ticker, status |
+| `run_history` | Scanner/analysis runs | task_type (`run_scanner`, `pipeline`), ticker, status |
 
 **Service Status Table Columns:**
 ```
@@ -765,6 +802,55 @@ target_scanner_id, target_tags, analysis_type, auto_execute,
 frequency, time_of_day, day_of_week, interval_minutes,
 days_before_earnings, days_after_earnings, market_hours_only,
 trading_days_only, priority, last_run_at, next_run_at
+```
+
+**Run History Table Columns:**
+```
+id, schedule_id, task_type, ticker, analysis_type, status, stage,
+gate_passed, recommendation, confidence, expected_value,
+order_placed, order_id, order_details (jsonb),
+analysis_file, trade_file,
+started_at, completed_at, duration_seconds,
+error_message, raw_output
+```
+⚠️ **Note:** Column is `raw_output`, NOT `result_summary`!
+
+**Run History Task Types:**
+| task_type | ticker contains | Purpose |
+|-----------|-----------------|---------|
+| `run_scanner` | Scanner code (e.g., HIGH_OPT_IMP_VOLAT) | Scanner execution logs |
+| `pipeline` | Stock ticker (e.g., NVDA) | Analysis pipeline runs |
+
+**Scanner Logging (two locations):**
+1. **Database**: `nexus.run_history` with `task_type = 'run_scanner'` - full candidates in `raw_output`
+2. **Files**: `tradegent/analyses/scanner_{CODE}_{TIMESTAMP}.md` - markdown with JSON block
+
+**Database `raw_output` format** (JSON):
+```json
+{
+    "scanner": "HIGH_OPT_IMP_VOLAT",
+    "scan_time": "2026-02-27T08:26:19-05:00",
+    "candidates_found": 6,
+    "candidates": [
+        {"ticker": "MSTZ", "score": 8, "price": 13.06, "notes": "..."},
+        {"ticker": "AGQ", "score": 7, "price": 186.43, "notes": "..."}
+    ]
+}
+```
+
+```python
+# Query scanner runs with candidates
+cur.execute("""
+    SELECT ticker, started_at, status, duration_seconds, raw_output
+    FROM nexus.run_history
+    WHERE task_type = 'run_scanner'
+    ORDER BY started_at DESC LIMIT 10
+""")
+for r in rows:
+    data = json.loads(r['raw_output']) if r['raw_output'] else {}
+    print(f"{r['ticker']}: {data.get('candidates_found', 0)} candidates")
+    for c in data.get('candidates', []):
+        print(f"  - {c['ticker']}: score {c['score']}")
 ```
 
 **Query Schema First Pattern:**

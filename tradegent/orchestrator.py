@@ -2559,7 +2559,11 @@ def run_scanners(db: NexusDB, scanner_code: str | None = None):
                 f"SCAN-{scanner.scanner_code}",
             )
             if not output:
-                db.complete_scanner_run(run_id, "failed", 0, error="Claude Code returned empty")
+                db.complete_scanner_run(
+                    run_id, "failed",
+                    scanner_code=scanner.scanner_code,
+                    error="Claude Code returned empty"
+                )
                 continue
 
             ts = datetime.now().strftime("%Y%m%dT%H%M")
@@ -2568,12 +2572,20 @@ def run_scanners(db: NexusDB, scanner_code: str | None = None):
 
             parsed = parse_json_block(output)
             if not parsed or "candidates" not in parsed:
-                db.complete_scanner_run(run_id, "completed", 0)
+                db.complete_scanner_run(
+                    run_id, "completed",
+                    scanner_code=scanner.scanner_code
+                )
                 continue
 
             candidates = parsed["candidates"]
             log.info(f"  {len(candidates)} candidates found")
-            db.complete_scanner_run(run_id, "completed", len(candidates))
+            db.complete_scanner_run(
+                run_id, "completed",
+                candidates=candidates,
+                scanner_code=parsed.get("scanner", scanner.scanner_code),
+                scan_time=parsed.get("scan_time"),
+            )
 
             if scanner.auto_add_to_watchlist:
                 for c in candidates[: scanner.max_candidates]:
@@ -2588,7 +2600,11 @@ def run_scanners(db: NexusDB, scanner_code: str | None = None):
 
         except Exception as e:
             log.error(f"Scanner {scanner.scanner_code} failed: {e}")
-            db.complete_scanner_run(run_id, "failed", 0, error=str(e))
+            db.complete_scanner_run(
+                run_id, "failed",
+                scanner_code=scanner.scanner_code,
+                error=str(e)
+            )
 
 
 @dataclass

@@ -536,10 +536,28 @@ class NexusDB:
         self,
         run_id: int,
         status: str = "completed",
-        candidates_found: int = 0,
+        candidates: list[dict] | None = None,
+        scanner_code: str | None = None,
+        scan_time: str | None = None,
         error: str | None = None,
     ):
-        """Complete a scanner run with results."""
+        """Complete a scanner run with full results.
+
+        Args:
+            run_id: The run_history ID
+            status: 'completed' or 'failed'
+            candidates: List of candidate dicts with ticker, score, price, notes
+            scanner_code: Scanner code (e.g., HIGH_OPT_IMP_VOLAT)
+            scan_time: ISO timestamp of scan
+            error: Error message if failed
+        """
+        candidates = candidates or []
+        raw_output = json.dumps({
+            "scanner": scanner_code,
+            "scan_time": scan_time,
+            "candidates_found": len(candidates),
+            "candidates": candidates,
+        })
         with self.conn.cursor() as cur:
             cur.execute(
                 """
@@ -551,7 +569,7 @@ class NexusDB:
                     error_message = %s
                 WHERE id = %s
             """,
-                [status, json.dumps({"candidates_found": candidates_found}), error, run_id],
+                [status, raw_output, error, run_id],
             )
         self.conn.commit()
 
@@ -2033,3 +2051,961 @@ class NexusDB:
                 LIMIT 1
             """, [cooldown_key])
             return cur.fetchone() is not None
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Knowledge Base Methods (Migration 009)
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    # ─── KB Validation Helpers ──────────────────────────────────────────────────
+
+    def _validate_ticker(self, ticker: str | None, context: str = "operation") -> str:
+        """Validate and normalize ticker symbol. Raises ValueError if invalid."""
+        if not ticker:
+            raise ValueError(f"ticker is required for {context}")
+        ticker = ticker.upper().strip()
+        if not ticker or len(ticker) > 10:
+            raise ValueError(f"Invalid ticker format: {ticker}")
+        return ticker
+
+    def _validate_file_path(self, file_path: str | None, context: str = "operation") -> str:
+        """Validate file path. Raises ValueError if invalid."""
+        if not file_path:
+            raise ValueError(f"file_path is required for {context}")
+        # Normalize path
+        from pathlib import Path
+        return str(Path(file_path).resolve())
+
+    def _extract_ticker_from_data(self, data: dict) -> str | None:
+        """Extract ticker from YAML data, checking multiple locations."""
+        meta = data.get("_meta", {})
+        trade = data.get("trade", {})
+
+        # Check common locations
+        ticker = data.get("ticker") or meta.get("ticker") or trade.get("ticker")
+
+        # Try to extract from ID (e.g., "NVDA_20260223T1100")
+        if not ticker and meta.get("id"):
+            id_val = meta["id"]
+            if "_" in id_val:
+                ticker = id_val.split("_")[0]
+
+        return ticker.upper() if ticker else None
+
+    # ─── KB Stock Analyses ─────────────────────────────────────────────────────
+
+    def upsert_kb_stock_analysis(self, file_path: str, data: dict) -> int:
+        """Upsert a stock analysis into kb_stock_analyses. Returns ID."""
+        # Validate inputs
+        file_path = self._validate_file_path(file_path, "stock analysis")
+        ticker = self._extract_ticker_from_data(data)
+        ticker = self._validate_ticker(ticker, "stock analysis")
+
+        meta = data.get("_meta", {})
+        decision = data.get("decision", {})
+        gate = decision.get("do_nothing_gate", {})
+        scenarios = data.get("scenario_analysis", {})
+        trade = data.get("trade_structure", {})
+        risk = data.get("risk_assessment", {})
+
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO nexus.kb_stock_analyses (
+                        ticker, analysis_date, schema_version, file_path,
+                        current_price, recommendation, confidence, expected_value_pct,
+                        gate_result, gate_criteria_met,
+                        bull_probability, base_probability, bear_probability,
+                        entry_price, stop_price, target_1_price, target_2_price,
+                        catalyst_score, technical_score, fundamental_score, sentiment_score,
+                        total_threat_level, yaml_content
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    )
+                    ON CONFLICT (file_path) DO UPDATE SET
+                        recommendation = EXCLUDED.recommendation,
+                        confidence = EXCLUDED.confidence,
+                        expected_value_pct = EXCLUDED.expected_value_pct,
+                        gate_result = EXCLUDED.gate_result,
+                        yaml_content = EXCLUDED.yaml_content,
+                        updated_at = now()
+                    RETURNING id
+                """, [
+                    ticker,
+                    meta.get("created"),
+                    meta.get("schema_version") or meta.get("version"),
+                    file_path,
+                    data.get("current_price"),
+                    decision.get("recommendation"),
+                    decision.get("confidence"),
+                    decision.get("expected_value_pct"),
+                    gate.get("result"),
+                    gate.get("criteria_met"),
+                    scenarios.get("bull", {}).get("probability"),
+                    scenarios.get("base", {}).get("probability"),
+                    scenarios.get("bear", {}).get("probability"),
+                    trade.get("entry", {}).get("price"),
+                    trade.get("stop_loss", {}).get("price"),
+                    trade.get("targets", [{}])[0].get("price") if trade.get("targets") else None,
+                    trade.get("targets", [{}, {}])[1].get("price") if len(trade.get("targets", [])) > 1 else None,
+                    data.get("catalyst_analysis", {}).get("score"),
+                    data.get("technical_analysis", {}).get("score"),
+                    data.get("fundamental_analysis", {}).get("score"),
+                    data.get("sentiment_analysis", {}).get("score"),
+                    risk.get("total_threat_level"),
+                    json.dumps(data, default=str),
+                ])
+                result = cur.fetchone()
+                if result is None:
+                    raise RuntimeError(f"Upsert returned no ID for {file_path}")
+            self.conn.commit()
+            return result["id"]
+        except Exception as e:
+            self.conn.rollback()
+            log.error(f"Failed to upsert stock analysis {file_path}: {e}")
+            raise
+
+    def get_kb_stock_analysis(self, ticker: str, analysis_date: datetime = None) -> dict | None:
+        """Get stock analysis by ticker and optional date."""
+        with self.conn.cursor() as cur:
+            if analysis_date:
+                cur.execute("""
+                    SELECT * FROM nexus.kb_stock_analyses
+                    WHERE ticker = %s AND DATE(analysis_date) = DATE(%s)
+                    ORDER BY analysis_date DESC LIMIT 1
+                """, [ticker.upper(), analysis_date])
+            else:
+                cur.execute("""
+                    SELECT * FROM nexus.kb_stock_analyses
+                    WHERE ticker = %s
+                    ORDER BY analysis_date DESC LIMIT 1
+                """, [ticker.upper()])
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def get_latest_kb_stock_analysis(self, ticker: str) -> dict | None:
+        """Get latest stock analysis for ticker."""
+        return self.get_kb_stock_analysis(ticker)
+
+    def search_kb_stock_analyses(self, filters: dict) -> list[dict]:
+        """Search stock analyses with filters (recommendation, gate_result, min_confidence)."""
+        conditions = ["1=1"]
+        params = []
+
+        if filters.get("ticker"):
+            conditions.append("ticker = %s")
+            params.append(filters["ticker"].upper())
+        if filters.get("recommendation"):
+            conditions.append("recommendation = %s")
+            params.append(filters["recommendation"])
+        if filters.get("gate_result"):
+            conditions.append("gate_result = %s")
+            params.append(filters["gate_result"])
+        if filters.get("min_confidence"):
+            conditions.append("confidence >= %s")
+            params.append(filters["min_confidence"])
+
+        limit = filters.get("limit", 50)
+        params.append(limit)
+
+        with self.conn.cursor() as cur:
+            cur.execute(f"""
+                SELECT * FROM nexus.kb_stock_analyses
+                WHERE {' AND '.join(conditions)}
+                ORDER BY analysis_date DESC
+                LIMIT %s
+            """, params)
+            return [dict(r) for r in cur.fetchall()]
+
+    # ─── KB Earnings Analyses ──────────────────────────────────────────────────
+
+    def upsert_kb_earnings_analysis(self, file_path: str, data: dict) -> int:
+        """Upsert an earnings analysis into kb_earnings_analyses. Returns ID."""
+        # Validate inputs
+        file_path = self._validate_file_path(file_path, "earnings analysis")
+        ticker = self._extract_ticker_from_data(data)
+        ticker = self._validate_ticker(ticker, "earnings analysis")
+
+        meta = data.get("_meta", {})
+        decision = data.get("decision", {})
+        gate = decision.get("do_nothing_gate", {})
+        cases = data.get("case_analysis", {})
+
+        # Extract earnings fields from root level (v2.4+ schema)
+        # Also check under "earnings" for older schemas
+        earnings_date = data.get("earnings_date") or data.get("earnings", {}).get("date")
+        earnings_time = data.get("earnings_time") or data.get("earnings", {}).get("time")
+        days_to_earnings = data.get("days_to_earnings") or data.get("earnings", {}).get("days_to_earnings")
+
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO nexus.kb_earnings_analyses (
+                        ticker, analysis_date, schema_version, file_path,
+                        earnings_date, earnings_time, days_to_earnings,
+                        recommendation, confidence, p_beat, expected_value_pct, gate_result,
+                        bull_case_strength, bear_case_strength, yaml_content
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (file_path) DO UPDATE SET
+                        recommendation = EXCLUDED.recommendation,
+                        confidence = EXCLUDED.confidence,
+                        yaml_content = EXCLUDED.yaml_content,
+                        updated_at = now()
+                    RETURNING id
+                """, [
+                    ticker,
+                    meta.get("created"),
+                    meta.get("schema_version") or meta.get("version"),
+                    file_path,
+                    earnings_date,
+                    earnings_time,
+                    days_to_earnings,
+                    decision.get("recommendation"),
+                    decision.get("confidence"),
+                    data.get("probability", {}).get("p_beat"),
+                    decision.get("expected_value_pct"),
+                    gate.get("result"),
+                    cases.get("bull_case", {}).get("strength"),
+                    cases.get("bear_case", {}).get("strength"),
+                    json.dumps(data, default=str),
+                ])
+                result = cur.fetchone()
+                if result is None:
+                    raise RuntimeError(f"Upsert returned no ID for {file_path}")
+                self.conn.commit()
+                return result["id"]
+        except Exception as e:
+            self.conn.rollback()
+            log.error(f"Failed to upsert earnings analysis {file_path}: {e}")
+            raise
+
+    def get_kb_earnings_analysis(self, ticker: str, earnings_date: date = None) -> dict | None:
+        """Get earnings analysis by ticker and optional earnings date."""
+        with self.conn.cursor() as cur:
+            if earnings_date:
+                cur.execute("""
+                    SELECT * FROM nexus.kb_earnings_analyses
+                    WHERE ticker = %s AND earnings_date = %s
+                    ORDER BY analysis_date DESC LIMIT 1
+                """, [ticker.upper(), earnings_date])
+            else:
+                cur.execute("""
+                    SELECT * FROM nexus.kb_earnings_analyses
+                    WHERE ticker = %s
+                    ORDER BY analysis_date DESC LIMIT 1
+                """, [ticker.upper()])
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def get_latest_kb_earnings_analysis(self, ticker: str) -> dict | None:
+        """Get latest earnings analysis for ticker."""
+        return self.get_kb_earnings_analysis(ticker)
+
+    # ─── KB Research Analyses ──────────────────────────────────────────────────
+
+    def upsert_kb_research_analysis(self, file_path: str, data: dict) -> int:
+        """Upsert a research analysis into kb_research_analyses. Returns ID."""
+        file_path = self._validate_file_path(file_path, "research analysis")
+        meta = data.get("_meta", {})
+
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO nexus.kb_research_analyses (
+                        research_id, research_type, title, file_path, schema_version, analysis_date,
+                        tickers, sectors, themes, outlook, confidence, time_horizon, yaml_content
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (file_path) DO UPDATE SET
+                        outlook = EXCLUDED.outlook,
+                        confidence = EXCLUDED.confidence,
+                        yaml_content = EXCLUDED.yaml_content,
+                        updated_at = now()
+                    RETURNING id
+                """, [
+                    meta.get("id"),
+                    meta.get("research_type", data.get("research_type")),
+                    data.get("title"),
+                    file_path,
+                    meta.get("schema_version"),
+                    meta.get("created"),
+                    data.get("tickers", []),
+                    data.get("sectors", []),
+                    data.get("themes", []),
+                    data.get("outlook"),
+                    data.get("confidence"),
+                    data.get("time_horizon"),
+                    json.dumps(data),
+                ])
+                result = cur.fetchone()
+                if result is None:
+                    raise RuntimeError(f"Upsert returned no ID for {file_path}")
+            self.conn.commit()
+            return result["id"]
+        except Exception as e:
+            self.conn.rollback()
+            log.error(f"Failed to upsert research analysis {file_path}: {e}")
+            raise
+
+    def get_kb_research_by_sector(self, sector: str) -> list[dict]:
+        """Get research analyses by sector."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM nexus.kb_research_analyses
+                WHERE %s = ANY(sectors)
+                ORDER BY analysis_date DESC
+            """, [sector])
+            return [dict(r) for r in cur.fetchall()]
+
+    # ─── KB Ticker Profiles ────────────────────────────────────────────────────
+
+    def upsert_kb_ticker_profile(self, file_path: str, data: dict) -> int:
+        """Upsert a ticker profile into kb_ticker_profiles. Returns ID."""
+        file_path = self._validate_file_path(file_path, "ticker profile")
+        meta = data.get("_meta", {})
+        perf = data.get("performance", {})
+
+        ticker = self._extract_ticker_from_data(data)
+        ticker = self._validate_ticker(ticker, "ticker profile")
+
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO nexus.kb_ticker_profiles (
+                        ticker, file_path, company_name, sector, industry, market_cap_category,
+                        typical_iv, avg_daily_volume, options_liquidity,
+                        total_trades, win_rate, avg_return, total_pnl,
+                        common_biases, lessons_learned, yaml_content
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (ticker) DO UPDATE SET
+                        win_rate = EXCLUDED.win_rate,
+                        total_pnl = EXCLUDED.total_pnl,
+                        common_biases = EXCLUDED.common_biases,
+                        yaml_content = EXCLUDED.yaml_content,
+                        updated_at = now()
+                    RETURNING id
+                """, [
+                    ticker,
+                    file_path,
+                    data.get("company_name"),
+                    data.get("sector"),
+                    data.get("industry"),
+                    data.get("market_cap_category"),
+                    data.get("typical_iv"),
+                    data.get("avg_daily_volume"),
+                    data.get("options_liquidity"),
+                    perf.get("total_trades"),
+                    perf.get("win_rate"),
+                    perf.get("avg_return"),
+                    perf.get("total_pnl"),
+                    data.get("common_biases", []),
+                    data.get("lessons_learned", []),
+                    json.dumps(data),
+                ])
+                result = cur.fetchone()
+                if result is None:
+                    raise RuntimeError(f"Upsert returned no ID for {file_path}")
+            self.conn.commit()
+            return result["id"]
+        except Exception as e:
+            self.conn.rollback()
+            log.error(f"Failed to upsert ticker profile {file_path}: {e}")
+            raise
+
+    def get_kb_ticker_profile(self, ticker: str) -> dict | None:
+        """Get ticker profile."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM nexus.kb_ticker_profiles WHERE ticker = %s
+            """, [ticker.upper()])
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    # ─── KB Trade Journals ─────────────────────────────────────────────────────
+
+    def upsert_kb_trade_journal(self, file_path: str, data: dict) -> int:
+        """Upsert a trade journal into kb_trade_journals. Returns ID."""
+        file_path = self._validate_file_path(file_path, "trade journal")
+        meta = data.get("_meta", {})
+        execution = data.get("execution", {})
+        trade = data.get("trade", {})
+        result = data.get("result", {})
+        quality = data.get("quality", {})
+
+        # Extract ticker from root level or meta
+        ticker = self._extract_ticker_from_data(data)
+        ticker = self._validate_ticker(ticker, "trade journal")
+
+        # Extract trade_id from meta.id
+        trade_id = meta.get("trade_id", meta.get("id"))
+        if not trade_id:
+            raise ValueError(f"trade_id is required for trade journal {file_path}")
+
+        # Extract entry/exit from execution or trade section
+        entries = execution.get("entries", trade.get("entries", []))
+        exits = execution.get("exits", trade.get("exits", []))
+        direction = execution.get("direction") or trade.get("direction")
+
+        entry_date = entries[0].get("date") if entries else trade.get("entry_date")
+        entry_price = entries[0].get("price") if entries else trade.get("entry_price")
+        exit_date = exits[-1].get("date") if exits else trade.get("exit_date")
+        exit_price = exits[-1].get("price") if exits else trade.get("exit_price")
+
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO nexus.kb_trade_journals (
+                        trade_id, ticker, file_path, source_analysis_type,
+                        direction, entry_date, entry_price, exit_date, exit_price,
+                        outcome, return_pct, pnl_dollars, holding_days,
+                        entry_grade, exit_grade, overall_grade,
+                        biases_detected, primary_lesson, yaml_content
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (trade_id) DO UPDATE SET
+                        outcome = EXCLUDED.outcome,
+                        return_pct = EXCLUDED.return_pct,
+                        pnl_dollars = EXCLUDED.pnl_dollars,
+                        overall_grade = EXCLUDED.overall_grade,
+                        biases_detected = EXCLUDED.biases_detected,
+                        yaml_content = EXCLUDED.yaml_content,
+                        updated_at = now()
+                    RETURNING id
+                """, [
+                    trade_id,
+                    ticker,
+                    file_path,
+                    data.get("source_analysis_type") or data.get("catalyst"),
+                    direction,
+                    entry_date,
+                    entry_price,
+                    exit_date,
+                    exit_price,
+                    result.get("outcome"),
+                    result.get("return_pct"),
+                    result.get("pnl_dollars"),
+                    result.get("holding_days"),
+                    quality.get("entry_grade"),
+                    quality.get("exit_grade"),
+                    quality.get("overall_grade"),
+                    data.get("biases_detected", []),
+                    data.get("primary_lesson"),
+                    json.dumps(data),
+                ])
+                result_row = cur.fetchone()
+                if result_row is None:
+                    raise RuntimeError(f"Upsert returned no ID for {file_path}")
+            self.conn.commit()
+            return result_row["id"]
+        except Exception as e:
+            self.conn.rollback()
+            log.error(f"Failed to upsert trade journal {file_path}: {e}")
+            raise
+
+    def get_kb_trade_journal(self, trade_id: str) -> dict | None:
+        """Get trade journal by trade_id."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM nexus.kb_trade_journals WHERE trade_id = %s
+            """, [trade_id])
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def get_kb_trades_by_ticker(self, ticker: str) -> list[dict]:
+        """Get trade journals by ticker."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM nexus.kb_trade_journals
+                WHERE ticker = %s
+                ORDER BY entry_date DESC
+            """, [ticker.upper()])
+            return [dict(r) for r in cur.fetchall()]
+
+    def get_kb_trade_performance(self, ticker: str = None) -> dict:
+        """Get trade performance summary from view."""
+        with self.conn.cursor() as cur:
+            if ticker:
+                cur.execute("""
+                    SELECT * FROM nexus.v_trade_performance WHERE ticker = %s
+                """, [ticker.upper()])
+                row = cur.fetchone()
+                return dict(row) if row else {}
+            else:
+                cur.execute("SELECT * FROM nexus.v_trade_performance")
+                return [dict(r) for r in cur.fetchall()]
+
+    # ─── KB Watchlist Entries ──────────────────────────────────────────────────
+
+    def upsert_kb_watchlist_entry(self, file_path: str, data: dict) -> int:
+        """Upsert a watchlist entry into kb_watchlist_entries. Returns ID."""
+        file_path = self._validate_file_path(file_path, "watchlist entry")
+        meta = data.get("_meta", {})
+
+        ticker = self._extract_ticker_from_data(data)
+        ticker = self._validate_ticker(ticker, "watchlist entry")
+
+        watchlist_id = meta.get("watchlist_id", meta.get("id"))
+        if not watchlist_id:
+            raise ValueError(f"watchlist_id is required for watchlist entry {file_path}")
+
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO nexus.kb_watchlist_entries (
+                        watchlist_id, ticker, file_path, entry_trigger, entry_price,
+                        status, priority, conviction_level, expires_at,
+                        source_analysis, source_score, yaml_content
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (watchlist_id) DO UPDATE SET
+                        status = EXCLUDED.status,
+                        entry_trigger = EXCLUDED.entry_trigger,
+                        yaml_content = EXCLUDED.yaml_content,
+                        updated_at = now()
+                    RETURNING id
+                """, [
+                    watchlist_id,
+                    ticker,
+                    file_path,
+                    data.get("entry_trigger"),
+                    data.get("entry_price"),
+                    data.get("status", "active"),
+                    data.get("priority"),
+                    data.get("conviction_level"),
+                    data.get("expires_at") or meta.get("expires"),
+                    data.get("source_analysis"),
+                    data.get("source_score"),
+                    json.dumps(data),
+                ])
+                result = cur.fetchone()
+                if result is None:
+                    raise RuntimeError(f"Upsert returned no ID for {file_path}")
+            self.conn.commit()
+            return result["id"]
+        except Exception as e:
+            self.conn.rollback()
+            log.error(f"Failed to upsert watchlist entry {file_path}: {e}")
+            raise
+
+    def get_kb_active_watchlist(self) -> list[dict]:
+        """Get active watchlist entries from view."""
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT * FROM nexus.v_kb_active_watchlist")
+            return [dict(r) for r in cur.fetchall()]
+
+    def update_kb_watchlist_status(self, watchlist_id: str, status: str) -> bool:
+        """Update watchlist entry status."""
+        timestamp_field = {
+            "triggered": "triggered_at",
+            "invalidated": "invalidated_at",
+        }.get(status)
+
+        with self.conn.cursor() as cur:
+            if timestamp_field:
+                cur.execute(f"""
+                    UPDATE nexus.kb_watchlist_entries
+                    SET status = %s, {timestamp_field} = now(), updated_at = now()
+                    WHERE watchlist_id = %s
+                    RETURNING id
+                """, [status, watchlist_id])
+            else:
+                cur.execute("""
+                    UPDATE nexus.kb_watchlist_entries
+                    SET status = %s, updated_at = now()
+                    WHERE watchlist_id = %s
+                    RETURNING id
+                """, [status, watchlist_id])
+            updated = cur.fetchone() is not None
+        self.conn.commit()
+        return updated
+
+    # ─── KB Reviews ────────────────────────────────────────────────────────────
+
+    def upsert_kb_review(self, file_path: str, data: dict) -> int:
+        """Upsert a review into kb_reviews. Returns ID."""
+        file_path = self._validate_file_path(file_path, "review")
+        meta = data.get("_meta", {})
+        result = data.get("result", {})
+        thesis_accuracy = data.get("thesis_accuracy", {})
+        trade = data.get("trade", {})
+
+        # Extract ticker from multiple possible locations
+        ticker = self._extract_ticker_from_data(data)
+        ticker = self._validate_ticker(ticker, "review")
+
+        # Extract review_id from meta.id
+        review_id = meta.get("review_id", meta.get("id"))
+        if not review_id:
+            raise ValueError(f"review_id is required for review {file_path}")
+
+        # Extract grade from thesis_accuracy or result section
+        overall_grade = thesis_accuracy.get("grade") or result.get("overall_grade") or data.get("overall_grade")
+
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO nexus.kb_reviews (
+                        review_id, review_type, ticker, file_path,
+                        overall_grade, return_pct, outcome, validation_result,
+                        primary_lesson, biases_detected, bias_cost_estimate, yaml_content
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (review_id) DO UPDATE SET
+                        overall_grade = EXCLUDED.overall_grade,
+                        validation_result = EXCLUDED.validation_result,
+                        yaml_content = EXCLUDED.yaml_content,
+                        updated_at = now()
+                    RETURNING id
+                """, [
+                    review_id,
+                    meta.get("type", meta.get("review_type")),
+                    ticker,
+                    file_path,
+                    overall_grade,
+                    result.get("return_pct"),
+                    result.get("outcome"),
+                    data.get("validation_result"),
+                    data.get("primary_lesson"),
+                    data.get("biases_detected", []),
+                    data.get("bias_cost_estimate"),
+                    json.dumps(data),
+                ])
+                result_row = cur.fetchone()
+                if result_row is None:
+                    raise RuntimeError(f"Upsert returned no ID for {file_path}")
+            self.conn.commit()
+            return result_row["id"]
+        except Exception as e:
+            self.conn.rollback()
+            log.error(f"Failed to upsert review {file_path}: {e}")
+            raise
+
+    def get_kb_reviews_by_ticker(self, ticker: str) -> list[dict]:
+        """Get reviews by ticker."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM nexus.kb_reviews
+                WHERE ticker = %s
+                ORDER BY created_at DESC
+            """, [ticker.upper()])
+            return [dict(r) for r in cur.fetchall()]
+
+    def get_kb_reviews_by_type(self, review_type: str) -> list[dict]:
+        """Get reviews by type."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM nexus.kb_reviews
+                WHERE review_type = %s
+                ORDER BY created_at DESC
+            """, [review_type])
+            return [dict(r) for r in cur.fetchall()]
+
+    # ─── KB Learnings ──────────────────────────────────────────────────────────
+
+    def upsert_kb_learning(self, file_path: str, data: dict) -> int:
+        """Upsert a learning into kb_learnings. Returns ID."""
+        file_path = self._validate_file_path(file_path, "learning")
+        meta = data.get("_meta", {})
+        pattern = data.get("pattern", {})
+        countermeasure = data.get("countermeasure", {})
+        evidence = data.get("evidence", {})
+        validation = data.get("validation", {})
+
+        learning_id = meta.get("learning_id", meta.get("id"))
+        if not learning_id:
+            raise ValueError(f"learning_id is required for learning {file_path}")
+
+        # Extract fields with fallbacks for different schema versions
+        description = pattern.get("description") or data.get("description")
+        rule_statement = countermeasure.get("rule") or data.get("rule_statement")
+        countermeasure_text = countermeasure.get("mantra") or countermeasure.get("checklist_addition")
+        evidence_count = evidence.get("occurrences") or data.get("evidence_count")
+        estimated_cost = evidence.get("estimated_cost") or data.get("estimated_cost")
+        related_trades = evidence.get("source_trades", []) or data.get("related_trades", [])
+
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO nexus.kb_learnings (
+                        learning_id, category, subcategory, file_path,
+                        title, description, rule_statement, countermeasure,
+                        confidence, validation_status, evidence_count, estimated_cost,
+                        related_tickers, related_trades, yaml_content
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (learning_id) DO UPDATE SET
+                        validation_status = EXCLUDED.validation_status,
+                        evidence_count = EXCLUDED.evidence_count,
+                        yaml_content = EXCLUDED.yaml_content,
+                        updated_at = now()
+                    RETURNING id
+                """, [
+                    learning_id,
+                    meta.get("category", data.get("category")),
+                    meta.get("subcategory", data.get("subcategory")),
+                    file_path,
+                    data.get("title"),
+                    description,
+                    rule_statement,
+                    countermeasure_text,
+                    meta.get("confidence") or data.get("confidence"),
+                    validation.get("status") or data.get("validation_status", "pending"),
+                    evidence_count,
+                    estimated_cost,
+                    data.get("related_tickers", []),
+                    related_trades,
+                    json.dumps(data),
+                ])
+                result = cur.fetchone()
+                if result is None:
+                    raise RuntimeError(f"Upsert returned no ID for {file_path}")
+            self.conn.commit()
+            return result["id"]
+        except Exception as e:
+            self.conn.rollback()
+            log.error(f"Failed to upsert learning {file_path}: {e}")
+            raise
+
+    def get_kb_learnings_by_category(self, category: str) -> list[dict]:
+        """Get learnings by category."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM nexus.kb_learnings
+                WHERE category = %s
+                ORDER BY created_at DESC
+            """, [category])
+            return [dict(r) for r in cur.fetchall()]
+
+    def get_kb_bias_frequency(self) -> list[dict]:
+        """Get bias frequency from view."""
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT * FROM nexus.v_bias_frequency")
+            return [dict(r) for r in cur.fetchall()]
+
+    # ─── KB Strategies ─────────────────────────────────────────────────────────
+
+    def upsert_kb_strategy(self, file_path: str, data: dict) -> int:
+        """Upsert a strategy into kb_strategies. Returns ID."""
+        file_path = self._validate_file_path(file_path, "strategy")
+        meta = data.get("_meta", {})
+        perf = data.get("performance", {})
+        overview = data.get("overview", {})
+        entry_rules = data.get("entry_rules", {})
+        exit_rules = data.get("exit_rules", {})
+
+        strategy_id = meta.get("strategy_id", meta.get("id"))
+        if not strategy_id:
+            raise ValueError(f"strategy_id is required for strategy {file_path}")
+
+        # Extract entry/exit conditions as TEXT[] arrays
+        # Convert list of condition dicts to list of condition strings
+        entry_conditions_raw = entry_rules.get("criteria", []) if isinstance(entry_rules, dict) else entry_rules
+        exit_conditions_raw = exit_rules.get("profit_taking", []) if isinstance(exit_rules, dict) else exit_rules
+
+        # Convert dicts to strings for TEXT[] array
+        if entry_conditions_raw and isinstance(entry_conditions_raw[0], dict):
+            entry_conditions = [c.get("condition", str(c)) for c in entry_conditions_raw]
+        else:
+            entry_conditions = entry_conditions_raw or []
+
+        if exit_conditions_raw and isinstance(exit_conditions_raw[0], dict):
+            exit_conditions = [c.get("trigger", str(c)) for c in exit_conditions_raw]
+        else:
+            exit_conditions = exit_conditions_raw or []
+
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO nexus.kb_strategies (
+                        strategy_id, strategy_name, file_path, schema_version,
+                        strategy_type, asset_class, time_horizon,
+                        total_trades, win_rate, avg_return, max_drawdown, sharpe_ratio, total_pnl,
+                        status, confidence_level, last_reviewed,
+                        entry_conditions, exit_conditions, known_weaknesses, yaml_content
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (strategy_id) DO UPDATE SET
+                        win_rate = EXCLUDED.win_rate,
+                        total_pnl = EXCLUDED.total_pnl,
+                        status = EXCLUDED.status,
+                        yaml_content = EXCLUDED.yaml_content,
+                        updated_at = now()
+                    RETURNING id
+                """, [
+                    strategy_id,
+                    data.get("strategy_name", data.get("name")),
+                    file_path,
+                    meta.get("schema_version") or meta.get("version"),
+                    data.get("strategy_type") or data.get("category"),
+                    data.get("asset_class"),
+                    data.get("time_horizon"),
+                    perf.get("total_trades"),
+                    perf.get("win_rate"),
+                    perf.get("avg_return"),
+                    perf.get("max_drawdown"),
+                    perf.get("sharpe_ratio"),
+                    perf.get("total_pnl"),
+                    meta.get("status") or data.get("status", "active"),
+                    data.get("confidence_level"),
+                    data.get("last_reviewed"),
+                    entry_conditions,
+                    exit_conditions,
+                    overview.get("avoid_when", data.get("known_weaknesses", [])),
+                    json.dumps(data),
+                ])
+                result = cur.fetchone()
+                if result is None:
+                    raise RuntimeError(f"Upsert returned no ID for {file_path}")
+            self.conn.commit()
+            return result["id"]
+        except Exception as e:
+            self.conn.rollback()
+            log.error(f"Failed to upsert strategy {file_path}: {e}")
+            raise
+
+    def get_kb_strategy(self, strategy_id: str) -> dict | None:
+        """Get strategy by ID."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM nexus.kb_strategies WHERE strategy_id = %s
+            """, [strategy_id])
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def get_kb_active_strategies(self) -> list[dict]:
+        """Get active strategies from view."""
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT * FROM nexus.v_active_strategies")
+            return [dict(r) for r in cur.fetchall()]
+
+    def update_kb_strategy_performance(self, strategy_id: str, stats: dict) -> bool:
+        """Update strategy performance stats."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                UPDATE nexus.kb_strategies SET
+                    total_trades = COALESCE(%s, total_trades),
+                    win_rate = COALESCE(%s, win_rate),
+                    avg_return = COALESCE(%s, avg_return),
+                    total_pnl = COALESCE(%s, total_pnl),
+                    updated_at = now()
+                WHERE strategy_id = %s
+                RETURNING id
+            """, [
+                stats.get("total_trades"),
+                stats.get("win_rate"),
+                stats.get("avg_return"),
+                stats.get("total_pnl"),
+                strategy_id,
+            ])
+            updated = cur.fetchone() is not None
+        self.conn.commit()
+        return updated
+
+    # ─── KB Scanner Configs ────────────────────────────────────────────────────
+
+    def upsert_kb_scanner_config(self, file_path: str, data: dict) -> int:
+        """Upsert a scanner config into kb_scanner_configs. Returns ID."""
+        file_path = self._validate_file_path(file_path, "scanner config")
+        meta = data.get("_meta", {})
+        config = data.get("scanner_config", data)
+        schedule = config.get("schedule", data.get("schedule", {}))
+        scoring = data.get("scoring", {})
+
+        # Extract scanner_code from meta.id (e.g., "SCANNER-EARNINGS-MOMENTUM-001")
+        scanner_code = meta.get("id") or meta.get("scanner_code") or config.get("code")
+        if not scanner_code:
+            raise ValueError(f"scanner_code is required for scanner config {file_path}")
+
+        # Extract scanner_type from run_frequency or infer from file path
+        scanner_type = meta.get("run_frequency") or meta.get("scanner_type")
+        if not scanner_type:
+            # Try to infer from file path (e.g., /scanners/daily/xxx.yaml)
+            if "/daily/" in file_path:
+                scanner_type = "daily"
+            elif "/intraday/" in file_path:
+                scanner_type = "intraday"
+            elif "/weekly/" in file_path:
+                scanner_type = "weekly"
+            else:
+                scanner_type = "daily"  # Default
+
+        # Handle schedule_time - could be single value or array, take first
+        schedule_time = schedule.get("run_at", schedule.get("time"))
+        if isinstance(schedule_time, list):
+            schedule_time = schedule_time[0] if schedule_time else None
+
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO nexus.kb_scanner_configs (
+                        scanner_code, scanner_name, file_path, schema_version,
+                        scanner_type, category, schedule_time, schedule_days, is_enabled,
+                        data_sources, max_candidates, min_score, filters_summary,
+                        scoring_criteria, yaml_content
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (scanner_code) DO UPDATE SET
+                        is_enabled = EXCLUDED.is_enabled,
+                        scoring_criteria = EXCLUDED.scoring_criteria,
+                        yaml_content = EXCLUDED.yaml_content,
+                        updated_at = now()
+                    RETURNING id
+                """, [
+                    scanner_code,
+                    config.get("name", data.get("name")),
+                    file_path,
+                    meta.get("schema_version") or meta.get("version"),
+                    scanner_type,
+                    config.get("category"),
+                    schedule_time,
+                    schedule.get("run_days", schedule.get("days", [])),
+                    config.get("is_enabled", meta.get("status") == "active"),
+                    data.get("data_sources", []),
+                    config.get("limits", {}).get("max_results", config.get("max_candidates")),
+                    config.get("min_score"),
+                    data.get("filters_summary"),
+                    json.dumps(scoring) if scoring else None,
+                    json.dumps(data),
+                ])
+                result = cur.fetchone()
+                if result is None:
+                    raise RuntimeError(f"Upsert returned no ID for {file_path}")
+            self.conn.commit()
+            return result["id"]
+        except Exception as e:
+            self.conn.rollback()
+            log.error(f"Failed to upsert scanner config {file_path}: {e}")
+            raise
+
+    def get_kb_scanner_config(self, scanner_code: str) -> dict | None:
+        """Get scanner config by code."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM nexus.kb_scanner_configs WHERE scanner_code = %s
+            """, [scanner_code])
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def get_kb_enabled_scanners(self, scanner_type: str = None) -> list[dict]:
+        """Get enabled scanners, optionally filtered by type."""
+        with self.conn.cursor() as cur:
+            if scanner_type:
+                cur.execute("""
+                    SELECT * FROM nexus.kb_scanner_configs
+                    WHERE is_enabled = true AND scanner_type = %s
+                    ORDER BY schedule_time
+                """, [scanner_type])
+            else:
+                cur.execute("""
+                    SELECT * FROM nexus.v_enabled_scanners
+                """)
+            return [dict(r) for r in cur.fetchall()]
+
+    def update_kb_scanner_stats(self, scanner_code: str, candidates_count: int) -> bool:
+        """Update scanner run statistics."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                UPDATE nexus.kb_scanner_configs SET
+                    total_runs = total_runs + 1,
+                    avg_candidates = (COALESCE(avg_candidates, 0) * total_runs + %s) / (total_runs + 1),
+                    last_run_at = now(),
+                    updated_at = now()
+                WHERE scanner_code = %s
+                RETURNING id
+            """, [candidates_count, scanner_code])
+            updated = cur.fetchone() is not None
+        self.conn.commit()
+        return updated

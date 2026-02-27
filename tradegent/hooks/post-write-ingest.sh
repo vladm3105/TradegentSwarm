@@ -65,29 +65,48 @@ if [[ "$FILE_PATH" =~ knowledge/analysis/(stock|earnings)/ ]]; then
     FILENAME=$(basename "$FILE_PATH")
     TICKER=$(echo "$FILENAME" | cut -d'_' -f1)
 
+    # SECURITY: Validate ticker format (alphanumeric only, 1-10 chars)
+    if [[ ! "$TICKER" =~ ^[A-Za-z0-9]{1,10}$ ]]; then
+        # Invalid ticker format - skip validation queueing
+        TICKER=""
+    fi
+
     if [[ -n "$TICKER" ]] && [[ "$TICKER" != "TEMPLATE" ]]; then
         # Check if auto_report_validation is enabled
         cd /opt/data/tradegent_swarm/tradegent
         AUTO_VALIDATE=$(python -c "from db_layer import NexusDB; db=NexusDB(); print(db.cfg._get('auto_report_validation', 'feature_flags', 'true'))" 2>/dev/null || echo "true")
 
         if [[ "$AUTO_VALIDATE" == "true" ]]; then
+            # SECURITY: Use environment variables instead of string interpolation
+            # to prevent command injection via malicious file paths
+            export HOOK_TICKER="$TICKER"
+            export HOOK_FILE_PATH="$FILE_PATH"
+
             # Check if there's a prior active analysis to validate against
             HAS_PRIOR=$(python -c "
+import os
 from db_layer import NexusDB
+ticker = os.environ.get('HOOK_TICKER', '')
 db = NexusDB()
-prior = db.get_active_analysis('$TICKER', 'stock') or db.get_active_analysis('$TICKER', 'earnings')
+prior = db.get_active_analysis(ticker, 'stock') or db.get_active_analysis(ticker, 'earnings')
 print('yes' if prior else 'no')
 " 2>/dev/null || echo "no")
 
             if [[ "$HAS_PRIOR" == "yes" ]]; then
                 # Queue report validation task
                 python -c "
+import os
 from db_layer import NexusDB
+ticker = os.environ.get('HOOK_TICKER', '')
+file_path = os.environ.get('HOOK_FILE_PATH', '')
 db = NexusDB()
-if not db.task_already_queued('report_validation', '$TICKER'):
-    db.queue_task('report_validation', '$TICKER', prompt='new_file: $FILE_PATH\ntrigger: new_analysis', priority=7)
+if ticker and not db.task_already_queued('report_validation', ticker):
+    db.queue_task('report_validation', ticker, prompt=f'new_file: {file_path}\ntrigger: new_analysis', priority=7)
 " 2>/dev/null && VALIDATION_QUEUED=", Validation queued"
             fi
+
+            # Clean up environment variables
+            unset HOOK_TICKER HOOK_FILE_PATH
         fi
     fi
 fi
