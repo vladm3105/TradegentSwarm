@@ -764,54 +764,53 @@ def generate_svg(data: dict, source_file: str = '') -> str:
 
   <!-- ROW 5: Meta-Learning (2-column layout, height 100px) -->
   <rect x="40" y="880" width="560" height="100" rx="10" fill="#fff" filter="url(#shadow)"/>
-  <text x="60" y="910" font-size="14" font-weight="bold" fill="#212529">Pattern Identified</text>
+  <text x="60" y="910" font-size="14" font-weight="bold" fill="#212529">Pattern Identified:</text>
 '''
 
-    # Word wrap pattern_identified text (like Rationale)
+    # Word wrap pattern_identified text (80 chars, dark bold first line)
     pattern_text = str(pattern_identified).replace('\n', ' ').strip() if pattern_identified else 'None'
     pattern_words = pattern_text.split()
     pattern_lines = []
     pattern_curr = []
     for w in pattern_words:
         pattern_curr.append(w)
-        if len(' '.join(pattern_curr)) > 60:
+        if len(' '.join(pattern_curr)) > 80:
             pattern_lines.append(' '.join(pattern_curr[:-1]))
             pattern_curr = [w]
     if pattern_curr:
         pattern_lines.append(' '.join(pattern_curr))
 
-    # Render pattern lines (max 4 lines)
+    # Render pattern lines (max 4 lines, first line dark bold)
     y_pattern = 935
     for i, line in enumerate(pattern_lines[:4]):
-        color = '#228be6' if i == 0 else '#495057'
         weight = 'font-weight="bold"' if i == 0 else ''
-        svg += f'''  <text x="60" y="{y_pattern}" font-size="11" {weight} fill="{color}">{escape_xml(line)}</text>
+        svg += f'''  <text x="60" y="{y_pattern}" font-size="11" {weight} fill="#495057">{escape_xml(line)}</text>
 '''
         y_pattern += 16
 
     svg += f'''
   <!-- Historical Comparison -->
   <rect x="620" y="880" width="540" height="100" rx="10" fill="#fff" filter="url(#shadow)"/>
-  <text x="640" y="910" font-size="14" font-weight="bold" fill="#212529">Historical Comparison</text>
+  <text x="640" y="910" font-size="14" font-weight="bold" fill="#212529">Historical Comparison:</text>
 '''
-    # Word wrap comparison text into lines of ~58 chars (wider box)
+    # Word wrap comparison text (80 chars, dark bold first line)
     comp_text = str(comparison_to_past).replace('\n', ' ').strip()
     comp_words = comp_text.split()
     comp_lines = []
     current_line = []
     for word in comp_words:
         current_line.append(word)
-        if len(' '.join(current_line)) > 58:
+        if len(' '.join(current_line)) > 80:
             comp_lines.append(' '.join(current_line[:-1]))
             current_line = [word]
     if current_line:
         comp_lines.append(' '.join(current_line))
 
-    # Render comparison lines (max 4 lines)
+    # Render comparison lines (max 4 lines, first line dark bold)
     y_comp = 935
     for i, line in enumerate(comp_lines[:4]):
-        color = '#495057' if i == 0 else '#868e96'
-        svg += f'''  <text x="640" y="{y_comp}" font-size="11" fill="{color}">{escape_xml(line)}</text>
+        weight = 'font-weight="bold"' if i == 0 else ''
+        svg += f'''  <text x="640" y="{y_comp}" font-size="11" {weight} fill="#495057">{escape_xml(line)}</text>
 '''
         y_comp += 16
 
