@@ -606,6 +606,35 @@ def validate_data_source_effectiveness(doc: dict, result: ValidationResult):
             )
 
 
+def validate_meta_learning_patterns(doc: dict, result: ValidationResult):
+    """Validate meta_learning.pattern_identified and comparison_to_past for SVG ROW 5.
+
+    Pattern Identified: Word-wrapped at 80 chars, first line dark bold, up to 3 lines
+    Historical Comparison: Word-wrapped at 80 chars, first line dark bold, up to 4 lines
+    """
+    meta_learning = doc.get("meta_learning", {})
+
+    # Validate pattern_identified (SVG ROW 5 left box)
+    pattern = meta_learning.get("pattern_identified", "")
+    pattern_str = str(pattern).strip() if pattern else ""
+
+    if not pattern_str or len(pattern_str) < 20:
+        result.add_warning(
+            "meta_learning.pattern_identified should be at least 20 chars for SVG display. "
+            "Describe the recurring pattern or behavior identified."
+        )
+
+    # Validate comparison_to_past (SVG ROW 5 right box)
+    comparison = meta_learning.get("comparison_to_past", "")
+    comparison_str = str(comparison).strip() if comparison else ""
+
+    if not comparison_str or len(comparison_str) < 30:
+        result.add_warning(
+            "meta_learning.comparison_to_past should be at least 30 chars for SVG display. "
+            "Describe how this compares to similar past analyses."
+        )
+
+
 def validate_document(file_path: Path) -> ValidationResult:
     """Main validation function."""
     result = ValidationResult(str(file_path))
@@ -645,6 +674,9 @@ def validate_document(file_path: Path) -> ValidationResult:
 
     # v2.7 data source effectiveness (for SVG visualization)
     validate_data_source_effectiveness(doc, result)
+
+    # v2.7 meta-learning patterns (for SVG ROW 5 visualization)
+    validate_meta_learning_patterns(doc, result)
 
     return result
 
