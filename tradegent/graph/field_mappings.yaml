@@ -385,6 +385,80 @@ learning:
     - "_links"
     - "_indexing"
 
+post-earnings-review:
+  extract_fields:
+    # Framework Lesson (key learning output)
+    - "framework_lesson.primary"
+    - "framework_lesson.rule_to_add.rule"
+    - "framework_lesson.rule_to_add.trigger_condition"
+    - "framework_lesson.pattern_identified"
+    - "framework_lesson.pattern_description"
+    # Thesis Accuracy
+    - "thesis_accuracy.rationale"
+    - "thesis_accuracy.what_we_got_right[]"
+    - "thesis_accuracy.what_we_got_wrong[]"
+    # Data Source Effectiveness
+    - "data_source_effectiveness[].source"
+    - "data_source_effectiveness[].predictive_accuracy"
+    - "data_source_effectiveness[].adjustment"
+    - "effectiveness_summary"
+    # Bias Check
+    - "bias_check.bias_summary"
+    - "bias_check.recency_bias.notes"
+    - "bias_check.confirmation_bias.notes"
+    - "bias_check.overconfidence.notes"
+    # Customer Demand Validation
+    - "customer_demand_validation.assessment"
+    - "customer_demand_validation.signals_evaluated[].signal"
+    - "customer_demand_validation.signals_evaluated[].actual_outcome"
+    # Scenario Outcome
+    - "scenario_outcome.outcome_reasoning"
+    # Implied vs Actual
+    - "implied_vs_actual.assessment"
+    # Summary
+    - "summary.one_liner"
+    - "summary.narrative"
+  skip_fields:
+    - "_meta"
+    - "_graph"
+    - "_links"
+    - "_indexing"
+    - "ticker"
+    - "prior_analysis"
+    - "actual_results"
+    - "confidence_calibration"
+    - "ticker_profile_update"
+
+report-validation:
+  extract_fields:
+    # Core validation
+    - "validation_result"
+    - "validation_reasoning"
+    # Thesis Comparison
+    - "thesis_comparison[].aspect"
+    - "thesis_comparison[].change_impact"
+    # Falsification Check
+    - "falsification_check.falsification_summary"
+    - "falsification_check.prior_falsification_criteria[].condition"
+    - "falsification_check.prior_falsification_criteria[].triggered"
+    # Invalidation Details (if applicable)
+    - "invalidation_details.reason"
+    - "invalidation_details.learning"
+    - "invalidation_details.thesis_change.reversal_reason"
+    # Framework Lesson
+    - "framework_lesson"
+    # Lineage Summary
+    - "lineage_summary.chain[].status"
+  skip_fields:
+    - "_meta"
+    - "_graph"
+    - "_links"
+    - "_indexing"
+    - "ticker"
+    - "prior_analysis"
+    - "new_analysis"
+    - "watchlist_update"
+
 ticker-profile:
   extract_fields:
     # Company info

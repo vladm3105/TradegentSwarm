@@ -23,8 +23,13 @@ Usage:
     status = run_quick_preflight()
 """
 
+import json
 import logging
 import os
+import socket
+import subprocess
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -220,14 +225,12 @@ def check_neo4j() -> ServiceStatus:
         )
 
 
-def check_ib_mcp() -> ServiceStatus:
-    """Check IB MCP server by testing TCP connection to IB Gateway port."""
+def check_ib_gateway_port() -> ServiceStatus:
+    """Check IB Gateway by testing TCP connection to its API port."""
     mode = get_trading_mode()
     mode_label = mode.mode.value.upper()
 
     try:
-        import socket
-
         # Test direct TCP connection to IB Gateway port
         # This verifies the gateway is accessible on the expected port
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -237,29 +240,198 @@ def check_ib_mcp() -> ServiceStatus:
 
         if result == 0:
             return ServiceStatus(
-                name="ib_mcp",
+                name="ib_gateway_port",
                 status="healthy",
                 message=f"{mode_label}: IB Gateway port {mode.port} accessible",
                 details={"mode": mode.mode.value, "port": mode.port, "container": mode.container_name}
             )
         else:
             return ServiceStatus(
-                name="ib_mcp",
+                name="ib_gateway_port",
                 status="unhealthy",
                 message=f"{mode_label}: IB Gateway port {mode.port} not responding",
                 details={"mode": mode.mode.value, "port": mode.port, "error_code": result}
             )
     except socket.timeout:
         return ServiceStatus(
-            name="ib_mcp",
+            name="ib_gateway_port",
             status="unhealthy",
             message=f"{mode_label}: Connection timeout to port {mode.port}"
         )
     except Exception as e:
         return ServiceStatus(
-            name="ib_mcp",
+            name="ib_gateway_port",
             status="unhealthy",
             message=f"{mode_label}: {str(e)}"
+        )
+
+
+def check_ib_mcp_server() -> ServiceStatus:
+    """Check IB MCP server by verifying port 8100 is responding.
+
+    The IB MCP server uses streamable-http transport and only handles
+    /mcp endpoint for MCP protocol. We verify it's running by checking
+    if the port responds to HTTP requests.
+    """
+    try:
+        # Test TCP connection to IB MCP server port
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(5.0)
+        result = sock.connect_ex(('localhost', 8100))
+        sock.close()
+
+        if result == 0:
+            # Port is open, try HTTP request to verify HTTP server is running
+            try:
+                url = "http://localhost:8100/mcp"
+                req = urllib.request.Request(url, method='GET')
+
+                with urllib.request.urlopen(req, timeout=5) as response:
+                    # Any response means server is running
+                    return ServiceStatus(
+                        name="ib_mcp",
+                        status="healthy",
+                        message="Server responding on port 8100",
+                        details={"port": 8100, "url": "http://localhost:8100/mcp"}
+                    )
+            except urllib.error.HTTPError as e:
+                # Any HTTP response means server is running
+                # 307=redirect, 405=method not allowed, 406=not acceptable are all expected
+                if e.code in (307, 405, 400, 406):
+                    return ServiceStatus(
+                        name="ib_mcp",
+                        status="healthy",
+                        message="Server responding on port 8100",
+                        details={"port": 8100, "url": "http://localhost:8100/mcp", "http_code": e.code}
+                    )
+                elif e.code >= 500:
+                    return ServiceStatus(
+                        name="ib_mcp",
+                        status="degraded",
+                        message=f"Server error: HTTP {e.code}",
+                        details={"port": 8100, "http_code": e.code}
+                    )
+                else:
+                    # 4xx errors other than expected ones - still means server is running
+                    return ServiceStatus(
+                        name="ib_mcp",
+                        status="healthy",
+                        message="Server responding on port 8100",
+                        details={"port": 8100, "url": "http://localhost:8100/mcp", "http_code": e.code}
+                    )
+            except Exception:
+                # TCP is open but HTTP didn't work - still consider it healthy
+                return ServiceStatus(
+                    name="ib_mcp",
+                    status="healthy",
+                    message="Server listening on port 8100",
+                    details={"port": 8100, "url": "http://localhost:8100/mcp"}
+                )
+        else:
+            return ServiceStatus(
+                name="ib_mcp",
+                status="unhealthy",
+                message="IB MCP server not running on port 8100",
+                details={"port": 8100, "error_code": result}
+            )
+    except socket.timeout:
+        return ServiceStatus(
+            name="ib_mcp",
+            status="unhealthy",
+            message="Connection timeout to port 8100"
+        )
+    except Exception as e:
+        return ServiceStatus(
+            name="ib_mcp",
+            status="unhealthy",
+            message=f"IB MCP check failed: {str(e)}",
+            details={"port": 8100}
+        )
+
+
+def check_postgres_container() -> ServiceStatus:
+    """Check PostgreSQL Docker container status (tradegent-postgres-1)."""
+    container_name = "tradegent-postgres-1"
+
+    try:
+        result = subprocess.run(
+            ["docker", "inspect", "--format", "{{.State.Status}}", container_name],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+
+        if result.returncode == 0:
+            status = result.stdout.strip()
+            if status == "running":
+                return ServiceStatus(
+                    name="postgres_container",
+                    status="healthy",
+                    message=f"Container running ({container_name})",
+                    details={"container": container_name, "state": status}
+                )
+            else:
+                return ServiceStatus(
+                    name="postgres_container",
+                    status="unhealthy",
+                    message=f"Container state: {status} ({container_name})",
+                    details={"container": container_name, "state": status}
+                )
+        else:
+            return ServiceStatus(
+                name="postgres_container",
+                status="unhealthy",
+                message=f"Container not found ({container_name})",
+                details={"container": container_name}
+            )
+    except Exception as e:
+        return ServiceStatus(
+            name="postgres_container",
+            status="unknown",
+            message=str(e)
+        )
+
+
+def check_neo4j_container() -> ServiceStatus:
+    """Check Neo4j Docker container status (tradegent-neo4j-1)."""
+    container_name = "tradegent-neo4j-1"
+
+    try:
+        result = subprocess.run(
+            ["docker", "inspect", "--format", "{{.State.Status}}", container_name],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+
+        if result.returncode == 0:
+            status = result.stdout.strip()
+            if status == "running":
+                return ServiceStatus(
+                    name="neo4j_container",
+                    status="healthy",
+                    message=f"Container running ({container_name})",
+                    details={"container": container_name, "state": status}
+                )
+            else:
+                return ServiceStatus(
+                    name="neo4j_container",
+                    status="unhealthy",
+                    message=f"Container state: {status} ({container_name})",
+                    details={"container": container_name, "state": status}
+                )
+        else:
+            return ServiceStatus(
+                name="neo4j_container",
+                status="unhealthy",
+                message=f"Container not found ({container_name})",
+                details={"container": container_name}
+            )
+    except Exception as e:
+        return ServiceStatus(
+            name="neo4j_container",
+            status="unknown",
+            message=str(e)
         )
 
 
@@ -270,7 +442,6 @@ def check_ib_gateway_docker() -> ServiceStatus:
     mode_label = mode.mode.value.upper()
 
     try:
-        import subprocess
         result = subprocess.run(
             ["docker", "inspect", "--format", "{{.State.Health.Status}}", container_name],
             capture_output=True,
@@ -372,10 +543,11 @@ def run_full_preflight() -> PreflightResult:
     Run full preflight checks - use at start of session.
 
     Checks:
-    - PostgreSQL/pgvector (RAG)
-    - Neo4j (Graph)
-    - IB Gateway Docker container
-    - IB MCP server
+    - Docker containers (PostgreSQL, Neo4j, IB Gateway)
+    - PostgreSQL/pgvector (RAG functionality)
+    - Neo4j (Graph functionality)
+    - IB MCP server (HTTP health on port 8100)
+    - IB Gateway port (TCP connection)
     - Market status
     """
     result = PreflightResult(
@@ -383,19 +555,34 @@ def run_full_preflight() -> PreflightResult:
         check_type="full"
     )
 
-    # Check all services
+    # Check Docker containers
+    result.services["postgres_container"] = check_postgres_container()
+    result.services["neo4j_container"] = check_neo4j_container()
+    result.services["ib_gateway"] = check_ib_gateway_docker()
+
+    # Check application-level services
     result.services["rag"] = check_postgres()
     result.services["graph"] = check_neo4j()
-    result.services["ib_gateway"] = check_ib_gateway_docker()
-    result.services["ib_mcp"] = check_ib_mcp()
+    result.services["ib_mcp"] = check_ib_mcp_server()
+    result.services["ib_gateway_port"] = check_ib_gateway_port()
     result.services["market"] = check_market_status()
 
-    # Generate warnings
-    if not result.services["ib_gateway"].ok:
-        result.warnings.append("IB Gateway unhealthy - live market data unavailable")
+    # Generate warnings for Docker containers
+    if not result.services["postgres_container"].ok:
+        result.warnings.append("PostgreSQL container not running (tradegent-postgres-1)")
 
+    if not result.services["neo4j_container"].ok:
+        result.warnings.append("Neo4j container not running (tradegent-neo4j-1)")
+
+    if not result.services["ib_gateway"].ok:
+        result.warnings.append("IB Gateway container unhealthy - live market data unavailable")
+
+    # Generate warnings for services
     if not result.services["ib_mcp"].ok:
-        result.warnings.append("IB MCP not connected - cannot fetch real-time quotes")
+        result.warnings.append("IB MCP server not available on port 8100 - cannot fetch real-time quotes")
+
+    if not result.services["ib_gateway_port"].ok:
+        result.warnings.append("IB Gateway port not responding - IB connection may be down")
 
     market = result.services["market"]
     if market.status == "degraded":
@@ -417,7 +604,7 @@ def run_quick_preflight() -> PreflightResult:
 
     Checks:
     - PostgreSQL/pgvector (RAG) - essential
-    - IB MCP server - for market data
+    - IB MCP server (HTTP health) - for market data
     - Market status - for context
     """
     result = PreflightResult(
@@ -427,12 +614,12 @@ def run_quick_preflight() -> PreflightResult:
 
     # Essential checks only
     result.services["rag"] = check_postgres()
-    result.services["ib_mcp"] = check_ib_mcp()
+    result.services["ib_mcp"] = check_ib_mcp_server()
     result.services["market"] = check_market_status()
 
     # Generate warnings
     if not result.services["ib_mcp"].ok:
-        result.warnings.append("IB MCP unavailable - using cached/stale data")
+        result.warnings.append("IB MCP server unavailable (port 8100) - using cached/stale data")
 
     market = result.services["market"]
     if market.status == "degraded":

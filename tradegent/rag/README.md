@@ -68,6 +68,25 @@ Retrieval-Augmented Generation (RAG) system for trading knowledge. Embeds docume
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
+## Prerequisites
+
+```bash
+# 1. Start PostgreSQL with pgvector
+cd tradegent && docker compose up -d postgres
+
+# 2. Verify container is running
+docker ps --filter "name=tradegent-postgres-1"
+
+# 3. Set environment variables
+export PG_HOST=localhost
+export PG_PORT=5433
+export PG_USER=tradegent
+export PG_PASS=<your-password>
+export PG_DB=tradegent
+export EMBED_PROVIDER=openai
+export OPENAI_API_KEY=<your-key>
+```
+
 ## Quick Start
 
 ```python
@@ -180,12 +199,18 @@ semantic_chunking:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DATABASE_URL` | `postgresql://...` | PostgreSQL connection |
+| `PG_HOST` | `localhost` | PostgreSQL host |
+| `PG_PORT` | `5433` | PostgreSQL port |
+| `PG_USER` | `tradegent` | PostgreSQL user |
+| `PG_PASS` | (required) | PostgreSQL password |
+| `PG_DB` | `tradegent` | PostgreSQL database |
 | `RAG_SCHEMA` | `nexus` | Database schema name |
 | `EMBED_PROVIDER` | `openai` | Embedding provider |
 | `OPENAI_API_KEY` | (none) | API key for embeddings |
 | `CHUNK_MAX_TOKENS` | `768` | Max tokens per chunk |
 | `CHUNK_OVERLAP` | `150` | Overlap tokens |
+
+**Docker container:** `tradegent-postgres-1` (port 5433)
 
 ### Embedding Provider
 
@@ -328,6 +353,49 @@ results = search_with_expansion(
 )
 # Searches: "AI chip demand", "artificial intelligence semiconductor requirements", ...
 ```
+
+### Learning Context Functions [v2.0]
+
+Functions for retrieving learning content from post-earnings reviews, post-trade reviews, and framework lessons.
+
+```python
+from rag.search import (
+    get_learnings_for_topic,
+    get_framework_lessons,
+    get_earnings_learnings,
+)
+
+# Get learnings about a specific topic across all learning doc types
+results = get_learnings_for_topic(
+    topic="priced for perfection",
+    ticker="NVDA",
+    top_k=5,
+)
+# Searches across: learning, post-earnings-review, post-trade-review, report-validation
+
+# Get framework lessons from "Framework Lesson" sections
+results = get_framework_lessons(
+    ticker="NVDA",
+    section_filter="Framework Lesson",
+    top_k=5,
+)
+# Returns actionable rules from post-earnings and post-trade reviews
+
+# Get earnings-specific learnings for a ticker
+results = get_earnings_learnings(
+    ticker="NVDA",
+    top_k=3,
+)
+# Searches: post-earnings-review + earnings analysis patterns
+```
+
+**Learning Document Types:**
+| Doc Type | Content | Key Sections |
+|----------|---------|--------------|
+| `post-earnings-review` | Forecast vs actual, thesis grades | Framework Lesson, Thesis Accuracy |
+| `post-trade-review` | Trade outcome, bias analysis | Lessons, Bias Analysis |
+| `report-validation` | CONFIRM/SUPERSEDE/INVALIDATE | Validation Result, Reasoning |
+| `learning` | General trading rules | Primary Rule, Application |
 
 ## Query Classification [v2.0]
 
@@ -571,7 +639,7 @@ print(f'Searches: {summary.total_searches}, Avg latency: {summary.avg_latency_ms
 - Returns None if unavailable
 
 **"Empty search results"**
-- Verify embeddings stored: `SELECT COUNT(*) FROM nexus.rag_chunks`
+- Verify embeddings stored: `docker exec tradegent-postgres-1 psql -U tradegent -d tradegent -c "SELECT COUNT(*) FROM nexus.rag_chunks"`
 - Lower `min_similarity` threshold
 - Try hybrid search with BM25
 

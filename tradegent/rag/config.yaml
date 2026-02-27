@@ -2,7 +2,7 @@ rag_version: "2.0.0"
 embed_dims: "${EMBED_DIMENSIONS:-1536}"
 
 database:
-  url: "${DATABASE_URL:-postgresql://lightrag:lightrag@localhost:5433/lightrag}"
+  url: "${DATABASE_URL:-postgresql://tradegent:tradegent@localhost:5433/tradegent}"
   schema: "${RAG_SCHEMA:-nexus}"
 
 # Feature flags for new RAG capabilities

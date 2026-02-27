@@ -443,7 +443,7 @@ Integration tests (marked `@pytest.mark.integration`) require:
 
 ```bash
 # Start infrastructure
-docker compose up -d nexus-postgres nexus-neo4j
+docker compose up -d postgres neo4j
 
 # Wait for services
 sleep 10

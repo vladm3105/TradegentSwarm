@@ -401,7 +401,41 @@ LIMIT 10;
 
 ## Health Checks
 
-### Service Health
+### Preflight Check (Recommended)
+
+The preflight check provides comprehensive service verification in one command:
+
+```bash
+# Full check - all services
+cd tradegent && python preflight.py --full
+
+# Quick check - essential services only
+cd tradegent && python preflight.py
+```
+
+**Services Checked (Full):**
+
+| Service | Check Type | Description |
+|---------|------------|-------------|
+| `postgres_container` | Docker | tradegent-postgres-1 container |
+| `neo4j_container` | Docker | tradegent-neo4j-1 container |
+| `ib_gateway` | Docker | paper-ib-gateway health |
+| `rag` | Python | pgvector connectivity (doc/chunk counts) |
+| `graph` | Python | Neo4j connectivity (node/edge counts) |
+| `ib_mcp` | HTTP | IB MCP server on port 8100 |
+| `ib_gateway_port` | TCP | IB Gateway API port |
+| `market` | Time | Market hours status |
+
+**Programmatic Usage:**
+```python
+from tradegent.preflight import run_full_preflight, run_quick_preflight
+
+status = run_full_preflight()
+if not status.can_analyze:
+    print("Cannot proceed:", status.errors)
+```
+
+### Service Health (Manual)
 
 ```bash
 # Check all services
@@ -422,7 +456,7 @@ print(f'Embedding: {\"OK\" if client.health_check() else \"FAIL\"}')
 # PostgreSQL
 try:
     import os
-    conn_str = os.getenv('DATABASE_URL', 'postgresql://lightrag:lightrag@localhost:5433/lightrag')
+    conn_str = os.getenv('DATABASE_URL', 'postgresql://tradegent:tradegent@localhost:5433/tradegent')
     with psycopg.connect(conn_str) as conn:
         with conn.cursor() as cur:
             cur.execute('SELECT 1')

@@ -89,19 +89,19 @@ services:
   # ─── PostgreSQL (pgvector for RAG embeddings) ──────────────
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: nexus-postgres
+    container_name: tradegent-postgres-1
     restart: unless-stopped
     ports:
       - "5433:5432"
     environment:
-      POSTGRES_USER: ${PG_USER:-lightrag}
+      POSTGRES_USER: ${PG_USER:-tradegent}
       POSTGRES_PASSWORD: ${PG_PASS}
-      POSTGRES_DB: ${PG_DB:-lightrag}
+      POSTGRES_DB: ${PG_DB:-tradegent}
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ./db/init.sql:/docker-entrypoint-initdb.d/02-nexus-schema.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-lightrag}"]
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-tradegent}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -111,7 +111,7 @@ services:
   # ─── Neo4j (Knowledge Graph) ────────────────────────────────
   neo4j:
     image: neo4j:5-community
-    container_name: nexus-neo4j
+    container_name: tradegent-neo4j-1
     restart: unless-stopped
     ports:
       - "7475:7474"   # HTTP

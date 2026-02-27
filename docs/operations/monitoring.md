@@ -30,6 +30,31 @@ Monitor TradegentSwarm health, performance, and trading activity.
 
 ## Health Checks
 
+### Preflight Check (Recommended)
+
+The preflight check verifies all services in one command:
+
+```bash
+# Full check (all services)
+cd tradegent && python preflight.py --full
+
+# Quick check (essential services only)
+cd tradegent && python preflight.py
+```
+
+**Full Check Services:**
+
+| Service | Check Type | Description |
+|---------|------------|-------------|
+| `postgres_container` | Docker | tradegent-postgres-1 container |
+| `neo4j_container` | Docker | tradegent-neo4j-1 container |
+| `ib_gateway` | Docker | paper-ib-gateway container health |
+| `rag` | Python | pgvector connectivity (doc/chunk counts) |
+| `graph` | Python | Neo4j connectivity (node/edge counts) |
+| `ib_mcp` | HTTP | IB MCP server on port 8100 |
+| `ib_gateway_port` | TCP | IB Gateway API port |
+| `market` | Time | Market hours status |
+
 ### System Status
 
 ```bash
@@ -38,7 +63,7 @@ python orchestrator.py status
 
 Output:
 ```
-=== Nexus Light Status ===
+=== Tradegent Status ===
 Database: Connected
 Service: running
 Today: 5 analyses, 2 executions
@@ -62,7 +87,7 @@ docker compose ps
 
 ```bash
 # PostgreSQL
-psql -h localhost -p 5433 -U lightrag -c "SELECT 1"
+psql -h localhost -p 5433 -U tradegent -d tradegent -c "SELECT 1"
 
 # Neo4j
 curl -s http://localhost:7474/db/neo4j/cluster/available
@@ -71,7 +96,9 @@ curl -s http://localhost:7474/db/neo4j/cluster/available
 ### IB MCP Health
 
 ```bash
-curl -s http://localhost:8100/health | jq
+# Check if IB MCP server is responding on port 8100
+curl -s http://localhost:8100/mcp -X GET 2>&1 | head -1
+# Any HTTP response (including 406 or 307) means server is running
 ```
 
 ---
@@ -219,12 +246,12 @@ if ! systemctl is-active --quiet tradegent; then
 fi
 
 # Check database
-if ! psql -h localhost -p 5433 -U lightrag -c "SELECT 1" > /dev/null 2>&1; then
+if ! psql -h localhost -p 5433 -U tradegent -d tradegent -c "SELECT 1" > /dev/null 2>&1; then
   echo "ALERT: Database connection failed"
 fi
 
 # Check heartbeat
-LAST_HEARTBEAT=$(psql -h localhost -p 5433 -U lightrag -t -c \
+LAST_HEARTBEAT=$(psql -h localhost -p 5433 -U tradegent -d tradegent -t -c \
   "SELECT EXTRACT(EPOCH FROM NOW() - last_heartbeat) FROM nexus.service_status WHERE id = 1")
 
 if [ "${LAST_HEARTBEAT%.*}" -gt 300 ]; then
@@ -334,8 +361,8 @@ df -h /opt/data
 docker system df
 
 # Database sizes
-psql -h localhost -p 5433 -U lightrag -c "
-SELECT pg_size_pretty(pg_database_size('lightrag')) as db_size;
+psql -h localhost -p 5433 -U tradegent -d tradegent -c "
+SELECT pg_size_pretty(pg_database_size('tradegent')) as db_size;
 "
 ```
 

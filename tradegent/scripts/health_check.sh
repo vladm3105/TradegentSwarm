@@ -17,7 +17,7 @@ ERRORS=0
 echo "--- Docker Services ---"
 cd "$TRADER_DIR"
 
-for service in nexus-postgres nexus-neo4j nexus-ib-gateway; do
+for service in tradegent-postgres-1 tradegent-neo4j-1 paper-ib-gateway; do
     if docker ps --format '{{.Names}}' | grep -q "$service"; then
         HEALTH=$(docker inspect --format='{{.State.Health.Status}}' "$service" 2>/dev/null || echo "running")
         echo "✅ $service: $HEALTH"
@@ -30,11 +30,11 @@ echo ""
 
 # PostgreSQL Connection
 echo "--- PostgreSQL ---"
-if docker exec nexus-postgres pg_isready -U lightrag > /dev/null 2>&1; then
+if docker exec tradegent-postgres-1 pg_isready -U tradegent > /dev/null 2>&1; then
     echo "✅ Connection: OK"
 
     # Check schemas
-    SCHEMA_COUNT=$(docker exec nexus-postgres psql -U lightrag -d lightrag -t -c \
+    SCHEMA_COUNT=$(docker exec tradegent-postgres-1 psql -U tradegent -d tradegent -t -c \
         "SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name IN ('rag', 'graph');" 2>/dev/null | tr -d ' ')
     if [ "$SCHEMA_COUNT" = "2" ]; then
         echo "✅ Schemas: rag, graph"
@@ -43,9 +43,9 @@ if docker exec nexus-postgres pg_isready -U lightrag > /dev/null 2>&1; then
     fi
 
     # Check table counts
-    DOC_COUNT=$(docker exec nexus-postgres psql -U lightrag -d lightrag -t -c \
+    DOC_COUNT=$(docker exec tradegent-postgres-1 psql -U tradegent -d tradegent -t -c \
         "SELECT COUNT(*) FROM rag.documents;" 2>/dev/null | tr -d ' ' || echo "0")
-    CHUNK_COUNT=$(docker exec nexus-postgres psql -U lightrag -d lightrag -t -c \
+    CHUNK_COUNT=$(docker exec tradegent-postgres-1 psql -U tradegent -d tradegent -t -c \
         "SELECT COUNT(*) FROM rag.chunks;" 2>/dev/null | tr -d ' ' || echo "0")
     echo "   Documents: $DOC_COUNT"
     echo "   Chunks: $CHUNK_COUNT"
@@ -68,9 +68,9 @@ if nc -z localhost 7688 2>/dev/null; then
     echo "✅ Bolt (7688): OK"
 
     # Check node counts (requires auth)
-    NODE_COUNT=$(docker exec nexus-neo4j cypher-shell -u neo4j -p "${NEO4J_PASS:-neo4j}" \
+    NODE_COUNT=$(docker exec tradegent-neo4j-1 cypher-shell -u neo4j -p "${NEO4J_PASS:-neo4j}" \
         "MATCH (n) RETURN COUNT(n) AS count" 2>/dev/null | tail -1 | tr -d ' ' || echo "?")
-    REL_COUNT=$(docker exec nexus-neo4j cypher-shell -u neo4j -p "${NEO4J_PASS:-neo4j}" \
+    REL_COUNT=$(docker exec tradegent-neo4j-1 cypher-shell -u neo4j -p "${NEO4J_PASS:-neo4j}" \
         "MATCH ()-[r]->() RETURN COUNT(r) AS count" 2>/dev/null | tail -1 | tr -d ' ' || echo "?")
     echo "   Nodes: $NODE_COUNT"
     echo "   Relationships: $REL_COUNT"

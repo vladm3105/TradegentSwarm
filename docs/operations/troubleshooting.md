@@ -6,10 +6,30 @@ Common issues and solutions for TradegentSwarm.
 
 ## Quick Diagnostics
 
+**Recommended: Use preflight check** for comprehensive service verification:
+
 ```bash
-# Check all services
+cd tradegent && python preflight.py --full
+```
+
+This checks all services in one command:
+- Docker containers (PostgreSQL, Neo4j, IB Gateway)
+- RAG functionality (pgvector)
+- Graph functionality (Neo4j)
+- IB MCP server (port 8100)
+- IB Gateway port (4002/4001)
+- Market status
+
+**Alternative: Manual checks**
+
+```bash
+# System status
 python orchestrator.py status
+
+# Docker services
 docker compose ps
+
+# Systemd services
 sudo systemctl status tradegent tradegent-ib-mcp
 ```
 
@@ -482,7 +502,7 @@ python scripts/index_knowledge_base.py
 
 ```bash
 # Restore from backup
-psql -h localhost -p 5433 -U lightrag -d lightrag < backup.sql
+psql -h localhost -p 5433 -U tradegent -d tradegent < backup.sql
 ```
 
 ---

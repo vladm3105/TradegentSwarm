@@ -84,7 +84,7 @@ tradegent/
 ├── # Utilities
 ├── trading_calendar.py     Market hours detection, trading day checks
 ├── options_utils.py        OCC symbol parsing, ITM detection
-├── preflight.py            Pre-analysis system health checks
+├── preflight.py            Pre-analysis system health checks (all services + MCP)
 ├── utils.py                Shared utility functions
 │
 ├── db/
@@ -151,16 +151,19 @@ cp .env.template .env
 # 3. Run setup (starts Docker, initializes DB, verifies everything)
 bash setup.sh
 
-# 4. Verify
+# 4. Run preflight check (verifies all services)
+python3 preflight.py --full
+
+# 5. Verify system status
 python3 tradegent.py status
 python3 tradegent.py stock list
 python3 tradegent.py settings list
 
-# 5. Run a single analysis (dry run mode is ON by default)
+# 6. Run a single analysis (dry run mode is ON by default)
 python3 tradegent.py settings set dry_run_mode false
 python3 tradegent.py analyze NFLX --type earnings
 
-# 6. Start the service
+# 7. Start the service
 python3 service.py
 ```
 
@@ -181,9 +184,9 @@ ANTHROPIC_API_KEY=sk-ant-...    # API key from console.anthropic.com
                                 # Billed per-token when used by Claude Code
 
 # PostgreSQL (shared instance)
-PG_USER=lightrag
+PG_USER=tradegent
 PG_PASS=changeme_pg_password    # Change this!
-PG_DB=lightrag
+PG_DB=tradegent
 PG_HOST=localhost               # Host connects to Docker via localhost
 PG_PORT=5433                    # Remapped from 5432
 
@@ -857,7 +860,7 @@ Pre-configured earnings analysis schedules:
 
 ```bash
 # Setup earnings schedules for all stocks with earnings dates
-psql -d lightrag -f scripts/setup_earnings_schedules.sql
+psql -d tradegent -f scripts/setup_earnings_schedules.sql
 ```
 
 ### Controlling Automation
@@ -1339,29 +1342,48 @@ python scripts/index_knowledge_base.py --force
 
 ## MCP Server Configuration
 
-Claude Code's MCP servers are configured in `~/.claude/` on the host. The orchestrator relies on these being set up correctly.
+Claude Code's MCP servers are configured in `~/.claude/mcp.json` on the host. The orchestrator relies on these being set up correctly.
 
 Required MCP servers:
-- **ib-gateway** — connects to localhost:4002 for market data and order execution
-- **trading-rag** — runs `tradegent/rag/mcp_server.py` for semantic search
-- **trading-graph** — runs `tradegent/graph/mcp_server.py` for knowledge graph queries
+- **ib-mcp** — connects to IB MCP server at `http://localhost:8100/mcp` for market data and order execution
+- **trading-rag** — runs `tradegent.rag.mcp_server` module for semantic search
+- **trading-graph** — runs `tradegent.graph.mcp_server` module for knowledge graph queries
 
-Configure by editing `~/.claude/mcp.json` or using `claude mcp add`. Example configuration:
+Configure by editing `~/.claude/mcp.json`. Example configuration:
 
 ```json
 {
   "mcpServers": {
+    "ib-mcp": {
+      "url": "http://localhost:8100/mcp"
+    },
     "trading-rag": {
       "command": "python",
-      "args": ["/opt/data/tradegent_swarm/tradegent/rag/mcp_server.py"]
+      "args": ["-m", "tradegent.rag.mcp_server"],
+      "cwd": "/opt/data/tradegent_swarm",
+      "env": {
+        "PG_HOST": "localhost",
+        "PG_PORT": "5433",
+        "PG_USER": "tradegent",
+        "PG_DB": "tradegent",
+        "EMBED_PROVIDER": "openai"
+      }
     },
     "trading-graph": {
       "command": "python",
-      "args": ["/opt/data/tradegent_swarm/tradegent/graph/mcp_server.py"]
+      "args": ["-m", "tradegent.graph.mcp_server"],
+      "cwd": "/opt/data/tradegent_swarm",
+      "env": {
+        "NEO4J_URI": "bolt://localhost:7688",
+        "NEO4J_USER": "neo4j",
+        "EXTRACT_PROVIDER": "openai"
+      }
     }
   }
 }
 ```
+
+> **Note**: Sensitive credentials (`OPENAI_API_KEY`, `PG_PASS`, `NEO4J_PASS`) should be set in your shell environment rather than in the config file.
 
 ---
 
@@ -1516,9 +1538,9 @@ After setup, verify the RAG and Graph modules are working:
 cd tradegent
 
 # Set environment variables (or source .env)
-export PG_USER=lightrag
+export PG_USER=tradegent
 export PG_PASS='<your-password>'
-export PG_DB=lightrag
+export PG_DB=tradegent
 export PG_HOST=localhost
 export PG_PORT=5433
 export EMBED_PROVIDER=openai

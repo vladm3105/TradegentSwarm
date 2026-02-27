@@ -50,7 +50,7 @@ sleep 10
 
 # Verify postgres
 for i in $(seq 1 30); do
-    if docker exec nexus-postgres pg_isready -U lightrag >/dev/null 2>&1; then
+    if docker exec tradegent-postgres-1 pg_isready -U tradegent >/dev/null 2>&1; then
         echo "✅ PostgreSQL ready"; break
     fi
     [ $i -eq 30 ] && { echo "❌ PostgreSQL timeout"; exit 1; }

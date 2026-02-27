@@ -19,17 +19,17 @@ mkdir -p "$BACKUP_ROOT"/{neo4j,postgres,knowledge}
 # Neo4j Backup
 echo ""
 echo "--- Neo4j Backup ---"
-if docker ps --format '{{.Names}}' | grep -q nexus-neo4j; then
+if docker ps --format '{{.Names}}' | grep -q tradegent-neo4j-1; then
     # Try dump approach first
-    if docker exec nexus-neo4j neo4j-admin database dump neo4j --to-path=/data/backup --overwrite-destination 2>/dev/null; then
-        docker cp nexus-neo4j:/data/backup/neo4j.dump "$BACKUP_ROOT/neo4j/neo4j_$DATE.dump"
+    if docker exec tradegent-neo4j-1 neo4j-admin database dump neo4j --to-path=/data/backup --overwrite-destination 2>/dev/null; then
+        docker cp tradegent-neo4j-1:/data/backup/neo4j.dump "$BACKUP_ROOT/neo4j/neo4j_$DATE.dump"
         echo "Neo4j dump: $BACKUP_ROOT/neo4j/neo4j_$DATE.dump"
     else
         # Fallback to Cypher export
         echo "Using Cypher export (dump unavailable in community edition)"
-        docker exec nexus-neo4j cypher-shell -u neo4j -p "${NEO4J_PASS:-neo4j}" \
+        docker exec tradegent-neo4j-1 cypher-shell -u neo4j -p "${NEO4J_PASS:-neo4j}" \
             "CALL apoc.export.cypher.all('/data/backup/export.cypher', {format: 'plain'})" 2>/dev/null || true
-        if docker cp nexus-neo4j:/data/backup/export.cypher "$BACKUP_ROOT/neo4j/export_$DATE.cypher" 2>/dev/null; then
+        if docker cp tradegent-neo4j-1:/data/backup/export.cypher "$BACKUP_ROOT/neo4j/export_$DATE.cypher" 2>/dev/null; then
             echo "Neo4j export: $BACKUP_ROOT/neo4j/export_$DATE.cypher"
         else
             echo "Neo4j backup: Skipped (export unavailable)"
@@ -42,15 +42,15 @@ fi
 # PostgreSQL Backup
 echo ""
 echo "--- PostgreSQL Backup ---"
-if docker ps --format '{{.Names}}' | grep -q nexus-postgres; then
-    docker exec nexus-postgres pg_dump -U lightrag -Fc lightrag \
-        > "$BACKUP_ROOT/postgres/lightrag_$DATE.dump"
-    echo "PostgreSQL dump: $BACKUP_ROOT/postgres/lightrag_$DATE.dump"
+if docker ps --format '{{.Names}}' | grep -q tradegent-postgres-1; then
+    docker exec tradegent-postgres-1 pg_dump -U tradegent -Fc tradegent \
+        > "$BACKUP_ROOT/postgres/tradegent_$DATE.dump"
+    echo "PostgreSQL dump: $BACKUP_ROOT/postgres/tradegent_$DATE.dump"
 
     # Also create plain SQL for readability
-    docker exec nexus-postgres pg_dump -U lightrag lightrag \
-        > "$BACKUP_ROOT/postgres/lightrag_$DATE.sql"
-    echo "PostgreSQL SQL: $BACKUP_ROOT/postgres/lightrag_$DATE.sql"
+    docker exec tradegent-postgres-1 pg_dump -U tradegent -d tradegent \
+        > "$BACKUP_ROOT/postgres/tradegent_$DATE.sql"
+    echo "PostgreSQL SQL: $BACKUP_ROOT/postgres/tradegent_$DATE.sql"
 else
     echo "PostgreSQL: Not running, skipped"
 fi

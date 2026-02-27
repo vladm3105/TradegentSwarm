@@ -4,7 +4,7 @@
 -- Adds full-text search capability for hybrid BM25 + vector search
 -- using Reciprocal Rank Fusion (RRF) scoring.
 --
--- Run: psql -U lightrag -d lightrag -f v1_1_0_hybrid_search.sql
+-- Run: psql -U tradegent -d tradegent -f v1_1_0_hybrid_search.sql
 -- ============================================================
 
 -- Add full-text search column (generated from content)

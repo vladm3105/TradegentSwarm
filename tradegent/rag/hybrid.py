@@ -12,7 +12,13 @@ from pathlib import Path
 import yaml
 
 from .models import HybridContext, SearchResult
-from .search import get_learnings_for_topic, get_similar_analyses, semantic_search
+from .search import (
+    get_earnings_learnings,
+    get_framework_lessons,
+    get_learnings_for_topic,
+    get_similar_analyses,
+    semantic_search,
+)
 
 log = logging.getLogger(__name__)
 
@@ -38,10 +44,11 @@ def get_hybrid_context(
 
     Steps:
     1. Vector search: past analyses for this ticker
-    2. Vector search: similar analyses for peer tickers (from graph)
-    3. Vector search: relevant learnings and biases
-    4. Graph search: structural context (peers, competitors, risks, strategies)
-    5. Format into context block
+    2. Query-based search for relevant content
+    3. Relevant learnings (post-earnings reviews, post-trade reviews, etc.)
+    4. Framework lessons (actionable rules from past reviews)
+    5. Graph search: structural context (peers, competitors, risks, strategies, patterns)
+    6. Format into context block with dedicated Learnings section
 
     Args:
         ticker: Ticker symbol
@@ -79,14 +86,21 @@ def get_hybrid_context(
             vector_results.append(r)
             seen_ids.add(r.doc_id)
 
-    # 3. Relevant learnings
-    learning_results = get_learnings_for_topic(query, top_k=2)
+    # 3. Relevant learnings (from post-earnings reviews, post-trade reviews, etc.)
+    learning_results = get_learnings_for_topic(query, ticker=ticker, top_k=3)
     for r in learning_results:
         if r.doc_id not in seen_ids:
             vector_results.append(r)
             seen_ids.add(r.doc_id)
 
-    # 4. Graph context (import here to avoid circular dependency)
+    # 4. Framework lessons (actionable rules from past reviews)
+    framework_results = get_framework_lessons(ticker=ticker, top_k=2)
+    for r in framework_results:
+        if r.doc_id not in seen_ids:
+            vector_results.append(r)
+            seen_ids.add(r.doc_id)
+
+    # 5. Graph context (import here to avoid circular dependency)
     graph_context = {}
     try:
         try:
@@ -99,7 +113,7 @@ def get_hybrid_context(
     except Exception as e:
         log.warning(f"Graph context unavailable: {e}")
 
-    # 5. Format combined context
+    # 6. Format combined context
     formatted = format_context(vector_results, graph_context, ticker)
 
     return HybridContext(
@@ -397,8 +411,41 @@ def format_context(
     """Format hybrid context as markdown for Claude."""
     sections = []
 
+    # Separate learning content from regular analyses
+    learning_doc_types = {"learning", "post-earnings-review", "post-trade-review", "report-validation"}
+    learning_sections = {"Framework Lesson", "Thesis Accuracy", "Primary", "Rule To Add", "Key Learning"}
+
+    learning_results = []
+    analysis_results = []
+
+    for result in vector_results:
+        # Check if this is learning content
+        is_learning = (
+            result.doc_type in learning_doc_types
+            or any(ls in (result.section_label or "") for ls in learning_sections)
+        )
+        if is_learning:
+            learning_results.append(result)
+        else:
+            analysis_results.append(result)
+
     # Header
     sections.append(f"## Context for {ticker}\n")
+
+    # Learnings & Framework Lessons section (show first for emphasis)
+    if learning_results:
+        sections.append("### 📚 Learnings & Framework Lessons\n")
+        sections.append("*Past lessons and rules that may apply to this analysis:*\n")
+
+        for result in learning_results[:3]:
+            sections.append(f"**{result.doc_id}** ({result.doc_type})")
+            sections.append(f"*Section: {result.section_label}*")
+            # Truncate content
+            content = result.content[:600]
+            if len(result.content) > 600:
+                content += "..."
+            sections.append(f"```\n{content}\n```")
+            sections.append("")
 
     # Graph context
     if graph_context:
@@ -411,6 +458,24 @@ def format_context(
             sections.append(f"*Tip: {graph_context.get('_message', 'Run graph extraction on analysis documents')}*")
             sections.append("")
         else:
+            # Patterns (from learning content)
+            patterns = graph_context.get("patterns", [])
+            if patterns:
+                pattern_list = ", ".join([p.get("name", p) if isinstance(p, dict) else str(p) for p in patterns[:5]])
+                graph_sections.append(f"**📊 Known Patterns**: {pattern_list}")
+
+            # Signals (market conditions)
+            signals = graph_context.get("signals", [])
+            if signals:
+                signal_list = ", ".join([s.get("name", s) if isinstance(s, dict) else str(s) for s in signals[:5]])
+                graph_sections.append(f"**🚦 Active Signals**: {signal_list}")
+
+            # Catalysts
+            catalysts = graph_context.get("catalysts", [])
+            if catalysts:
+                catalyst_list = ", ".join([c.get("name", c) if isinstance(c, dict) else str(c) for c in catalysts[:5]])
+                graph_sections.append(f"**⚡ Catalysts**: {catalyst_list}")
+
             # Peers
             peers = graph_context.get("peers", [])
             if peers:
@@ -436,6 +501,12 @@ def format_context(
             if supply.get("customers"):
                 graph_sections.append(f"**Customers**: {', '.join(supply['customers'][:5])}")
 
+            # Biases (from past trades)
+            biases = graph_context.get("biases", [])
+            if biases:
+                bias_list = ", ".join([b.get("bias", b) if isinstance(b, dict) else str(b) for b in biases[:5]])
+                graph_sections.append(f"**⚠️ Past Biases**: {bias_list}")
+
             if graph_sections:
                 sections.append("### Knowledge Graph\n")
                 sections.append("\n".join(graph_sections))
@@ -446,11 +517,11 @@ def format_context(
                 sections.append(f"*No relationships found for {ticker} in the knowledge graph.*")
                 sections.append("")
 
-    # Vector search results
-    if vector_results:
+    # Vector search results (regular analyses)
+    if analysis_results:
         sections.append("### Past Analyses\n")
 
-        for result in vector_results[:5]:
+        for result in analysis_results[:5]:
             sections.append(f"**{result.doc_id}** ({result.doc_type})")
             sections.append(f"*Section: {result.section_label}*")
             sections.append(f"Similarity: {result.similarity:.2f}")

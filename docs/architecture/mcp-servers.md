@@ -142,16 +142,16 @@ Semantic search over trading knowledge using pgvector.
       "env": {
         "PG_HOST": "localhost",
         "PG_PORT": "5433",
-        "PG_USER": "lightrag",
-        "PG_PASS": "<password>",
-        "PG_DB": "lightrag",
-        "EMBED_PROVIDER": "openai",
-        "OPENAI_API_KEY": "<key>"
+        "PG_USER": "tradegent",
+        "PG_DB": "tradegent",
+        "EMBED_PROVIDER": "openai"
       }
     }
   }
 }
 ```
+
+> **Note**: API keys (`OPENAI_API_KEY`, `PG_PASS`) should be set in your shell environment, not in the config file.
 
 ### Environment Variables
 
@@ -159,11 +159,11 @@ Semantic search over trading knowledge using pgvector.
 |----------|---------|-------------|
 | `PG_HOST` | localhost | PostgreSQL host |
 | `PG_PORT` | 5433 | PostgreSQL port |
-| `PG_USER` | lightrag | Database user |
-| `PG_PASS` | — | Database password |
-| `PG_DB` | lightrag | Database name |
+| `PG_USER` | tradegent | Database user |
+| `PG_PASS` | — | Database password (set in shell) |
+| `PG_DB` | tradegent | Database name |
 | `EMBED_PROVIDER` | openai | openai, ollama |
-| `OPENAI_API_KEY` | — | For OpenAI embeddings |
+| `OPENAI_API_KEY` | — | For OpenAI embeddings (set in shell) |
 
 ### Available Tools (12)
 
@@ -201,14 +201,14 @@ Knowledge graph for entities and relationships.
       "env": {
         "NEO4J_URI": "bolt://localhost:7688",
         "NEO4J_USER": "neo4j",
-        "NEO4J_PASS": "<password>",
-        "EXTRACT_PROVIDER": "openai",
-        "OPENAI_API_KEY": "<key>"
+        "EXTRACT_PROVIDER": "openai"
       }
     }
   }
 }
 ```
+
+> **Note**: API keys (`OPENAI_API_KEY`, `NEO4J_PASS`) should be set in your shell environment, not in the config file.
 
 ### Environment Variables
 
@@ -216,9 +216,9 @@ Knowledge graph for entities and relationships.
 |----------|---------|-------------|
 | `NEO4J_URI` | bolt://localhost:7688 | Neo4j connection |
 | `NEO4J_USER` | neo4j | Neo4j user |
-| `NEO4J_PASS` | — | Neo4j password |
+| `NEO4J_PASS` | — | Neo4j password (set in shell) |
 | `EXTRACT_PROVIDER` | openai | openai, ollama, openrouter |
-| `OPENAI_API_KEY` | — | For OpenAI extraction |
+| `OPENAI_API_KEY` | — | For OpenAI extraction (set in shell) |
 
 ### Available Tools (9)
 
@@ -331,11 +331,9 @@ Complete `~/.claude/mcp.json`:
       "env": {
         "PG_HOST": "localhost",
         "PG_PORT": "5433",
-        "PG_USER": "lightrag",
-        "PG_PASS": "<password>",
-        "PG_DB": "lightrag",
-        "EMBED_PROVIDER": "openai",
-        "OPENAI_API_KEY": "<key>"
+        "PG_USER": "tradegent",
+        "PG_DB": "tradegent",
+        "EMBED_PROVIDER": "openai"
       }
     },
     "trading-graph": {
@@ -345,9 +343,7 @@ Complete `~/.claude/mcp.json`:
       "env": {
         "NEO4J_URI": "bolt://localhost:7688",
         "NEO4J_USER": "neo4j",
-        "NEO4J_PASS": "<password>",
-        "EXTRACT_PROVIDER": "openai",
-        "OPENAI_API_KEY": "<key>"
+        "EXTRACT_PROVIDER": "openai"
       }
     },
     "brave-browser": {
@@ -364,14 +360,13 @@ Complete `~/.claude/mcp.json`:
     },
     "github-vl": {
       "command": "npx",
-      "args": ["-y", "@anthropic-ai/mcp-server-github"],
-      "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "<token>"
-      }
+      "args": ["-y", "@anthropic-ai/mcp-server-github"]
     }
   }
 }
 ```
+
+> **Note**: Sensitive credentials (`OPENAI_API_KEY`, `PG_PASS`, `NEO4J_PASS`, `GITHUB_PERSONAL_ACCESS_TOKEN`) should be set in your shell environment rather than in the config file.
 
 ---
 
@@ -381,7 +376,8 @@ Complete `~/.claude/mcp.json`:
 
 1. Check IB Gateway is running: `docker compose ps`
 2. Verify port 4002 is open: `nc -zv localhost 4002`
-3. Check server logs: `python -m ibmcp --transport sse --port 8100`
+3. Verify IB MCP server is running: `curl http://localhost:8100/mcp`
+4. Check server logs: `tail -f /tmp/ib-mcp.log`
 
 ### RAG/Graph MCP not loading
 

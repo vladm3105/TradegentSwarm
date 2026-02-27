@@ -359,20 +359,102 @@ def get_similar_analyses(
     )
 
 
-def get_learnings_for_topic(topic: str, top_k: int = 5) -> list[SearchResult]:
+def get_learnings_for_topic(
+    topic: str,
+    ticker: str | None = None,
+    top_k: int = 5,
+) -> list[SearchResult]:
     """
-    Find learnings related to a topic.
+    Find learnings related to a topic across all learning-related doc types.
+
+    Searches across:
+    - learning (direct lessons)
+    - post-earnings-review (earnings framework lessons)
+    - post-trade-review (trade lessons)
+    - report-validation (validation insights)
 
     Args:
         topic: Topic to search for
+        ticker: Optional ticker filter
+        top_k: Maximum results per doc type
+
+    Returns:
+        List of SearchResult objects sorted by relevance
+    """
+    # Learning-related document types
+    learning_doc_types = [
+        "learning",
+        "post-earnings-review",
+        "post-trade-review",
+        "report-validation",
+    ]
+
+    all_results = []
+    seen_ids = set()
+
+    # Search each learning doc type
+    for doc_type in learning_doc_types:
+        results = semantic_search(
+            query=f"Trading lessons framework learnings about {topic}",
+            ticker=ticker,
+            doc_type=doc_type,
+            top_k=top_k,
+        )
+        for r in results:
+            if r.doc_id not in seen_ids:
+                all_results.append(r)
+                seen_ids.add(r.doc_id)
+
+    # Sort by similarity and return top results
+    all_results.sort(key=lambda r: r.similarity, reverse=True)
+    return all_results[:top_k]
+
+
+def get_framework_lessons(
+    ticker: str | None = None,
+    section_filter: str = "Framework Lesson",
+    top_k: int = 5,
+) -> list[SearchResult]:
+    """
+    Find framework lessons from post-earnings and post-trade reviews.
+
+    These are the actionable rules and lessons extracted from past trades
+    and earnings events.
+
+    Args:
+        ticker: Optional ticker filter
+        section_filter: Section label to filter (default: Framework Lesson)
         top_k: Maximum results
 
     Returns:
         List of SearchResult objects
     """
     return semantic_search(
-        query=f"Trading lessons and learnings about {topic}",
-        doc_type="learning",
+        query="framework lesson rule trading pattern priced for perfection sell the news",
+        ticker=ticker,
+        section=section_filter,
+        top_k=top_k,
+    )
+
+
+def get_earnings_learnings(ticker: str, top_k: int = 3) -> list[SearchResult]:
+    """
+    Get earnings-specific learnings for a ticker.
+
+    Searches post-earnings reviews for framework lessons and thesis accuracy
+    assessments.
+
+    Args:
+        ticker: Ticker symbol
+        top_k: Maximum results
+
+    Returns:
+        List of SearchResult objects
+    """
+    return semantic_search(
+        query=f"{ticker} earnings forecast accuracy framework lesson thesis validation",
+        ticker=ticker,
+        doc_type="post-earnings-review",
         top_k=top_k,
     )
 

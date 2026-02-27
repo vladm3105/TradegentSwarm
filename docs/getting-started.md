@@ -56,9 +56,9 @@ EXTRACT_PROVIDER=openai
 OPENAI_API_KEY=sk-proj-...
 
 # PostgreSQL
-PG_USER=lightrag
+PG_USER=tradegent
 PG_PASS=your_secure_password
-PG_DB=lightrag
+PG_DB=tradegent
 PG_HOST=localhost
 PG_PORT=5433
 
@@ -81,10 +81,10 @@ docker compose ps
 
 Expected output:
 ```
-NAME               STATUS
-nexus-postgres     Up (healthy)
-nexus-neo4j        Up (healthy)
-nexus-ib-gateway   Up (healthy)
+NAME                  STATUS
+tradegent-postgres-1  Up (healthy)
+tradegent-neo4j-1     Up (healthy)
+paper-ib-gateway      Up (healthy)
 ```
 
 ### 4. Initialize the Database
@@ -101,7 +101,7 @@ python orchestrator.py status
 
 Expected output:
 ```
-=== Nexus Light Status ===
+=== Tradegent Status ===
 Database: Connected
 Service: running
 Today: 0 analyses, 0 executions
@@ -112,7 +112,39 @@ Dry run mode: true
 
 ## First Analysis
 
-### 1. Disable Dry Run Mode
+### 1. Run Preflight Check
+
+Before running your first analysis, verify all services are healthy:
+
+```bash
+cd tradegent && python preflight.py --full
+```
+
+Expected output shows all services healthy:
+```
+============================================================
+  📋 PAPER TRADING (Simulated)
+  Account: DUK291525
+  Port: 4002 | Container: paper-ib-gateway
+============================================================
+
+Preflight Check (full) - 2026-02-26 17:37:56
+------------------------------------------------------------
+  ✓ postgres_container: healthy - Container running (tradegent-postgres-1)
+  ✓ neo4j_container: healthy - Container running (tradegent-neo4j-1)
+  ✓ ib_gateway: healthy - PAPER container healthy (paper-ib-gateway)
+  ✓ rag: healthy - 59 docs, 86 chunks
+  ✓ graph: healthy - 211 nodes, 256 edges
+  ✓ ib_mcp: healthy - Server responding on port 8100
+  ✓ ib_gateway_port: healthy - PAPER: IB Gateway port 4002 accessible
+  ✓ market: degraded - After-hours (17:37 ET)
+------------------------------------------------------------
+Status: READY
+```
+
+If any service shows unhealthy, check the [Troubleshooting](#troubleshooting) section.
+
+### 2. Disable Dry Run Mode
 
 By default, the system runs in dry run mode (no Claude Code calls). Disable it:
 
@@ -120,7 +152,7 @@ By default, the system runs in dry run mode (no Claude Code calls). Disable it:
 python orchestrator.py settings set dry_run_mode false
 ```
 
-### 2. Run Your First Analysis
+### 3. Run Your First Analysis
 
 ```bash
 python orchestrator.py analyze MSFT --type stock

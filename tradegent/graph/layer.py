@@ -426,6 +426,110 @@ class TradingGraph:
             result = session.run(query, bias_name=bias_name)
             return [dict(r) for r in result]
 
+    def get_patterns(self, symbol: str) -> list[dict]:
+        """Get patterns observed for this ticker.
+
+        Returns patterns from post-earnings reviews, post-trade reviews, etc.
+        """
+        with self._driver.session(database=self.database) as session:
+            # Check if Pattern-Ticker relationships exist (bidirectional)
+            check = session.run(
+                "MATCH (p:Pattern)-[r:OBSERVED_IN]-(:Ticker {symbol: $symbol}) "
+                "RETURN count(r) AS cnt LIMIT 1",
+                symbol=symbol,
+            )
+            record = check.single()
+            if not record or record["cnt"] == 0:
+                return []
+
+            # Query patterns (bidirectional to handle both directions)
+            query = """
+            MATCH (p:Pattern)-[:OBSERVED_IN]-(t:Ticker {symbol: $symbol})
+            RETURN p.name AS name, p.description AS description
+            """
+            result = session.run(query, symbol=symbol)
+            return [dict(r) for r in result]
+
+    def get_signals(self, symbol: str) -> list[dict]:
+        """Get signals indicating conditions for this ticker.
+
+        Returns signals like 'Priced For Perfection', 'Sell The News', etc.
+        """
+        with self._driver.session(database=self.database) as session:
+            # Check if Signal-Ticker relationships exist (bidirectional)
+            check = session.run(
+                "MATCH (s:Signal)-[r:INDICATES]-(:Ticker {symbol: $symbol}) "
+                "RETURN count(r) AS cnt LIMIT 1",
+                symbol=symbol,
+            )
+            record = check.single()
+            if not record or record["cnt"] == 0:
+                return []
+
+            # Query signals (bidirectional to handle both directions)
+            query = """
+            MATCH (s:Signal)-[:INDICATES]-(t:Ticker {symbol: $symbol})
+            RETURN s.name AS name, s.description AS description
+            """
+            result = session.run(query, symbol=symbol)
+            return [dict(r) for r in result]
+
+    def get_catalysts(self, symbol: str) -> list[dict]:
+        """Get catalysts affecting this ticker.
+
+        Returns catalysts like earnings events, guidance changes, etc.
+        """
+        with self._driver.session(database=self.database) as session:
+            # Check if Catalyst-Ticker relationships exist (bidirectional)
+            check = session.run(
+                "MATCH (c:Catalyst)-[r:AFFECTED_BY]-(:Ticker {symbol: $symbol}) "
+                "RETURN count(r) AS cnt LIMIT 1",
+                symbol=symbol,
+            )
+            record = check.single()
+            if not record or record["cnt"] == 0:
+                return []
+
+            # Query catalysts (bidirectional to handle both directions)
+            query = """
+            MATCH (t:Ticker {symbol: $symbol})-[:AFFECTED_BY]-(c:Catalyst)
+            RETURN c.name AS name, c.description AS description
+            """
+            result = session.run(query, symbol=symbol)
+            return [dict(r) for r in result]
+
+    def get_ticker_biases(self, symbol: str) -> list[dict]:
+        """Get biases detected in trades for this ticker.
+
+        Returns biases that were identified in past trades.
+        """
+        # Check if Trade nodes exist to avoid warning spam
+        with self._driver.session(database=self.database) as session:
+            check = session.run("MATCH (t:Trade) RETURN count(t) AS cnt LIMIT 1")
+            record = check.single()
+            if not record or record["cnt"] == 0:
+                return []
+
+            # Check for bias-trade-ticker path
+            check2 = session.run(
+                """
+                MATCH (b:Bias)-[:DETECTED_IN]->(tr:Trade)-[:TRADED]->(t:Ticker {symbol: $symbol})
+                RETURN count(b) AS cnt LIMIT 1
+                """,
+                symbol=symbol,
+            )
+            record2 = check2.single()
+            if not record2 or record2["cnt"] == 0:
+                return []
+
+            query = """
+            MATCH (b:Bias)-[:DETECTED_IN]->(tr:Trade)-[:TRADED]->(t:Ticker {symbol: $symbol})
+            RETURN b.name AS bias, count(*) AS occurrences
+            ORDER BY occurrences DESC
+            """
+            result = session.run(query, symbol=symbol)
+            return [dict(r) for r in result]
+
     def get_supply_chain(self, symbol: str) -> dict:
         """Get suppliers and customers for a company.
 
@@ -463,6 +567,9 @@ class TradingGraph:
         - Known risks
         - Strategies that work
         - Past biases in trades
+        - Patterns observed (from post-earnings/post-trade reviews)
+        - Signals indicating conditions
+        - Catalysts affecting the ticker
 
         Returns empty context with status message if graph is not populated.
         """
@@ -476,6 +583,10 @@ class TradingGraph:
                 "risks": [],
                 "strategies": [],
                 "supply_chain": {"suppliers": [], "customers": []},
+                "patterns": [],
+                "signals": [],
+                "catalysts": [],
+                "biases": [],
                 "_status": "empty",
                 "_message": status.get("message", "Graph is empty"),
             }
@@ -487,6 +598,10 @@ class TradingGraph:
             "risks": self.get_risks(symbol),
             "strategies": self.get_strategy_performance(),
             "supply_chain": self.get_supply_chain(symbol),
+            "patterns": self.get_patterns(symbol),
+            "signals": self.get_signals(symbol),
+            "catalysts": self.get_catalysts(symbol),
+            "biases": self.get_ticker_biases(symbol),
         }
 
     # Allowed Cypher query patterns for security validation

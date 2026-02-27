@@ -20,10 +20,10 @@ echo "→ Backing up PostgreSQL (RAG tables)..."
 
 # Backup the nexus schema (RAG tables)
 docker exec nexus-postgres pg_dump \
-    -U "${PG_USER:-lightrag}" \
+    -U "${PG_USER:-tradegent}" \
     --schema=nexus \
     --no-owner \
-    "${PG_DB:-lightrag}" > "$BACKUP_DIR/nexus_pg_rag.sql"
+    "${PG_DB:-tradegent}" > "$BACKUP_DIR/nexus_pg_rag.sql"
 
 if [ $? -eq 0 ]; then
     echo "  ✅ PostgreSQL backup complete: nexus_pg_rag.sql"
@@ -79,7 +79,7 @@ echo "Location: $BACKUP_DIR"
 du -sh "$BACKUP_DIR" | awk '{print "Size: "$1}'
 echo ""
 echo "To restore PostgreSQL:"
-echo "  psql -U lightrag -d lightrag < $BACKUP_DIR/nexus_pg_rag.sql"
+echo "  psql -U tradegent -d tradegent < $BACKUP_DIR/nexus_pg_rag.sql"
 echo ""
 echo "To restore Neo4j (via Cypher):"
 echo "  cat $BACKUP_DIR/neo4j_export.cypher | cypher-shell -u neo4j -p <password>"

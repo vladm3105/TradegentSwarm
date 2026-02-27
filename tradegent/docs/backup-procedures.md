@@ -13,12 +13,12 @@ Backup strategy for Trading Knowledge Base: Neo4j (graph), PostgreSQL (vectors/m
 mkdir -p /opt/data/tradegent_swarm/backups/neo4j
 
 # Backup using docker exec
-docker exec nexus-neo4j neo4j-admin database dump neo4j \
+docker exec tradegent-neo4j-1 neo4j-admin database dump neo4j \
     --to-path=/data/backup \
     --overwrite-destination
 
 # Copy backup to host
-docker cp nexus-neo4j:/data/backup/neo4j.dump \
+docker cp tradegent-neo4j-1:/data/backup/neo4j.dump \
     /opt/data/tradegent_swarm/backups/neo4j/neo4j_$(date +%Y%m%d_%H%M%S).dump
 ```
 
@@ -26,10 +26,10 @@ docker cp nexus-neo4j:/data/backup/neo4j.dump \
 
 ```bash
 # Export all nodes and relationships as Cypher statements
-docker exec nexus-neo4j cypher-shell -u neo4j -p "${NEO4J_PASS}" \
+docker exec tradegent-neo4j-1 cypher-shell -u neo4j -p "${NEO4J_PASS}" \
     "CALL apoc.export.cypher.all('/data/backup/export.cypher', {format: 'plain'})"
 
-docker cp nexus-neo4j:/data/backup/export.cypher \
+docker cp tradegent-neo4j-1:/data/backup/export.cypher \
     /opt/data/tradegent_swarm/backups/neo4j/export_$(date +%Y%m%d).cypher
 ```
 
@@ -58,14 +58,14 @@ docker compose start neo4j
 mkdir -p /opt/data/tradegent_swarm/backups/postgres
 
 # Backup entire database
-docker exec nexus-postgres pg_dump -U lightrag -Fc lightrag \
-    > /opt/data/tradegent_swarm/backups/postgres/lightrag_$(date +%Y%m%d_%H%M%S).dump
+docker exec tradegent-postgres-1 pg_dump -U tradegent -Fc tradegent \
+    > /opt/data/tradegent_swarm/backups/postgres/tradegent_$(date +%Y%m%d_%H%M%S).dump
 
 # Backup specific schemas
-docker exec nexus-postgres pg_dump -U lightrag -Fc -n rag lightrag \
+docker exec tradegent-postgres-1 pg_dump -U tradegent -Fc -n rag tradegent \
     > /opt/data/tradegent_swarm/backups/postgres/rag_$(date +%Y%m%d).dump
 
-docker exec nexus-postgres pg_dump -U lightrag -Fc -n graph lightrag \
+docker exec tradegent-postgres-1 pg_dump -U tradegent -Fc -n graph tradegent \
     > /opt/data/tradegent_swarm/backups/postgres/graph_$(date +%Y%m%d).dump
 ```
 
@@ -73,8 +73,8 @@ docker exec nexus-postgres pg_dump -U lightrag -Fc -n graph lightrag \
 
 ```bash
 # Human-readable SQL backup
-docker exec nexus-postgres pg_dump -U lightrag lightrag \
-    > /opt/data/tradegent_swarm/backups/postgres/lightrag_$(date +%Y%m%d).sql
+docker exec tradegent-postgres-1 pg_dump -U tradegent tradegent \
+    > /opt/data/tradegent_swarm/backups/postgres/tradegent_$(date +%Y%m%d).sql
 ```
 
 ### Volume Backup
@@ -137,12 +137,12 @@ mkdir -p "$BACKUP_ROOT"/{neo4j,postgres,knowledge}
 
 # Neo4j
 echo "Backing up Neo4j..."
-docker exec nexus-neo4j neo4j-admin database dump neo4j --to-path=/data/backup --overwrite-destination 2>/dev/null || true
-docker cp nexus-neo4j:/data/backup/neo4j.dump "$BACKUP_ROOT/neo4j/neo4j_$DATE.dump" 2>/dev/null || echo "Neo4j backup skipped"
+docker exec tradegent-neo4j-1 neo4j-admin database dump neo4j --to-path=/data/backup --overwrite-destination 2>/dev/null || true
+docker cp tradegent-neo4j-1:/data/backup/neo4j.dump "$BACKUP_ROOT/neo4j/neo4j_$DATE.dump" 2>/dev/null || echo "Neo4j backup skipped"
 
 # PostgreSQL
 echo "Backing up PostgreSQL..."
-docker exec nexus-postgres pg_dump -U lightrag -Fc lightrag > "$BACKUP_ROOT/postgres/lightrag_$DATE.dump"
+docker exec tradegent-postgres-1 pg_dump -U tradegent -Fc tradegent > "$BACKUP_ROOT/postgres/tradegent_$DATE.dump"
 
 # Knowledge files
 echo "Backing up knowledge files..."
@@ -187,15 +187,15 @@ docker compose start neo4j
 
 ```bash
 # Drop and recreate database
-docker exec nexus-postgres psql -U lightrag -c "DROP DATABASE IF EXISTS lightrag_restore;"
-docker exec nexus-postgres psql -U lightrag -c "CREATE DATABASE lightrag_restore;"
+docker exec tradegent-postgres-1 psql -U tradegent -c "DROP DATABASE IF EXISTS tradegent_restore;"
+docker exec tradegent-postgres-1 psql -U tradegent -c "CREATE DATABASE tradegent_restore;"
 
 # Restore from dump
-docker exec -i nexus-postgres pg_restore -U lightrag -d lightrag_restore \
-    < /opt/data/tradegent_swarm/backups/postgres/lightrag_YYYYMMDD.dump
+docker exec -i tradegent-postgres-1 pg_restore -U tradegent -d tradegent_restore \
+    < /opt/data/tradegent_swarm/backups/postgres/tradegent_YYYYMMDD.dump
 
 # Verify and swap
-docker exec nexus-postgres psql -U lightrag -d lightrag_restore \
+docker exec tradegent-postgres-1 psql -U tradegent -d tradegent_restore \
     -c "SELECT COUNT(*) FROM rag.chunks;"
 ```
 

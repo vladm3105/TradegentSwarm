@@ -52,7 +52,7 @@ docker compose up -d
 6. Initialize the database:
 
 ```bash
-docker exec nexus-postgres psql -U lightrag -d lightrag -f /docker-entrypoint-initdb.d/init.sql
+docker exec tradegent-postgres-1 psql -U tradegent -d tradegent -f /docker-entrypoint-initdb.d/init.sql
 ```
 
 7. Verify setup:

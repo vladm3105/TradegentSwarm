@@ -27,6 +27,25 @@ Knowledge graph layer for trading intelligence. Extracts entities and relationsh
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+## Prerequisites
+
+```bash
+# 1. Start Neo4j
+cd tradegent && docker compose up -d neo4j
+
+# 2. Verify container is running
+docker ps --filter "name=tradegent-neo4j-1"
+
+# 3. Set environment variables
+export NEO4J_URI=bolt://localhost:7688
+export NEO4J_USER=neo4j
+export NEO4J_PASS=<your-password>
+export EXTRACT_PROVIDER=openai
+export OPENAI_API_KEY=<your-key>
+```
+
+**Docker container:** `tradegent-neo4j-1` (bolt: 7688, http: 7475)
+
 ## Quick Start
 
 ```python
@@ -132,8 +151,11 @@ cp .env.template .env
 | `Risk` | Risk factor | Supply chain disruption |
 | `Strategy` | Trading strategy | Earnings momentum |
 | `Bias` | Cognitive bias | Confirmation bias |
-| `Pattern` | Chart pattern | Cup and handle |
-| `Catalyst` | Price catalyst | Product launch |
+| `Pattern` | Chart/market pattern | Cup and handle, sell-the-news-patterns |
+| `Catalyst` | Price catalyst | Product launch, Strong Beat |
+| `Signal` | Predictive indicator | Priced For Perfection |
+| `Trade` | Trade entry/exit record | NVDA_20260220_001 |
+| `Document` | Source document | analysis/stock/NVDA_20260220.yaml |
 
 ## Relationship Types
 
@@ -145,6 +167,14 @@ cp .env.template .env
 | `USES_STRATEGY` | Trade → Strategy |
 | `EXHIBITS_BIAS` | Trade → Bias |
 | `TRIGGERED_BY` | Trade → Catalyst |
+| `OBSERVED_IN` | Pattern → Ticker (from post-earnings reviews) |
+| `INDICATES` | Signal → Ticker (from post-earnings reviews) |
+| `AFFECTED_BY` | Ticker → Catalyst (from post-earnings reviews) |
+| `THREATENS` | Risk → Ticker |
+| `WORKS_FOR` | Strategy → Ticker |
+| `DETECTED_IN` | Bias → Trade |
+| `FOR_TICKER` | Trade → Ticker |
+| `EXTRACTED_FROM` | Entity → Document |
 
 ## Extraction Functions
 
@@ -228,7 +258,7 @@ with TradingGraph() as graph:
 with TradingGraph() as graph:
     # Ticker context (comprehensive)
     ctx = graph.get_ticker_context("NVDA")
-    # Returns: peers, competitors, risks, strategies, biases
+    # Returns: peers, competitors, risks, strategies, biases, patterns, signals, catalysts
 
     # Sector peers
     peers = graph.get_sector_peers("NVDA")
@@ -248,6 +278,62 @@ with TradingGraph() as graph:
 
     # N-hop related entities
     related = graph.find_related("NVDA", depth=2)
+```
+
+### Learning Entity Queries
+
+Functions for retrieving learning-related entities from post-earnings and post-trade reviews.
+
+```python
+with TradingGraph() as graph:
+    # Patterns observed for this ticker
+    patterns = graph.get_patterns("NVDA")
+    # Returns: [{"name": "sell-the-news-patterns", "properties": {...}}, ...]
+    # From: (p:Pattern)-[:OBSERVED_IN]-(t:Ticker)
+
+    # Signals indicating conditions
+    signals = graph.get_signals("NVDA")
+    # Returns: [{"name": "Priced For Perfection", "properties": {...}}, ...]
+    # From: (s:Signal)-[:INDICATES]-(t:Ticker)
+
+    # Catalysts affecting this ticker
+    catalysts = graph.get_catalysts("NVDA")
+    # Returns: [{"name": "Strong Beat", "properties": {...}}, ...]
+    # From: (t:Ticker)-[:AFFECTED_BY]-(c:Catalyst)
+
+    # Biases detected in trades for this ticker
+    biases = graph.get_ticker_biases("NVDA")
+    # Returns: [{"name": "overconfidence", "trade_count": 3, ...}]
+    # From: (b:Bias)-[:DETECTED_IN]-(tr:Trade)-[:FOR_TICKER]-(t:Ticker)
+```
+
+**Learning Entity Relationships:**
+
+```
+Pattern ──OBSERVED_IN──▶ Ticker
+Signal ──INDICATES──▶ Ticker
+Catalyst ──AFFECTED_BY──▶ Ticker
+Risk ──THREATENS──▶ Ticker
+Bias ──DETECTED_IN──▶ Trade ──FOR_TICKER──▶ Ticker
+Strategy ──WORKS_FOR──▶ Ticker
+```
+
+**get_ticker_context() returns all learning entities:**
+
+```python
+ctx = graph.get_ticker_context("NVDA")
+# {
+#   "symbol": "NVDA",
+#   "peers": [...],
+#   "competitors": [...],
+#   "risks": [...],
+#   "strategies": [...],
+#   "supply_chain": [...],
+#   "patterns": [{"name": "sell-the-news-patterns", ...}],
+#   "signals": [{"name": "Priced For Perfection", ...}],
+#   "catalysts": [{"name": "Strong Beat", ...}],
+#   "biases": [{"name": "overconfidence", "trade_count": 3}]
+# }
 ```
 
 ### Custom Cypher
@@ -339,7 +425,7 @@ python -c "from graph.mcp_server import server; print(server.name)"
 ## Testing
 
 ```bash
-cd trader
+cd tradegent
 
 # Run graph tests
 pytest graph/tests/ -v
@@ -428,8 +514,9 @@ def _extract_entities_from_field(...)
 **"Failed to connect to Neo4j"**
 - Check `tradegent/graph/.env` has correct `NEO4J_PASS`
 - Verify password matches `NEO4J_PASS` in `tradegent/.env`
-- Check Neo4j is running: `docker compose ps`
+- Check Neo4j is running: `docker ps --filter "name=tradegent-neo4j-1"`
 - Check port (default: 7688 for bolt)
+- Test connection: `docker exec tradegent-neo4j-1 cypher-shell -u neo4j -p <password> "RETURN 1"`
 
 **Empty extraction results**
 - Verify LLM is running: `curl http://localhost:11434/api/tags`

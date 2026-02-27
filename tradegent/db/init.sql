@@ -373,7 +373,7 @@ CREATE TABLE IF NOT EXISTS nexus.settings (
     value           JSONB NOT NULL,
     description     TEXT,
     category        VARCHAR(50) NOT NULL DEFAULT 'general',
-    -- Categories: general, rate_limits, claude, ib, lightrag, scheduler, feature_flags
+    -- Categories: general, rate_limits, claude, ib, rag, scheduler, feature_flags
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -392,17 +392,17 @@ INSERT INTO nexus.settings (key, value, category, description) VALUES
     ('claude_cmd',              '"claude"',     'claude',        'Claude Code CLI command'),
     ('claude_timeout_seconds',  '600',          'claude',        'Max seconds per Claude Code call'),
     ('claude_model',            '"claude-sonnet-4-5-20250929"', 'claude', 'Model for Claude Code'),
-    ('allowed_tools_analysis',  '"mcp__ib-gateway__*,web_search,mcp__lightrag__*"', 'claude', 'Tools for Stage 1'),
-    ('allowed_tools_execution', '"mcp__ib-gateway__*,mcp__lightrag__*"',            'claude', 'Tools for Stage 2'),
+    ('allowed_tools_analysis',  '"mcp__ib-gateway__*,web_search,rag_*,graph_*"', 'claude', 'Tools for Stage 1'),
+    ('allowed_tools_execution', '"mcp__ib-gateway__*,rag_*,graph_*"',            'claude', 'Tools for Stage 2'),
     ('allowed_tools_scanner',   '"mcp__ib-gateway__*"',                             'claude', 'Tools for scanners'),
 
     -- IB
     ('ib_account',              '"DU_PAPER"',   'ib',            'IB account ID for orders'),
     ('ib_trading_mode',         '"paper"',      'ib',            'paper or live'),
 
-    -- LightRAG
-    ('lightrag_url',            '"http://localhost:9621"', 'lightrag', 'LightRAG API endpoint'),
-    ('lightrag_ingest_enabled', 'true',         'lightrag',      'Ingest analyses into LightRAG'),
+    -- RAG (Trading RAG MCP Server)
+    ('rag_auto_ingest_enabled', 'true',         'rag',           'Auto-ingest analyses to RAG'),
+    ('graph_auto_extract_enabled', 'true',      'rag',           'Auto-extract entities to Graph'),
 
     -- Scheduler
     ('scheduler_poll_seconds',  '60',           'scheduler',     'How often daemon checks for due schedules'),
@@ -412,7 +412,7 @@ INSERT INTO nexus.settings (key, value, category, description) VALUES
     -- Feature flags
     ('auto_execute_enabled',    'false',        'feature_flags', 'Global kill switch for Stage 2 execution'),
     ('scanners_enabled',        'true',         'feature_flags', 'Global enable/disable for IB scanners'),
-    ('lightrag_query_enabled',  'true',         'feature_flags', 'Include LightRAG context in prompts'),
+    ('rag_context_enabled',     'true',         'feature_flags', 'Include RAG context in prompts'),
     ('dry_run_mode',            'true',         'feature_flags', 'Log what would happen without calling Claude Code'),
     ('four_phase_analysis_enabled', 'true',     'feature_flags', 'Enable 4-phase workflow: fresh analysis → index → retrieve → synthesize'),
 

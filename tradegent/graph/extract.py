@@ -352,7 +352,10 @@ def _infer_doc_type(file_path: str) -> str:
 
     # Check parent directory name
     parent = path.parent.name
+    # Ordered list for specific-first matching (dict preserves order in Python 3.7+)
     type_map = {
+        "post-earnings": "post-earnings-review",  # Must come before "earnings"
+        "validation": "report-validation",
         "earnings": "earnings-analysis",
         "stock": "stock-analysis",
         "trades": "trade-journal",

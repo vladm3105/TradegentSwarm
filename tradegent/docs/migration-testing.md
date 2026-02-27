@@ -23,7 +23,7 @@ Comprehensive testing checklist for Trading Knowledge Base migration validation.
 
 - [ ] PostgreSQL accessible on port 5433
   ```bash
-  docker exec nexus-postgres pg_isready -U lightrag
+  docker exec tradegent-postgres-1 pg_isready -U tradegent
   ```
 
 - [ ] Ollama running and models available

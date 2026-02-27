@@ -36,8 +36,8 @@ def get_dsn() -> str:
     return (
         f"host={os.getenv('PG_HOST', 'localhost')} "
         f"port={os.getenv('PG_PORT', '5432')} "
-        f"dbname={os.getenv('PG_DB', 'lightrag')} "
-        f"user={os.getenv('PG_USER', 'lightrag')} "
+        f"dbname={os.getenv('PG_DB', 'tradegent')} "
+        f"user={os.getenv('PG_USER', 'tradegent')} "
         f"password={os.getenv('PG_PASS', '')}"
     )
 

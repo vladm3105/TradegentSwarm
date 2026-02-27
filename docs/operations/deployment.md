@@ -92,7 +92,7 @@ version: "3.8"
 services:
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: nexus-postgres
+    container_name: tradegent-postgres-1
     ports:
       - "5433:5432"
     environment:
@@ -110,7 +110,7 @@ services:
 
   ib-gateway:
     image: ghcr.io/gnzsnz/ib-gateway:latest
-    container_name: nexus-ib-gateway
+    container_name: paper-ib-gateway
     ports:
       - "4002:4002"
       - "5900:5900"
@@ -124,7 +124,7 @@ services:
 
   neo4j:
     image: neo4j:5-community
-    container_name: nexus-neo4j
+    container_name: tradegent-neo4j-1
     ports:
       - "7474:7474"
       - "7688:7687"
@@ -315,7 +315,7 @@ ib.disconnect()
 python orchestrator.py status
 
 # Database
-psql -h localhost -p 5433 -U lightrag -c "SELECT 1"
+psql -h localhost -p 5433 -U tradegent -d tradegent -c "SELECT 1"
 
 # Neo4j
 cypher-shell -a bolt://localhost:7688 -u neo4j -p $NEO4J_PASS "RETURN 1"
@@ -339,10 +339,10 @@ docker compose ps
 
 ```bash
 # PostgreSQL
-pg_dump -h localhost -p 5433 -U lightrag lightrag > backup.sql
+pg_dump -h localhost -p 5433 -U tradegent tradegent > backup.sql
 
 # Neo4j
-docker exec nexus-neo4j neo4j-admin database dump --to-path=/dumps neo4j
+docker exec tradegent-neo4j-1 neo4j-admin database dump --to-path=/dumps neo4j
 ```
 
 ### Knowledge Base Backup

@@ -11,20 +11,24 @@ Step-by-step procedures for common operational tasks.
 **When:** Before market open (8:00 ET)
 
 ```bash
-# 1. Verify services
-docker compose ps
-sudo systemctl status tradegent tradegent-ib-mcp
+# 1. Run full preflight check (verifies all services)
+cd tradegent && python preflight.py --full
 
-# 2. Check IB Gateway connection
-curl -s http://localhost:8100/health | jq
+# Expected: All services healthy, status: READY
+# Services checked:
+#   - postgres_container (tradegent-postgres-1)
+#   - neo4j_container (tradegent-neo4j-1)
+#   - ib_gateway (paper-ib-gateway)
+#   - rag (pgvector connectivity)
+#   - graph (Neo4j connectivity)
+#   - ib_mcp (port 8100)
+#   - ib_gateway_port (4002 paper, 4001 live)
+#   - market (hours status)
 
-# 3. Verify database
-python orchestrator.py status
-
-# 4. Check for overnight issues
+# 2. Check for overnight issues
 sudo journalctl -u tradegent --since "yesterday" | grep -i error
 
-# 5. Review scheduled analyses
+# 3. Review scheduled analyses
 python orchestrator.py stock list --enabled
 ```
 
@@ -84,16 +88,19 @@ python orchestrator.py stock enable PLTR
 **When:** Need immediate analysis outside scheduled runs
 
 ```bash
-# 1. Ensure dry run is off
+# 1. Quick preflight check
+cd tradegent && python preflight.py
+
+# 2. Ensure dry run is off
 python orchestrator.py settings set dry_run_mode false
 
-# 2. Run analysis
+# 3. Run analysis
 python orchestrator.py analyze NVDA --type earnings
 
-# 3. Verify output
+# 4. Verify output
 ls -la tradegent_knowledge/knowledge/analysis/earnings/ | grep NVDA
 
-# 4. Check indexing
+# 5. Check indexing
 python orchestrator.py status
 ```
 
@@ -135,7 +142,7 @@ python orchestrator.py status
 sudo systemctl stop tradegent
 
 # 2. Clear existing indexes (optional - for full rebuild)
-psql -h localhost -p 5433 -U lightrag -d lightrag -c "
+psql -h localhost -p 5433 -U tradegent -d tradegent -c "
 TRUNCATE nexus.rag_documents CASCADE;
 "
 
@@ -193,7 +200,7 @@ docker compose up -d postgres neo4j
 docker compose ps
 
 # Restore database
-psql -h localhost -p 5433 -U lightrag -d lightrag < ~/backups/latest.sql
+psql -h localhost -p 5433 -U tradegent -d tradegent < ~/backups/latest.sql
 
 # Restore knowledge files
 tar -xzf ~/backups/knowledge_latest.tar.gz -C /opt/data/tradegent_swarm/
@@ -239,7 +246,7 @@ sudo systemctl start tradegent
 
 ```bash
 # 1. Check error
-psql -h localhost -p 5433 -U lightrag -c "
+psql -h localhost -p 5433 -U tradegent -d tradegent -c "
 SELECT ticker, run_type, error_message, started_at
 FROM nexus.run_history
 WHERE status = 'failed'
@@ -292,19 +299,19 @@ print(f'OK: {len(e)} dimensions')
 
 ```bash
 # 1. Vacuum and analyze
-psql -h localhost -p 5433 -U lightrag -c "
+psql -h localhost -p 5433 -U tradegent -d tradegent -c "
 VACUUM ANALYZE nexus.rag_chunks;
 VACUUM ANALYZE nexus.run_history;
 "
 
 # 2. Clear old run history (optional)
-psql -h localhost -p 5433 -U lightrag -c "
+psql -h localhost -p 5433 -U tradegent -d tradegent -c "
 DELETE FROM nexus.run_history
 WHERE started_at < NOW() - INTERVAL '90 days';
 "
 
 # 3. Check sizes
-psql -h localhost -p 5433 -U lightrag -c "
+psql -h localhost -p 5433 -U tradegent -d tradegent -c "
 SELECT
   pg_size_pretty(pg_total_relation_size('nexus.rag_chunks')) as rag_chunks,
   pg_size_pretty(pg_total_relation_size('nexus.run_history')) as run_history;

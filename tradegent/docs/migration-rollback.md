@@ -118,7 +118,7 @@ git revert --no-commit <migration-commits>
 
 ```bash
 # Restore LightRAG's PostgreSQL tables only
-docker exec -i nexus-postgres psql -U lightrag -d lightrag << 'EOF'
+docker exec -i tradegent-postgres-1 psql -U tradegent -d tradegent << 'EOF'
 -- Drop new schemas
 DROP SCHEMA IF EXISTS graph CASCADE;
 DROP SCHEMA IF EXISTS rag CASCADE;
@@ -167,10 +167,10 @@ curl http://localhost:9621/health
 
 ```bash
 # Export Neo4j data for potential re-migration
-docker exec nexus-neo4j cypher-shell -u neo4j -p "${NEO4J_PASS}" \
+docker exec tradegent-neo4j-1 cypher-shell -u neo4j -p "${NEO4J_PASS}" \
     "CALL apoc.export.json.all('/data/backup/graph_export.json', {})"
 
-docker cp nexus-neo4j:/data/backup/graph_export.json \
+docker cp tradegent-neo4j-1:/data/backup/graph_export.json \
     /opt/data/trading_light_pilot/backups/rollback/
 ```
 

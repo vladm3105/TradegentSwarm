@@ -18,11 +18,11 @@ def get_database_url() -> str:
         return os.getenv("DATABASE_URL")
 
     # Build from individual PG_* variables
-    user = os.getenv("PG_USER", "lightrag")
-    password = os.getenv("PG_PASS", "lightrag")
+    user = os.getenv("PG_USER", "tradegent")
+    password = os.getenv("PG_PASS", "tradegent")
     host = os.getenv("PG_HOST", "localhost")
     port = os.getenv("PG_PORT", "5433")
-    db = os.getenv("PG_DB", "lightrag")
+    db = os.getenv("PG_DB", "tradegent")
 
     return f"postgresql://{user}:{password}@{host}:{port}/{db}"
 

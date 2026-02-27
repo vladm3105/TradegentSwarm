@@ -12,9 +12,9 @@ def mock_env(monkeypatch):
     """Set test environment variables."""
     monkeypatch.setenv("PG_HOST", "localhost")
     monkeypatch.setenv("PG_PORT", "5433")
-    monkeypatch.setenv("PG_USER", "lightrag")
+    monkeypatch.setenv("PG_USER", "tradegent")
     monkeypatch.setenv("PG_PASS", "testpass")
-    monkeypatch.setenv("PG_DB", "lightrag")
+    monkeypatch.setenv("PG_DB", "tradegent")
     monkeypatch.setenv("NEO4J_URI", "bolt://localhost:7688")
     monkeypatch.setenv("NEO4J_USER", "neo4j")
     monkeypatch.setenv("NEO4J_PASS", "testpass")

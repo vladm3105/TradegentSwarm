@@ -316,19 +316,19 @@ YAML Document (source of truth)
 
 ```bash
 # Check RAG statistics
-psql -h localhost -p 5433 -U lightrag -d lightrag -c "
+psql -h localhost -p 5433 -U tradegent -d tradegent -c "
 SELECT
     (SELECT COUNT(*) FROM nexus.rag_documents) as documents,
     (SELECT COUNT(*) FROM nexus.rag_chunks) as chunks;
 "
 
 # Check embedding dimensions
-psql -h localhost -p 5433 -U lightrag -d lightrag -c "
+psql -h localhost -p 5433 -U tradegent -d tradegent -c "
 SELECT embed_model, COUNT(*) FROM nexus.rag_documents GROUP BY embed_model;
 "
 
 # Vacuum and analyze
-psql -h localhost -p 5433 -U lightrag -d lightrag -c "
+psql -h localhost -p 5433 -U tradegent -d tradegent -c "
 VACUUM ANALYZE nexus.rag_chunks;
 "
 ```
