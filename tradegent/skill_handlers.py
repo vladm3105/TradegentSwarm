@@ -233,7 +233,7 @@ def invoke_skill_claude(db, skill_name: str, context: dict, task_id: int | None 
     """
     # Check daily cost limit
     today_cost = _get_today_skill_cost(db)
-    limit = float(db.cfg._get("skill_daily_cost_limit", "skills", "5.00"))
+    limit = float(db.get_setting("skill_daily_cost_limit", "5.00"))
 
     if today_cost >= limit:
         log.warning(f"Skill cost limit reached: ${today_cost:.2f} >= ${limit:.2f}")

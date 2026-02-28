@@ -124,9 +124,9 @@ jobs:
       postgres:
         image: pgvector/pgvector:pg16
         env:
-          POSTGRES_USER: lightrag
+          POSTGRES_USER: tradegent
           POSTGRES_PASSWORD: testpass
-          POSTGRES_DB: lightrag
+          POSTGRES_DB: tradegent
         ports:
           - 5433:5432
         options: >-
@@ -165,9 +165,9 @@ jobs:
         env:
           PG_HOST: localhost
           PG_PORT: 5433
-          PG_USER: lightrag
+          PG_USER: tradegent
           PG_PASS: testpass
-          PG_DB: lightrag
+          PG_DB: tradegent
           NEO4J_URI: bolt://localhost:7688
           NEO4J_USER: neo4j
           NEO4J_PASS: testpass
@@ -191,9 +191,9 @@ jobs:
       postgres:
         image: pgvector/pgvector:pg16
         env:
-          POSTGRES_USER: lightrag
+          POSTGRES_USER: tradegent
           POSTGRES_PASSWORD: testpass
-          POSTGRES_DB: lightrag
+          POSTGRES_DB: tradegent
         ports:
           - 5433:5432
         options: >-
@@ -232,20 +232,20 @@ jobs:
         env:
           PG_HOST: localhost
           PG_PORT: 5433
-          PG_USER: lightrag
+          PG_USER: tradegent
           PG_PASS: testpass
-          PG_DB: lightrag
+          PG_DB: tradegent
           PGPASSWORD: testpass
         run: |
-          psql -h localhost -p 5433 -U lightrag -d lightrag -f tradegent/db/init.sql
+          psql -h localhost -p 5433 -U tradegent -d tradegent -f tradegent/db/init.sql
 
       - name: Run integration tests
         env:
           PG_HOST: localhost
           PG_PORT: 5433
-          PG_USER: lightrag
+          PG_USER: tradegent
           PG_PASS: testpass
-          PG_DB: lightrag
+          PG_DB: tradegent
           NEO4J_URI: bolt://localhost:7688
           NEO4J_USER: neo4j
           NEO4J_PASS: testpass

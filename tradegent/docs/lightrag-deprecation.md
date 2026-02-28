@@ -114,7 +114,7 @@ AND table_name LIKE 'lightrag%';
 curl -s http://localhost:9621/health | jq '.document_count'
 
 # New system
-docker exec nexus-postgres psql -U lightrag -d lightrag -t \
+docker exec tradegent-postgres-1 psql -U tradegent -d tradegent -t \
     -c "SELECT COUNT(DISTINCT doc_id) FROM rag.documents;"
 ```
 

@@ -3,7 +3,7 @@
 # Nexus Light Trading Platform v2.1 - Setup
 #
 # Architecture:
-#   Docker  → Infrastructure (PG, Neo4j, IB Gateway, LightRAG)
+#   Docker  → Infrastructure (PG, Neo4j, IB Gateway)
 #   Host    → Orchestrator + Claude Code CLI
 # ═══════════════════════════════════════════════════════════════
 set -e
@@ -91,7 +91,7 @@ echo "║  Setup Complete!                                         ║"
 echo "╠══════════════════════════════════════════════════════════╣"
 echo "║                                                          ║"
 echo "║  Architecture:                                           ║"
-echo "║    Docker → PG, Neo4j, IB Gateway, LightRAG             ║"
+echo "║    Docker → PG, Neo4j, IB Gateway                        ║"
 echo "║    Host   → Orchestrator + Claude Code CLI               ║"
 echo "║                                                          ║"
 echo "║  Start the service (on host):                            ║"

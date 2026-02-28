@@ -126,7 +126,7 @@ class OrderReconciler:
             ))
 
         # Queue fill analysis if enabled
-        if self.db.cfg._get("fill_analysis_enabled", "skills", "true").lower() == "true":
+        if str(self.db.get_setting("fill_analysis_enabled", "true")).lower() == "true":
             self.db.queue_task(
                 task_type="fill_analysis",
                 ticker=ticker,

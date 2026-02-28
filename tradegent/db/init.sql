@@ -415,6 +415,8 @@ INSERT INTO nexus.settings (key, value, category, description) VALUES
     ('rag_context_enabled',     'true',         'feature_flags', 'Include RAG context in prompts'),
     ('dry_run_mode',            'true',         'feature_flags', 'Log what would happen without calling Claude Code'),
     ('four_phase_analysis_enabled', 'true',     'feature_flags', 'Enable 4-phase workflow: fresh analysis → index → retrieve → synthesize'),
+    ('parallel_execution_enabled', 'true',      'feature_flags', 'Enable parallel analysis execution'),
+    ('parallel_fallback_to_sequential', 'true', 'feature_flags', 'Fall back to sequential on parallel failure'),
 
     -- Paths
     ('analyses_dir',            '"analyses"',   'general',       'Directory for analysis output files'),

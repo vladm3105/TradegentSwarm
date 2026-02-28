@@ -23,8 +23,11 @@ import json
 import logging
 import os
 import re
+import signal
 import subprocess
 import sys
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed, Future
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -177,6 +180,16 @@ class Settings:
     @property
     def max_concurrent_runs(self) -> int:
         return int(self._get("max_concurrent_runs", None, 2))
+
+    @property
+    def parallel_execution_enabled(self) -> bool:
+        """Enable parallel analysis execution using ThreadPoolExecutor."""
+        return self._get_bool("parallel_execution_enabled", None, True)
+
+    @property
+    def parallel_fallback_to_sequential(self) -> bool:
+        """Fall back to sequential execution on ThreadPoolExecutor failure."""
+        return self._get_bool("parallel_fallback_to_sequential", None, True)
 
     @property
     def auto_execute_enabled(self) -> bool:
@@ -2521,17 +2534,233 @@ def run_pipeline(
     run_execution(db, analysis.filepath)
 
 
+# ─── Parallel Analysis Execution ─────────────────────────────────────────────
+
+@dataclass
+class ParallelBatchResult:
+    """Result from parallel analysis batch."""
+    total: int = 0
+    succeeded: int = 0
+    failed: int = 0
+    skipped: int = 0
+    duration_ms: int = 0
+
+
+# Thread-local storage for graceful shutdown
+_parallel_executor: ThreadPoolExecutor | None = None
+_parallel_futures: list[Future] = []
+
+
+def _handle_parallel_shutdown(signum, frame):
+    """Handle Ctrl+C during parallel execution."""
+    global _parallel_executor, _parallel_futures
+    if _parallel_executor:
+        log.warning("Shutdown requested - cancelling pending analyses...")
+        for future in _parallel_futures:
+            future.cancel()
+        _parallel_executor.shutdown(wait=False, cancel_futures=True)
+
+
+def run_analyses_parallel(
+    tasks: list[tuple[str, "AnalysisType", bool]],
+    source_scanner: str | None = None,
+) -> ParallelBatchResult:
+    """
+    Execute multiple analyses in parallel, respecting max_concurrent_runs.
+
+    Args:
+        tasks: List of (ticker, analysis_type, auto_execute) tuples
+        source_scanner: Optional scanner code for lineage tracking
+
+    Thread safety:
+        - Each worker creates its own NexusDB connection
+        - Quota tracking uses PostgreSQL advisory locks
+        - OpenTelemetry context propagated to workers
+    """
+    global _parallel_executor, _parallel_futures
+
+    if not tasks:
+        return ParallelBatchResult()
+
+    # Check if parallel execution is enabled
+    if not cfg.parallel_execution_enabled:
+        log.info("Parallel execution disabled, running sequentially")
+        return _run_analyses_sequential(tasks, source_scanner)
+
+    # Single task - no benefit from parallelization
+    if len(tasks) == 1:
+        return _run_analyses_sequential(tasks, source_scanner)
+
+    # Read max_concurrent_runs fresh from DB (allows runtime tuning without restart)
+    check_db = NexusDB()
+    check_db.connect()
+    try:
+        max_concurrent = int(check_db.get_setting('max_concurrent_runs', '2'))
+    finally:
+        check_db.close()
+
+    max_workers = min(max_concurrent, len(tasks))
+    result = ParallelBatchResult(total=len(tasks))
+    start = time.perf_counter()
+
+    log.info(f"║ PARALLEL: {len(tasks)} tasks, {max_workers} workers (max_concurrent_runs={max_concurrent}) ║")
+
+    # Capture current OpenTelemetry context for propagation
+    parent_context = None
+    if _otel_enabled:
+        try:
+            from opentelemetry import trace, context
+            parent_context = context.get_current()
+        except ImportError:
+            pass
+
+    def worker(task: tuple[str, "AnalysisType", bool]) -> tuple[str, bool, str | None]:
+        """Worker function executed in thread pool."""
+        ticker, analysis_type, auto_execute = task
+
+        # Restore OpenTelemetry context in worker thread
+        token = None
+        if parent_context and _otel_enabled:
+            try:
+                from opentelemetry import context
+                token = context.attach(parent_context)
+            except ImportError:
+                pass
+
+        # Create per-thread DB connection
+        thread_db = NexusDB()
+        thread_db.connect()
+        try:
+            # Attempt to claim analysis slot (atomic with advisory lock)
+            if not thread_db.claim_analysis_slot():
+                log.warning(f"[{ticker}] Skipped - daily limit reached")
+                return (ticker, False, "Daily limit reached")
+
+            # Run the pipeline
+            run_pipeline(
+                thread_db, ticker, analysis_type,
+                auto_execute=auto_execute,
+                source_scanner=source_scanner
+            )
+            return (ticker, True, None)
+
+        except Exception as e:
+            log.error(f"[{ticker}] Parallel analysis failed: {e}")
+            return (ticker, False, str(e))
+        finally:
+            thread_db.close()
+            # Detach OpenTelemetry context
+            if token and parent_context:
+                try:
+                    from opentelemetry import context
+                    context.detach(token)
+                except ImportError:
+                    pass
+
+    # Install signal handler for graceful shutdown
+    old_handler = signal.signal(signal.SIGINT, _handle_parallel_shutdown)
+
+    # Execute with bounded thread pool
+    try:
+        _parallel_executor = ThreadPoolExecutor(max_workers=max_workers)
+        _parallel_futures = [_parallel_executor.submit(worker, task) for task in tasks]
+        futures_map = {f: tasks[i][0] for i, f in enumerate(_parallel_futures)}
+
+        for future in as_completed(_parallel_futures):
+            ticker = futures_map[future]
+            try:
+                if future.cancelled():
+                    result.skipped += 1
+                    log.warning(f"[{ticker}] Cancelled")
+                    continue
+
+                _, success, error = future.result()
+                if success:
+                    result.succeeded += 1
+                    log.info(f"[{ticker}] ✓ Completed")
+                elif error == "Daily limit reached":
+                    result.skipped += 1
+                else:
+                    result.failed += 1
+                    log.error(f"[{ticker}] ✗ Failed: {error}")
+            except Exception as e:
+                result.failed += 1
+                log.error(f"[{ticker}] ✗ Exception: {e}")
+
+        _parallel_executor.shutdown(wait=True)
+
+    except Exception as e:
+        log.error(f"ThreadPoolExecutor failed: {e}, falling back to sequential")
+        if cfg.parallel_fallback_to_sequential:
+            return _run_analyses_sequential(tasks, source_scanner)
+        raise
+    finally:
+        # Restore original signal handler
+        signal.signal(signal.SIGINT, old_handler)
+        _parallel_executor = None
+        _parallel_futures = []
+
+    result.duration_ms = int((time.perf_counter() - start) * 1000)
+    log.info(f"║ PARALLEL COMPLETE: {result.succeeded}/{result.total} in {result.duration_ms}ms ║")
+    return result
+
+
+def _run_analyses_sequential(
+    tasks: list[tuple[str, "AnalysisType", bool]],
+    source_scanner: str | None = None,
+) -> ParallelBatchResult:
+    """Fallback sequential execution."""
+    result = ParallelBatchResult(total=len(tasks))
+    start = time.perf_counter()
+
+    # Create connection for sequential execution
+    seq_db = NexusDB()
+    seq_db.connect()
+    try:
+        for ticker, analysis_type, auto_execute in tasks:
+            try:
+                run_pipeline(
+                    seq_db, ticker, analysis_type,
+                    auto_execute=auto_execute,
+                    source_scanner=source_scanner
+                )
+                result.succeeded += 1
+            except Exception as e:
+                log.error(f"[{ticker}] Sequential analysis failed: {e}")
+                result.failed += 1
+    finally:
+        seq_db.close()
+
+    result.duration_ms = int((time.perf_counter() - start) * 1000)
+    return result
+
+
 def run_watchlist(db: NexusDB, auto_execute: bool = False):
-    """Analyze all enabled stocks."""
+    """Analyze all enabled stocks (parallel if enabled)."""
     stocks = db.get_enabled_stocks()
     remaining = cfg.max_daily_analyses - db.get_today_run_count()
     log.info(f"═══ WATCHLIST: {len(stocks)} stocks, {remaining} slots remaining ═══")
 
+    if remaining <= 0:
+        log.warning("Daily analysis limit reached")
+        return
+
+    # Prepare analysis tasks
+    tasks = []
     for stock in stocks[: max(0, remaining)]:
         atype = AnalysisType(stock.default_analysis_type)
         if stock.days_to_earnings is not None and stock.days_to_earnings <= 14:
             atype = AnalysisType.EARNINGS
-        run_pipeline(db, stock.ticker, atype, auto_execute=auto_execute)
+        tasks.append((stock.ticker, atype, auto_execute))
+
+    if not tasks:
+        log.info("No stocks to analyze")
+        return
+
+    # Execute (parallel or sequential based on config)
+    results = run_analyses_parallel(tasks)
+    log.info(f"Watchlist complete: {results.succeeded}/{results.total} succeeded, "
+             f"{results.failed} failed, {results.skipped} skipped")
 
 
 def run_scanners(db: NexusDB, scanner_code: str | None = None):
@@ -2593,10 +2822,11 @@ def run_scanners(db: NexusDB, scanner_code: str | None = None):
                         c["ticker"], is_enabled=True, tags=[f"scanner:{scanner.scanner_code}"]
                     )
 
-            if scanner.auto_analyze:
+            if scanner.auto_analyze and candidates:
                 atype = AnalysisType(scanner.analysis_type)
-                for c in candidates[: scanner.max_candidates]:
-                    run_pipeline(db, c["ticker"], atype, auto_execute=False, source_scanner=scanner.scanner_code)
+                tasks = [(c["ticker"], atype, False) for c in candidates[: scanner.max_candidates]]
+                results = run_analyses_parallel(tasks, source_scanner=scanner.scanner_code)
+                log.info(f"[SCAN-{scanner.scanner_code}] Auto-analyze: {results.succeeded}/{results.total}")
 
         except Exception as e:
             log.error(f"Scanner {scanner.scanner_code} failed: {e}")
@@ -2861,8 +3091,10 @@ def _process_detected_position_task(db: NexusDB, task: dict):
     context["source"] = "position_monitor"
 
     # Check if Claude Code is enabled
-    use_claude = db.cfg._get("skill_use_claude_code", "skills", "false").lower() == "true"
-    auto_create = db.cfg._get("detected_position_auto_create_trade", "skills", "true").lower() == "true"
+    _use_claude = cfg._get("skill_use_claude_code", "skills", "false")
+    use_claude = _use_claude if isinstance(_use_claude, bool) else str(_use_claude).lower() == "true"
+    _auto_create = cfg._get("detected_position_auto_create_trade", "skills", "true")
+    auto_create = _auto_create if isinstance(_auto_create, bool) else str(_auto_create).lower() == "true"
 
     if use_claude:
         # Full AI analysis
@@ -2879,12 +3111,13 @@ def _process_detected_position_task(db: NexusDB, task: dict):
 
 
 def _process_fill_analysis_task(db: NexusDB, task: dict):
-    """Process fill analysis task (Python only).
+    """Process fill analysis task.
 
     Triggered by order_reconciler when an order is filled.
     Analyzes fill quality: slippage, timing, execution efficiency.
+    Uses Claude Code for enhanced analysis if enabled, otherwise Python handler.
     """
-    from skill_handlers import invoke_skill_python
+    from skill_handlers import invoke_skill_python, invoke_skill_claude
 
     ticker = task.get("ticker")
     prompt = task.get("prompt", "")
@@ -2898,24 +3131,43 @@ def _process_fill_analysis_task(db: NexusDB, task: dict):
     context = {
         "ticker": ticker,
         "order_id": order_id,
+        "prompt": prompt,
         "source": "order_reconciler"
     }
 
+    # Always run Python for basic metrics
     result = invoke_skill_python(db, "fill-analysis", context, task_id)
 
-    if result.get("status") == "analyzed":
+    # Optionally use Claude for enhanced analysis (execution improvement suggestions)
+    _uc = cfg._get("skill_use_claude_code", "skills", "false")
+    use_claude = _uc if isinstance(_uc, bool) else str(_uc).lower() == "true"
+    if use_claude and result.get("status") == "analyzed":
+        try:
+            # Add Python results to context for Claude enhancement
+            context["slippage"] = result.get("slippage")
+            context["slippage_pct"] = result.get("slippage_pct")
+            context["grade"] = result.get("grade")
+            context["fill_price"] = result.get("fill_price")
+            context["mid_price"] = result.get("mid_price")
+            claude_result = invoke_skill_claude(db, "fill-analysis", context, task_id)
+            log.info(f"  ✓ Fill analysis with recommendations: {ticker} grade {result.get('grade', 'N/A')}")
+        except Exception as e:
+            log.warning(f"Claude fill analysis enhancement failed: {e}")
+            log.info(f"  ✓ Fill analysis: {ticker} grade {result.get('grade', 'N/A')}")
+    elif result.get("status") == "analyzed":
         log.info(f"  ✓ Fill analysis: {ticker} grade {result.get('grade', 'N/A')}")
     else:
         log.info(f"  ✓ Fill analysis: {result.get('status', 'unknown')}")
 
 
 def _process_position_close_review_task(db: NexusDB, task: dict):
-    """Process position close review task (Python only).
+    """Process position close review task.
 
     Triggered by position_monitor when a position is fully closed.
     Calculates P&L and queues full post-trade review if significant.
+    Uses Claude Code for enhanced analysis if enabled, otherwise Python handler.
     """
-    from skill_handlers import invoke_skill_python
+    from skill_handlers import invoke_skill_python, invoke_skill_claude
 
     ticker = task.get("ticker")
     task_id = task["id"]
@@ -2926,9 +3178,32 @@ def _process_position_close_review_task(db: NexusDB, task: dict):
         "source": "position_monitor"
     }
 
+    # Always run Python for P&L calculation and significance check
     result = invoke_skill_python(db, "position-close-review", context, task_id)
 
-    if result.get("is_significant"):
+    # Optionally use Claude for immediate quick analysis (before full review)
+    _uc = cfg._get("skill_use_claude_code", "skills", "false")
+    use_claude = _uc if isinstance(_uc, bool) else str(_uc).lower() == "true"
+    if use_claude and result.get("status") == "reviewed":
+        try:
+            # Add Python results to context for Claude enhancement
+            context["pnl"] = result.get("pnl")
+            context["pnl_pct"] = result.get("pnl_pct")
+            context["holding_days"] = result.get("holding_days")
+            context["is_significant"] = result.get("is_significant")
+            context["trade_id"] = result.get("trade_id")
+            claude_result = invoke_skill_claude(db, "position-close-review", context, task_id)
+            if result.get("is_significant"):
+                log.info(f"  ✓ Position close review with analysis: {ticker} (significant, queued full review)")
+            else:
+                log.info(f"  ✓ Position close review with analysis: {ticker}")
+        except Exception as e:
+            log.warning(f"Claude position close review enhancement failed: {e}")
+            if result.get("is_significant"):
+                log.info(f"  ✓ Position close review: {ticker} (significant, queued full review)")
+            else:
+                log.info(f"  ✓ Position close review: {ticker} (not significant)")
+    elif result.get("is_significant"):
         log.info(f"  ✓ Position close review: {ticker} (significant, queued full review)")
     else:
         log.info(f"  ✓ Position close review: {ticker} (not significant)")
@@ -2954,7 +3229,8 @@ def _process_options_management_task(db: NexusDB, task: dict):
     }
 
     # Options management can use Claude Code for complex roll decisions
-    use_claude = db.cfg._get("skill_use_claude_code", "skills", "false").lower() == "true"
+    _uc = cfg._get("skill_use_claude_code", "skills", "false")
+    use_claude = _uc if isinstance(_uc, bool) else str(_uc).lower() == "true"
 
     if use_claude:
         result = invoke_skill_claude(db, "options-management", context, task_id)
@@ -2985,7 +3261,8 @@ def _process_expiration_review_task(db: NexusDB, task: dict):
     result = invoke_skill_python(db, "expiration-review", context, task_id)
 
     # Optionally use Claude for lesson extraction
-    use_claude = db.cfg._get("skill_use_claude_code", "skills", "false").lower() == "true"
+    _uc = cfg._get("skill_use_claude_code", "skills", "false")
+    use_claude = _uc if isinstance(_uc, bool) else str(_uc).lower() == "true"
     if use_claude and result.get("status") == "reviewed":
         try:
             context["outcome"] = result.get("outcome")
@@ -3025,7 +3302,8 @@ def _process_post_earnings_review_task(db: NexusDB, task: dict):
         return
 
     # Check if Claude mode is enabled
-    use_claude = db.cfg._get("skill_use_claude_code", "skills", "false").lower() == "true"
+    _uc = cfg._get("skill_use_claude_code", "skills", "false")
+    use_claude = _uc if isinstance(_uc, bool) else str(_uc).lower() == "true"
     if not use_claude:
         log.info(f"  ⊘ Post-earnings review skipped (Claude disabled): {ticker}")
         return
@@ -3117,7 +3395,8 @@ def _process_report_validation_task(db: NexusDB, task: dict):
         return
 
     # Check if Claude mode is enabled
-    use_claude = db.cfg._get("skill_use_claude_code", "skills", "false").lower() == "true"
+    _uc = cfg._get("skill_use_claude_code", "skills", "false")
+    use_claude = _uc if isinstance(_uc, bool) else str(_uc).lower() == "true"
     if not use_claude:
         log.info(f"  ⊘ Report validation skipped (Claude disabled): {ticker}")
         return
@@ -3157,7 +3436,8 @@ def _process_report_validation_task(db: NexusDB, task: dict):
                     db.invalidate_watchlist_entry(ticker, invalidation_reason)
 
                     # Send alert if enabled
-                    alerts_enabled = db.cfg._get("invalidation_alerts_enabled", "skills", "true").lower() == "true"
+                    _ae = cfg._get("invalidation_alerts_enabled", "skills", "true")
+                    alerts_enabled = _ae if isinstance(_ae, bool) else str(_ae).lower() == "true"
                     if alerts_enabled:
                         _send_invalidation_alert(ticker, validation_result, invalidation_reason)
 

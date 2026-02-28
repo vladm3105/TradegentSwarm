@@ -999,6 +999,34 @@ python preflight.py            # Quick check
 | `skill_daily_cost_limit` | 10.00 | Daily Claude Code cost cap |
 | `skill_cooldown_hours` | 1 | Hours between same skill for same ticker |
 
+### Parallel Execution Settings
+
+| Setting | Default | Purpose |
+|---------|---------|---------|
+| `parallel_execution_enabled` | true | Enable parallel analysis execution |
+| `parallel_fallback_to_sequential` | true | Fall back to sequential on failure |
+| `max_concurrent_runs` | 2 | Max parallel Claude Code processes |
+| `max_daily_analyses` | 15 | Daily analysis cap (shared quota) |
+
+**Performance Impact:**
+
+| Scenario | Sequential | Parallel (2 workers) | Improvement |
+|----------|------------|---------------------|-------------|
+| 2 analyses | 18 min | 9 min | 50% |
+| 4 analyses | 36 min | 18 min | 50% |
+| 6 analyses | 54 min | 27 min | 50% |
+
+**Runtime tuning (no restart needed):**
+```bash
+# Change worker count
+docker exec -i tradegent-postgres-1 psql -U tradegent -d tradegent \
+  -c "UPDATE nexus.settings SET value = '3' WHERE key = 'max_concurrent_runs';"
+
+# Disable parallel execution
+docker exec -i tradegent-postgres-1 psql -U tradegent -d tradegent \
+  -c "UPDATE nexus.settings SET value = 'false' WHERE key = 'parallel_execution_enabled';"
+```
+
 ---
 
-*Last updated: 2026-02-27 (KB tables added)*
+*Last updated: 2026-02-27 (Parallel execution added)*

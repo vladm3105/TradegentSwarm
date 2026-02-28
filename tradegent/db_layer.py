@@ -719,7 +719,19 @@ class NexusDB:
     # ─── Settings ──────────────────────────────────────────────────────
 
     def get_setting(self, key: str, default: Any = None) -> Any:
-        """Get a single setting value (parsed from JSONB)."""
+        """
+        Get a setting value fresh from database.
+
+        Each call queries the database directly, allowing runtime configuration
+        changes without restart. Used by parallel execution for dynamic tuning.
+
+        Args:
+            key: Setting key name
+            default: Default value if not found or on error
+
+        Returns:
+            Setting value or default
+        """
         try:
             with self.conn.cursor() as cur:
                 cur.execute("SELECT value FROM nexus.settings WHERE key = %s", [key])
@@ -774,6 +786,49 @@ class NexusDB:
                     [key, json.dumps(value), json.dumps(value)],
                 )
         self.conn.commit()
+
+    def claim_analysis_slot(self) -> bool:
+        """
+        Atomically check if analysis slot is available against daily limit.
+        Uses PostgreSQL advisory lock for thread safety across parallel workers.
+
+        The advisory lock (ID 314159265) is held for the duration of the transaction,
+        ensuring only one thread can check-and-proceed at a time.
+
+        Returns:
+            True if slot available (can proceed), False if daily limit reached.
+        """
+        # Get max_daily_analyses from settings (default 15)
+        max_analyses = 15
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT value FROM nexus.settings WHERE key = 'max_daily_analyses'")
+            row = cur.fetchone()
+            if row:
+                try:
+                    max_analyses = int(row["value"])
+                except (ValueError, TypeError):
+                    pass
+
+            # Acquire advisory lock (released on commit/rollback)
+            # Lock ID 314159265 is arbitrary but unique for this purpose
+            cur.execute("SELECT pg_advisory_xact_lock(314159265)")
+
+            # Check current count with lock held
+            cur.execute("""
+                SELECT COUNT(*) as cnt
+                FROM nexus.analysis_results
+                WHERE created_at >= CURRENT_DATE
+            """)
+            row = cur.fetchone()
+            current_count = row["cnt"] if row else 0
+
+        # Commit releases the advisory lock
+        self.conn.commit()
+
+        can_run = current_count < max_analyses
+        if not can_run:
+            log.debug(f"Daily limit check: {current_count}/{max_analyses} - limit reached")
+        return can_run
 
     # ─── Service Status ──────────────────────────────────────────────────
 
@@ -1324,7 +1379,7 @@ class NexusDB:
                 SELECT * FROM nexus.watchlist
                 WHERE status = 'active'
                   AND expires_at IS NOT NULL
-                  AND expires_at < now() + make_interval(hours => %s)
+                  AND expires_at < now() + (%s || ' hours')::interval
                 ORDER BY expires_at ASC
             """, [hours])
             return [dict(r) for r in cur.fetchall()]
@@ -1477,7 +1532,7 @@ class NexusDB:
                 UPDATE nexus.task_queue SET
                     status = 'pending',
                     retry_count = retry_count + 1,
-                    next_retry_at = now() + make_interval(mins => %s * power(2, retry_count)),
+                    next_retry_at = now() + ((%s * power(2, retry_count)) || ' minutes')::interval,
                     error_message = NULL,
                     started_at = NULL,
                     completed_at = NULL
@@ -1494,7 +1549,7 @@ class NexusDB:
                     started_at = NULL,
                     error_message = 'Task timeout - auto-recovered'
                 WHERE status = 'running'
-                  AND started_at < now() - make_interval(mins => %s)
+                  AND started_at < now() - (%s || ' minutes')::interval
                 RETURNING id
             """, [timeout_minutes])
             stuck = cur.fetchall()

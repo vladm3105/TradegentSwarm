@@ -111,8 +111,8 @@ The monitoring skills integrate with v2.3 monitoring modules (position_monitor, 
 |-------|----------------|------|---------|
 | detected-position | Python/Claude | Free/$0.25-0.40 | Documents externally-added positions |
 | options-management | Python/Claude | Free/$0.30-0.50 | Manages expiring options, roll decisions |
-| fill-analysis | Python only | Free | Analyzes fill quality (slippage, grade) |
-| position-close-review | Python only | Free | Reviews closed positions, queues full review |
+| fill-analysis | Python/Claude | Free/$0.15-0.25 | Analyzes fill quality, execution recommendations |
+| position-close-review | Python/Claude | Free/$0.15-0.25 | Reviews closed positions, quick analysis |
 | expiration-review | Python/Claude | Free/$0.20 | Reviews expired options, extracts lessons |
 
 **CLI Commands:**
@@ -142,7 +142,8 @@ python tradegent.py queue-status
 **Task Queue Flow:**
 ```
 position_monitor → detected_position task → skill_handler → trade entry
-order_reconciler → fill_analysis task → skill_handler → fill grade
+order_reconciler → fill_analysis task → skill_handler → fill grade + recommendations
+position_monitor → position_close_review task → skill_handler → quick analysis + queue review
 expiration_monitor → options_management task → skill_handler → roll advice
 service (earnings) → post_earnings_review task → skill_handler → review + grade
 service (expiry) → report_validation task → skill_handler → CONFIRM/SUPERSEDE/INVALIDATE
@@ -199,6 +200,9 @@ python tradegent.py calibration ticker NVDA           # Ticker-specific calibrat
 | `validation_on_expiry` | true | Auto-validate when forecast expires |
 | `post_earnings_delay_hours` | 4 | Hours after market open to queue review |
 | `invalidation_alerts_enabled` | true | Log alerts on INVALIDATE |
+| `parallel_execution_enabled` | true | Enable parallel analysis execution |
+| `parallel_fallback_to_sequential` | true | Fall back to sequential on failure |
+| `max_concurrent_runs` | 2 | Max parallel Claude Code processes |
 
 ### v2.7 Key Features (stock-analysis) - CURRENT
 
@@ -1002,6 +1006,66 @@ python tradegent.py settings set auto_execute_enabled false
 python tradegent.py settings set auto_execute_enabled true
 python tradegent.py stock set-state NVDA paper
 ```
+
+### Parallel Execution
+
+Batch commands (`watchlist`, `run-scanners`) execute analyses in parallel using ThreadPoolExecutor, reducing total time by ~50% with 2 workers.
+
+**Architecture:**
+
+```text
+┌──────────────────────────────┐
+│      ThreadPoolExecutor       │
+│      (max_workers=2)          │
+└──────────────────────────────┘
+              │
+     ┌────────┼────────┐
+     │        │        │
+┌────▼────┐ ┌─▼──┐ ┌───▼───┐
+│ Worker 1│ │ W2 │ │(queued)│
+│  NVDA   │ │AAPL│ │  MSFT  │
+└────┬────┘ └─┬──┘ └────────┘
+     │        │
+┌────▼────┐ ┌─▼──────┐
+│ DB Conn │ │ DB Conn│
+│ (own)   │ │ (own)  │
+└─────────┘ └────────┘
+```
+
+**Settings:**
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `parallel_execution_enabled` | true | Enable/disable parallel execution |
+| `parallel_fallback_to_sequential` | true | Fall back on failure |
+| `max_concurrent_runs` | 2 | Max parallel Claude Code processes |
+| `max_daily_analyses` | 15 | Daily analysis cap (shared quota) |
+
+**Runtime tuning:**
+
+```bash
+# Adjust workers at runtime (no restart needed)
+docker exec -i tradegent-postgres-1 psql -U tradegent -d tradegent \
+  -c "UPDATE nexus.settings SET value = '3' WHERE key = 'max_concurrent_runs';"
+
+# Disable parallel (immediate fallback to sequential)
+docker exec -i tradegent-postgres-1 psql -U tradegent -d tradegent \
+  -c "UPDATE nexus.settings SET value = 'false' WHERE key = 'parallel_execution_enabled';"
+```
+
+**Performance:**
+
+| Scenario | Sequential | Parallel (2 workers) | Improvement |
+|----------|------------|---------------------|-------------|
+| 2 analyses | 18 min | 9 min | 50% |
+| 4 analyses | 36 min | 18 min | 50% |
+| 6 analyses | 54 min | 27 min | 50% |
+
+**Thread Safety:**
+- Per-thread DB connections (psycopg3 not thread-safe)
+- PostgreSQL advisory lock for atomic quota tracking
+- Read-only config cache (safe)
+- Graceful shutdown on Ctrl+C (cancels pending futures)
 
 ## Code Standards
 
