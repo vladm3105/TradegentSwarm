@@ -42,7 +42,12 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import structlog
+
 sys.path.insert(0, str(Path(__file__).parent))
+# Add shared module to path for observability
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import orchestrator
 from db_layer import NexusDB
 from psycopg import errors as pg_errors
@@ -71,15 +76,42 @@ from watchlist_monitor import WatchlistMonitor
 ET = ZoneInfo("America/New_York")
 BASE_DIR = Path(__file__).parent
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(BASE_DIR / "logs" / "service.log"),
-    ],
-)
-log = logging.getLogger("nexus-service")
+# ─── Logging Setup (structlog with rotation) ─────────────────────────────────
+try:
+    from shared.observability import setup_logging
+    setup_logging(
+        service_name="tradegent-service",
+        log_file=BASE_DIR / "logs" / "service.log",
+        debug=os.getenv("DEBUG", "false").lower() == "true",
+        otel_enabled=os.getenv("OTEL_LOGS_ENABLED", "false").lower() == "true",
+    )
+except ImportError:
+    # Fallback to basic structlog if shared module not available
+    from logging.handlers import RotatingFileHandler
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        handlers=[
+            logging.StreamHandler(),
+            RotatingFileHandler(
+                BASE_DIR / "logs" / "service.log",
+                maxBytes=10 * 1024 * 1024,
+                backupCount=5,
+            ),
+        ],
+    )
+    structlog.configure(
+        processors=[
+            structlog.processors.add_log_level,
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.dev.ConsoleRenderer(),
+        ],
+        wrapper_class=structlog.stdlib.BoundLogger,
+        logger_factory=structlog.stdlib.LoggerFactory(),
+    )
+
+log = structlog.get_logger("nexus-service")
 
 # ─── Health Check HTTP Server ────────────────────────────────────────────────
 

@@ -126,6 +126,9 @@ python tradegent.py settings set skill_daily_cost_limit 10.00
 # Disable specific skills
 python tradegent.py settings set fill_analysis_enabled false
 
+# Disable SVG generation (use UI instead)
+python tradegent.py settings set svg_generation_enabled false
+
 # View skill invocation history
 psql -d tradegent -c "SELECT skill_name, ticker, invocation_type, status, cost_estimate FROM nexus.skill_invocations ORDER BY started_at DESC LIMIT 10;"
 
@@ -203,6 +206,7 @@ python tradegent.py calibration ticker NVDA           # Ticker-specific calibrat
 | `parallel_execution_enabled` | true | Enable parallel analysis execution |
 | `parallel_fallback_to_sequential` | true | Fall back to sequential on failure |
 | `max_concurrent_runs` | 2 | Max parallel Claude Code processes |
+| `svg_generation_enabled` | false | Generate SVG visualizations (disable if using UI) |
 
 ### v2.7 Key Features (stock-analysis) - CURRENT
 
@@ -1073,6 +1077,126 @@ docker exec -i tradegent-postgres-1 psql -U tradegent -d tradegent \
 - Follow PEP 8 conventions
 - Use existing patterns in `orchestrator.py` and `db_layer.py`
 - All SQL queries go through `db_layer.py`
+
+## Observability
+
+Unified observability across tradegent and tradegent_ui using structlog, OpenTelemetry, and Prometheus.
+
+### Logging
+
+All services use structlog with JSON file output and log rotation (10MB x 5 backups).
+
+| Service | Log File | Format |
+|---------|----------|--------|
+| orchestrator | `tradegent/logs/orchestrator.log` | JSON (rotated) |
+| service | `tradegent/logs/service.log` | JSON (rotated) |
+| tradegent_ui | `tradegent_ui/logs/agui.log` | JSON (rotated) |
+
+**Log Fields:**
+| Field | Description |
+|-------|-------------|
+| `timestamp` | ISO 8601 format |
+| `level` | info, warning, error, debug |
+| `event` | Log message |
+| `correlation_id` | Request correlation ID (B3 trace ID) |
+| `ticker` | Stock symbol (when applicable) |
+| `duration_ms` | Operation duration |
+
+**View logs:**
+```bash
+# Real-time with color
+tail -f tradegent/logs/orchestrator.log
+
+# Parse JSON
+tail -f tradegent_ui/logs/agui.log | jq .
+
+# Search by correlation ID
+grep "abc-123" tradegent_ui/logs/agui.log
+```
+
+**Enable debug logging:**
+```bash
+DEBUG=true python orchestrator.py ...
+DEBUG=true python -m uvicorn server.main:app ...
+```
+
+### Tracing (OpenTelemetry)
+
+Distributed tracing with GenAI semantic conventions for LLM calls.
+
+**Span Types:**
+
+| Service | Span | Description |
+|---------|------|-------------|
+| tradegent | `pipeline.*` | Analysis pipeline phases |
+| tradegent | `gen_ai.chat` | Claude Code LLM calls |
+| tradegent | `gen_ai.tool.*` | MCP tool calls within LLM |
+| tradegent_ui | `http.request` | FastAPI request handling |
+| tradegent_ui | `mcp.call.*` | MCP server calls (RAG, Graph, IB) |
+| tradegent_ui | `gen_ai.chat` | A2UI LLM generation |
+| tradegent_ui | `gen_ai.classify` | Intent classification |
+
+**GenAI Semantic Convention Attributes:**
+- `gen_ai.system` - Provider (openai, anthropic, openrouter)
+- `gen_ai.request.model` - Model name
+- `gen_ai.usage.input_tokens` - Input tokens
+- `gen_ai.usage.output_tokens` - Output tokens
+- `gen_ai.response.finish_reasons` - Why generation stopped
+
+### Metrics (Prometheus)
+
+**tradegent metrics:**
+- `tradegent_llm_call_duration` - LLM call latency (histogram)
+- `tradegent_tokens_used` - Token usage (counter)
+- `tradegent_analyses_total` - Completed analyses (counter)
+- `tradegent_gate_results` - Gate pass/fail (counter)
+
+**tradegent_ui metrics:**
+- `agentui_http_request_duration` - HTTP request latency (histogram)
+- `agentui_mcp_call_duration` - MCP call latency (histogram)
+- `agentui_mcp_calls_total` - Total MCP calls (counter)
+- `agentui_llm_call_duration` - LLM API latency (histogram)
+- `agentui_llm_tokens_input` - Input tokens (counter)
+- `agentui_llm_tokens_output` - Output tokens (counter)
+
+### Correlation IDs
+
+All services use B3 trace propagation for cross-service correlation:
+
+```bash
+# Request with correlation ID
+curl -H "X-B3-TraceId: abc123" http://localhost:8081/api/chat ...
+
+# Response includes correlation ID
+< X-B3-TraceId: abc123
+< X-Correlation-Id: abc123
+
+# Find all logs for this request
+grep "abc123" tradegent_ui/logs/agui.log
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DEBUG` | `false` | Enable debug logging |
+| `OTEL_EXPORTER_TYPE` | `otlp` | Exporter: otlp, console, none |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4317` | OTEL Collector |
+| `OTEL_LOGS_ENABLED` | `false` | Export logs to Loki |
+| `LOG_MAX_SIZE_MB` | `10` | Max log file size |
+| `LOG_BACKUP_COUNT` | `5` | Rotation backups |
+
+### Grafana Dashboards
+
+Access at http://localhost:3000 (admin/admin):
+
+| Dashboard | Purpose |
+|-----------|---------|
+| LLM Observability | Claude Code calls, token usage, costs |
+| Agent UI | MCP calls, HTTP requests, LLM generation |
+| System Health | Service status, error rates |
+
+See `docs/observability/` for full documentation.
 
 ## GitHub MCP Server (Preferred)
 

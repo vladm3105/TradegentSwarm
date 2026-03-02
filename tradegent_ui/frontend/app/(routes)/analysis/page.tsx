@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,11 +13,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { BarChart3, Search, RefreshCw, Eye, Loader2, AlertCircle } from 'lucide-react';
+import { BarChart3, Search, RefreshCw, Eye, Loader2, AlertCircle, X } from 'lucide-react';
 import { cn, formatDate, getRecommendationClass, getGateClass } from '@/lib/utils';
 import { listAnalyses, getAnalysisDetail, type AnalysisSummary, type AnalysisDetailResponse } from '@/lib/api';
 import { transformToAnalysisDetail, hasFullAnalysisData } from '@/lib/analysis-transformer';
 import { AnalysisDetailView } from '@/components/analysis-detail-view';
+import { useChat } from '@/hooks/use-chat';
+import { useUIStore } from '@/stores/ui-store';
 import type { AnalysisDetail } from '@/types/analysis';
 
 interface AnalysisRowProps {
@@ -244,13 +247,21 @@ function AnalysisDetailDialog({
 }
 
 export default function AnalysisPage() {
-  const [ticker, setTicker] = useState('');
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const urlTicker = searchParams.get('ticker')?.toUpperCase() || '';
+
+  const [ticker, setTicker] = useState(urlTicker);
   const [filter, setFilter] = useState<'all' | 'active' | 'expired'>('all');
-  const [searchTicker, setSearchTicker] = useState('');
+  const [searchTicker, setSearchTicker] = useState(urlTicker);
   const [analyses, setAnalyses] = useState<AnalysisSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [isLoadingList, setIsLoadingList] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
+
+  // Chat integration for triggering analysis
+  const { sendMessage } = useChat();
+  const { setChatPanelOpen } = useUIStore();
 
   const [selectedAnalysisId, setSelectedAnalysisId] = useState<number | null>(null);
   const [selectedAnalysisDetail, setSelectedAnalysisDetail] = useState<AnalysisDetail | null>(null);
@@ -258,6 +269,14 @@ export default function AnalysisPage() {
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+
+  // Sync from URL only when navigating with a ticker parameter
+  useEffect(() => {
+    if (urlTicker) {
+      setTicker(urlTicker);
+      setSearchTicker(urlTicker);
+    }
+  }, [urlTicker]);
 
   // Fetch analyses list
   const fetchAnalyses = useCallback(async () => {
@@ -285,17 +304,25 @@ export default function AnalysisPage() {
   }, [fetchAnalyses]);
 
   // Filter analyses by search term
-  const filteredAnalyses = searchTicker.trim()
-    ? analyses.filter((a) =>
-        a.ticker.toLowerCase().includes(searchTicker.toLowerCase().trim())
-      )
-    : analyses;
+  const filteredAnalyses = useMemo(() => {
+    if (!searchTicker.trim()) return analyses;
+    const search = searchTicker.trim().toUpperCase();
+    return analyses.filter((a) => a.ticker.includes(search));
+  }, [analyses, searchTicker]);
 
   const handleRunAnalysis = () => {
     if (ticker.trim()) {
-      // TODO: Trigger analysis via chat
-      console.log('Run analysis for:', ticker);
+      // Open chat panel and trigger analysis
+      setChatPanelOpen(true);
+      sendMessage(`stock analysis ${ticker.trim()}`);
     }
+  };
+
+  const handleResetSearch = () => {
+    setTicker('');
+    setSearchTicker('');
+    // Clear URL parameter
+    router.push('/analysis');
   };
 
   const handleViewAnalysis = async (analysis: AnalysisSummary) => {
@@ -404,9 +431,28 @@ export default function AnalysisPage() {
                   placeholder="Search ticker..."
                   value={searchTicker}
                   onChange={(e) => setSearchTicker(e.target.value.toUpperCase())}
-                  className="pl-8 w-32 h-8 text-sm"
+                  className="pl-8 pr-8 w-36 h-8 text-sm"
                 />
+                {searchTicker && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchTicker('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
               </div>
+              {(searchTicker || urlTicker) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleResetSearch}
+                  className="h-8 px-2 text-xs"
+                >
+                  Reset
+                </Button>
+              )}
               <Tabs value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
                 <TabsList>
                   <TabsTrigger value="all">All</TabsTrigger>

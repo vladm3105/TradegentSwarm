@@ -18,9 +18,21 @@ if _env_path.exists():
     load_dotenv(_env_path)
 
 try:
-    from trader.utils import is_real_document
+    from ..utils import is_real_document
 except ImportError:
-    from utils import is_real_document
+    try:
+        from tradegent.utils import is_real_document
+    except ImportError:
+        # Fallback for standalone execution
+        def is_real_document(path):
+            """Check if file is a real document (not a template)."""
+            import re
+            from pathlib import Path
+            p = Path(path)
+            filename = p.stem.lower()
+            if any(t in filename for t in ["template", "sample", "example", "test"]):
+                return False
+            return bool(re.search(r"\d{8}[Tt]\d{4}", filename))
 try:
     from trader.validation import get_schema_for_path, validate_document
 except ImportError:

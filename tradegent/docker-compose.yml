@@ -135,6 +135,38 @@ services:
     networks:
       - nexus-net
 
+  # ─── Metabase (BI Dashboard) ────────────────────────────────
+  metabase:
+    image: metabase/metabase:latest
+    container_name: tradegent-metabase
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_DBNAME: ${PG_DB:-tradegent}
+      MB_DB_PORT: 5432
+      MB_DB_USER: ${PG_USER:-tradegent}
+      MB_DB_PASS: ${PG_PASS}
+      MB_DB_HOST: postgres
+      JAVA_TIMEZONE: America/New_York
+    volumes:
+      - metabase_data:/metabase-data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - nexus-net
+    labels:
+      - "com.tradegent.component=bi"
+      - "com.tradegent.description=Metabase BI dashboard"
+
   # ─── NOTE: Orchestrator runs on HOST, not in Docker ─────────
   # The orchestrator (service.py) needs Claude Code CLI which is
   # installed on the host. It connects to these Docker services
@@ -157,6 +189,7 @@ volumes:
   pg_data:
   neo4j_data:
   neo4j_logs:
+  metabase_data:
 
 networks:
   nexus-net:

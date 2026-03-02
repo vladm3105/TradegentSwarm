@@ -61,6 +61,45 @@ open http://localhost:3000  # admin/admin
 
 ---
 
+## Services Covered
+
+Both tradegent (orchestrator/service) and tradegent_ui are fully instrumented:
+
+| Service | Traces | Metrics | Logs |
+|---------|--------|---------|------|
+| **tradegent** | Pipeline phases, LLM calls, tool executions | Analysis counts, gate results, token usage, costs | JSON to `logs/orchestrator.log`, exported to Loki |
+| **tradegent_ui** | HTTP requests, MCP calls, **LLM calls (GenAI)** | Request latency, MCP latency, **LLM token usage** | JSON to `logs/agui.log`, exported to Loki |
+
+### tradegent_ui Span Types
+
+| Span | Description |
+|------|-------------|
+| `http.request.*` | FastAPI request handling with correlation |
+| `mcp.call.trading-rag.*` | RAG MCP calls (search, embed) |
+| `mcp.call.trading-graph.*` | Graph MCP calls (context, peers) |
+| `mcp.call.ib-mcp.*` | IB MCP calls (positions, quotes) |
+| `gen_ai.chat` | A2UI response generation (LLM) |
+| `gen_ai.classify` | Intent classification (LLM) |
+
+### Correlation Across Services
+
+All services use B3 trace propagation. A single user request can be traced across:
+
+```
+User Request
+    ↓
+tradegent_ui (http.request span)
+    ├── gen_ai.classify (intent classification)
+    ├── mcp.call.trading-rag (RAG search)
+    ├── gen_ai.chat (A2UI generation)
+    ↓ B3 headers (if calling tradegent)
+tradegent orchestrator (if triggered)
+    ↓
+Claude Code (gen_ai.chat span)
+```
+
+---
+
 ## Key Features
 
 ### LLM Observability (GenAI Semantic Conventions)
@@ -69,11 +108,33 @@ Track LLM calls with standard attributes:
 
 | Attribute | Example |
 |-----------|---------|
-| `gen_ai.system` | `claude_code` |
-| `gen_ai.request.model` | `claude-sonnet-4-20250514` |
+| `gen_ai.system` | `claude_code`, `openai`, `openrouter` |
+| `gen_ai.request.model` | `claude-sonnet-4-20250514`, `gpt-4o-mini` |
+| `gen_ai.operation.name` | `chat`, `classify` |
 | `gen_ai.usage.input_tokens` | `1523` |
 | `gen_ai.usage.output_tokens` | `892` |
+| `gen_ai.response.finish_reasons` | `["stop"]` |
 | `gen_ai.tool.name` | `mcp__ib-mcp__get_stock_price` |
+
+**tradegent_ui LLM Spans:**
+
+```
+gen_ai.chat (A2UI generation)
+├── gen_ai.system: openrouter
+├── gen_ai.request.model: google/gemini-2.0-flash-001
+├── gen_ai.usage.input_tokens: 1523
+├── gen_ai.usage.output_tokens: 892
+├── gen_ai.response.finish_reasons: ["stop"]
+├── duration_ms: 1250.5
+└── event: a2ui_generated {agent_type: "analysis", component_count: 3}
+
+gen_ai.classify (Intent classification)
+├── gen_ai.system: openrouter
+├── gen_ai.request.model: google/gemini-2.0-flash-001
+├── gen_ai.usage.input_tokens: 245
+├── gen_ai.usage.output_tokens: 50
+└── event: intent_classified {intent: "analysis", confidence: 0.95}
+```
 
 ### Trace Visualization
 
@@ -103,6 +164,19 @@ pipeline.NVDA (4:05)
 - **LogQL**: `{job="tradegent"} | json | ticker="NVDA"`
 - **PromQL**: `histogram_quantile(0.95, tradegent_llm_call_duration_bucket)`
 
+### tradegent_ui Metrics
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `agentui_http_request_duration` | Histogram | HTTP request latency |
+| `agentui_mcp_call_duration` | Histogram | MCP call latency by server/tool |
+| `agentui_mcp_calls_total` | Counter | Total MCP calls |
+| `agentui_mcp_errors_total` | Counter | MCP call errors |
+| `agentui_llm_call_duration` | Histogram | LLM API latency |
+| `agentui_llm_tokens_input` | Counter | Input tokens used |
+| `agentui_llm_tokens_output` | Counter | Output tokens generated |
+| `agentui_intent_duration` | Histogram | Intent classification latency |
+
 ---
 
 ## Service Ports
@@ -118,6 +192,25 @@ pipeline.NVDA (4:05)
 ---
 
 ## File Structure
+
+### Shared Observability Module (new)
+
+```
+shared/observability/
+├── __init__.py           # Public API exports
+├── config.py             # LoggingConfig, TracingConfig
+├── logging_setup.py      # Unified structlog with rotation
+├── correlation.py        # B3 trace propagation, correlation IDs
+├── otel_logging.py       # OTEL log exporter (optional)
+├── metrics_ui.py         # AgentUIMetrics
+└── spans/
+    ├── __init__.py
+    ├── mcp_spans.py      # MCPCallSpan
+    ├── http_spans.py     # HTTPRequestSpan
+    └── llm_spans.py      # LLMSpan with GenAI conventions
+```
+
+### tradegent Observability Module (existing)
 
 ```
 tradegent/observability/
@@ -142,16 +235,30 @@ tradegent/observability/
 
 ## Environment Variables
 
-```bash
-# Required
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+### All Services
 
-# Optional
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4317` | OTEL Collector endpoint |
+| `OTEL_EXPORTER_TYPE` | `otlp` | Exporter: otlp, console, none |
+| `OTEL_LOGS_ENABLED` | `true` | Export logs to Loki |
+| `OTEL_SAMPLE_RATE` | `1.0` | Trace sampling rate (0.0-1.0) |
+| `LOG_LEVEL` | `INFO` | Logging level |
+| `LOG_MAX_SIZE_MB` | `10` | Max log file size |
+| `LOG_BACKUP_COUNT` | `5` | Rotation backups |
+
+### tradegent-specific
+
+```bash
 export OTEL_SERVICE_NAME=tradegent-orchestrator
-export OTEL_EXPORTER_TYPE=otlp  # otlp, console, none
-export OTEL_SAMPLE_RATE=1.0
 export OTEL_CAPTURE_PROMPTS=false
 export OTEL_CAPTURE_COMPLETIONS=false
+```
+
+### tradegent_ui-specific
+
+```bash
+export DEBUG=false  # Enable debug logging
 ```
 
 ---

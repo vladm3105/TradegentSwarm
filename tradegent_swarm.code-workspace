@@ -8,6 +8,9 @@
 		},
 		{
 			"path": "../trading/mcp_ib"
+		},
+		{
+			"path": "../ai-knowledge-rac"
 		}
 	],
 	"settings": {}

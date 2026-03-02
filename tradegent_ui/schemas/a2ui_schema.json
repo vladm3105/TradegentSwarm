@@ -1,0 +1,184 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "A2UI Response Schema",
+  "description": "Schema for Agent-to-UI responses in Tradegent",
+  "type": "object",
+  "required": ["type"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "a2ui"
+    },
+    "text": {
+      "type": "string",
+      "description": "Conversational text response"
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Component"
+      }
+    }
+  },
+  "definitions": {
+    "Component": {
+      "type": "object",
+      "required": ["type", "props"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "AnalysisCard",
+            "PositionCard",
+            "TradeCard",
+            "WatchlistCard",
+            "GateResult",
+            "ScenarioChart",
+            "MetricsRow",
+            "ChartCard",
+            "ErrorCard",
+            "LoadingCard",
+            "TextCard",
+            "TableCard"
+          ]
+        },
+        "props": {
+          "type": "object"
+        }
+      }
+    },
+    "AnalysisCardProps": {
+      "type": "object",
+      "required": ["ticker", "recommendation", "confidence", "gate_result"],
+      "properties": {
+        "ticker": {"type": "string"},
+        "recommendation": {
+          "type": "string",
+          "enum": ["STRONG_BUY", "BUY", "WATCH", "NO_POSITION", "AVOID"]
+        },
+        "confidence": {"type": "number", "minimum": 0, "maximum": 100},
+        "expected_value": {"type": "number"},
+        "gate_result": {
+          "type": "string",
+          "enum": ["PASS", "MARGINAL", "FAIL"]
+        },
+        "analysis_date": {"type": "string", "format": "date-time"},
+        "forecast_valid_until": {"type": "string", "format": "date"}
+      }
+    },
+    "PositionCardProps": {
+      "type": "object",
+      "required": ["ticker", "size", "avg_price", "current_price", "pnl", "pnl_pct"],
+      "properties": {
+        "ticker": {"type": "string"},
+        "size": {"type": "integer"},
+        "avg_price": {"type": "number"},
+        "current_price": {"type": "number"},
+        "pnl": {"type": "number"},
+        "pnl_pct": {"type": "number"},
+        "market_value": {"type": "number"}
+      }
+    },
+    "TradeCardProps": {
+      "type": "object",
+      "required": ["ticker", "direction", "entry_price", "status"],
+      "properties": {
+        "ticker": {"type": "string"},
+        "direction": {"type": "string", "enum": ["LONG", "SHORT"]},
+        "entry_price": {"type": "number"},
+        "current_price": {"type": "number"},
+        "size": {"type": "integer"},
+        "pnl_pct": {"type": "number"},
+        "status": {"type": "string", "enum": ["OPEN", "CLOSED", "PARTIAL"]},
+        "entry_date": {"type": "string"},
+        "exit_date": {"type": ["string", "null"]}
+      }
+    },
+    "WatchlistCardProps": {
+      "type": "object",
+      "required": ["ticker", "trigger_type", "priority", "expires"],
+      "properties": {
+        "ticker": {"type": "string"},
+        "trigger_type": {
+          "type": "string",
+          "enum": ["PRICE_ABOVE", "PRICE_BELOW", "EVENT", "COMBINED"]
+        },
+        "trigger_value": {"type": ["number", "null"]},
+        "priority": {"type": "string", "enum": ["HIGH", "MEDIUM", "LOW"]},
+        "expires": {"type": "string"},
+        "notes": {"type": "string"}
+      }
+    },
+    "GateResultProps": {
+      "type": "object",
+      "required": ["ev", "confidence", "risk_reward", "edge_not_priced", "overall"],
+      "properties": {
+        "ev": {"type": "number"},
+        "ev_passed": {"type": "boolean"},
+        "confidence": {"type": "number"},
+        "confidence_passed": {"type": "boolean"},
+        "risk_reward": {"type": "number"},
+        "rr_passed": {"type": "boolean"},
+        "edge_not_priced": {"type": "boolean"},
+        "overall": {"type": "string", "enum": ["PASS", "MARGINAL", "FAIL"]}
+      }
+    },
+    "ScenarioChartProps": {
+      "type": "object",
+      "required": ["scenarios"],
+      "properties": {
+        "scenarios": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "probability", "return_pct"],
+            "properties": {
+              "name": {"type": "string"},
+              "probability": {"type": "number", "minimum": 0, "maximum": 1},
+              "return_pct": {"type": "number"},
+              "description": {"type": "string"}
+            }
+          }
+        },
+        "weighted_ev": {"type": "number"}
+      }
+    },
+    "MetricsRowProps": {
+      "type": "object",
+      "required": ["metrics"],
+      "properties": {
+        "metrics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["label", "value"],
+            "properties": {
+              "label": {"type": "string"},
+              "value": {"type": ["string", "number"]},
+              "change": {"type": "number"}
+            }
+          }
+        }
+      }
+    },
+    "ErrorCardProps": {
+      "type": "object",
+      "required": ["code", "message", "recoverable"],
+      "properties": {
+        "code": {"type": "string"},
+        "message": {"type": "string"},
+        "recoverable": {"type": "boolean"},
+        "retry_action": {"type": ["string", "null"]}
+      }
+    },
+    "LoadingCardProps": {
+      "type": "object",
+      "required": ["message"],
+      "properties": {
+        "message": {"type": "string"},
+        "progress": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
+        "task_id": {"type": ["string", "null"]}
+      }
+    }
+  }
+}

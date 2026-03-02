@@ -34,12 +34,16 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Optional
 
+import structlog
 from dotenv import load_dotenv
 
 # Load .env file before any database connections
 _env_path = Path(__file__).parent / ".env"
 if _env_path.exists():
     load_dotenv(_env_path)
+
+# Add shared module to path for observability
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from db_layer import IBScanner, NexusDB, Schedule, Stock
 
@@ -50,15 +54,42 @@ BASE_DIR = Path(__file__).parent
 for d in [BASE_DIR / "analyses", BASE_DIR / "trades", BASE_DIR / "logs"]:
     d.mkdir(parents=True, exist_ok=True)
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(BASE_DIR / "logs" / "orchestrator.log"),
-    ],
-)
-log = logging.getLogger("nexus-light")
+# ─── Logging Setup (structlog with rotation) ─────────────────────────────────
+try:
+    from shared.observability import setup_logging
+    setup_logging(
+        service_name="tradegent-orchestrator",
+        log_file=BASE_DIR / "logs" / "orchestrator.log",
+        debug=os.getenv("DEBUG", "false").lower() == "true",
+        otel_enabled=os.getenv("OTEL_LOGS_ENABLED", "false").lower() == "true",
+    )
+except ImportError:
+    # Fallback to basic structlog if shared module not available
+    from logging.handlers import RotatingFileHandler
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        handlers=[
+            logging.StreamHandler(),
+            RotatingFileHandler(
+                BASE_DIR / "logs" / "orchestrator.log",
+                maxBytes=10 * 1024 * 1024,
+                backupCount=5,
+            ),
+        ],
+    )
+    structlog.configure(
+        processors=[
+            structlog.processors.add_log_level,
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.dev.ConsoleRenderer(),
+        ],
+        wrapper_class=structlog.stdlib.BoundLogger,
+        logger_factory=structlog.stdlib.LoggerFactory(),
+    )
+
+log = structlog.get_logger("nexus-orchestrator")
 
 # ─── Observability (OpenTelemetry) ────────────────────────────────────────────
 # Initialize tracing with GenAI semantic conventions
