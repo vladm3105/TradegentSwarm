@@ -94,8 +94,8 @@ Open http://localhost:3001 in your browser.
 **Built-in Accounts:**
 | Account | Email | Password | Roles |
 |---------|-------|----------|-------|
-| Admin (Superuser) | admin@tradegent.local | TradegentAdmin2024! | admin |
-| Demo | demo@tradegent.local | demo123 | trader |
+| Admin (Superuser) | admin@tradegent.local | (set in .env) | admin |
+| Demo | demo@tradegent.local | (set in .env) | trader |
 
 > **Note:** The admin account is similar to PostgreSQL's `postgres` user - a superuser that always exists. Credentials are stored in `.env` and authentication is **always enabled**.
 
@@ -121,13 +121,13 @@ Similar to PostgreSQL's `postgres` user, the admin user is a superuser that alwa
 ```bash
 # server/.env (REQUIRED)
 ADMIN_EMAIL=admin@tradegent.local
-ADMIN_PASSWORD=TradegentAdmin2024!
+ADMIN_PASSWORD=<YOUR_SECURE_PASSWORD>  # CHANGE THIS!
 ADMIN_NAME=System Administrator
-JWT_SECRET=y8CodkCxVjQgYCSzSEfIFe35CzdO2B+Xl/TvhWBIaso=
+JWT_SECRET=<generate-with-openssl-rand-base64-32>  # CHANGE THIS!
 
 # Optional demo account
 DEMO_EMAIL=demo@tradegent.local
-DEMO_PASSWORD=demo123
+DEMO_PASSWORD=<YOUR_DEMO_PASSWORD>  # CHANGE THIS!
 ```
 
 **Generate JWT Secret:**
