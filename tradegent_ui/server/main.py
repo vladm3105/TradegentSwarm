@@ -20,7 +20,7 @@ from .logging import setup_logging, get_log_file
 from .task_manager import get_task_manager
 from .dashboard import router as dashboard_router
 from .database import close_pool
-from .routes import auth_router, admin_router, users_router, settings_router
+from .routes import auth_router, admin_router, users_router, settings_router, trades_router, watchlist_router, scanners_router, sessions_router
 from .analyses import router as analyses_router
 from shared.observability import (
     set_correlation_id,
@@ -125,6 +125,10 @@ app.include_router(admin_router)
 app.include_router(users_router)
 app.include_router(settings_router)
 app.include_router(analyses_router)
+app.include_router(trades_router)
+app.include_router(watchlist_router)
+app.include_router(scanners_router)
+app.include_router(sessions_router)
 
 
 # Public endpoints that don't require authentication
