@@ -715,6 +715,15 @@ grep "abc123" logs/agui.log
 
 # Filter by level
 cat logs/agui.log | jq 'select(.level == "error")'
+
+# Filter by event pattern (agent activity)
+cat logs/agui.log | jq 'select(.event | startswith("agent."))'
+
+# Filter by session
+cat logs/agui.log | jq 'select(.session_id == "auth0|123")'
+
+# Filter by ticker
+cat logs/agui.log | jq 'select(.ticker == "NVDA")'
 ```
 
 **Enable debug logging:**
@@ -727,10 +736,109 @@ DEBUG=true uvicorn server.main:app ...
 |-------|-------------|
 | `timestamp` | ISO 8601 timestamp |
 | `level` | Log level (info, warning, error, debug) |
-| `event` | Log message |
+| `event` | Log message (dot-separated pattern) |
 | `correlation_id` | Request correlation ID (B3 trace ID) |
+| `session_id` | User session identifier |
 | `ticker` | Stock symbol (when applicable) |
 | `duration_ms` | Operation duration in milliseconds |
+| `agent_type` | Agent type (analysis, trade, portfolio, research) |
+| `component_count` | Number of A2UI components generated |
+
+### Agent Activity Log Events
+
+Comprehensive logging for tracking agent activity through the system.
+
+**Agent Coordinator:**
+| Event | Level | Description |
+|-------|-------|-------------|
+| `agent.process.started` | info | Query processing started |
+| `agent.process.completed` | info | Query processing completed |
+| `agent.intent.classified` | info | Intent classification result |
+| `agent.intent.unknown` | warning | Could not classify intent |
+| `agent.routing.specialist` | info | Routing to specialist agent |
+| `agent.routing.completed` | info | Specialist agent finished |
+| `agent.clarification.needed` | info | Clarification required |
+| `agent.clarification.llm_generated` | debug | LLM generated clarification |
+
+**Tool Execution:**
+| Event | Level | Description |
+|-------|-------|-------------|
+| `tool.executing` | info | Tool execution starting |
+| `tool.completed` | info | Tool execution completed |
+| `tool.failed` | error | Tool execution failed |
+| `tool.unknown` | warning | Unknown tool requested |
+
+**A2UI Generation:**
+| Event | Level | Description |
+|-------|-------|-------------|
+| `a2ui.generating` | info | A2UI generation starting |
+| `a2ui.generated` | info | A2UI generation completed |
+| `a2ui.failed` | error | A2UI generation failed |
+
+**MCP Calls:**
+| Event | Level | Description |
+|-------|-------|-------------|
+| `mcp.ib.calling` | debug | IB MCP call starting |
+| `mcp.ib.success` | info | IB MCP call succeeded |
+| `mcp.ib.error_response` | warning | IB MCP returned error |
+| `mcp.ib.timeout` | error | IB MCP request timed out |
+| `mcp.rag.calling` | debug | RAG MCP call starting |
+| `mcp.rag.success` | info | RAG MCP call succeeded |
+| `mcp.rag.failed` | warning | RAG MCP call failed |
+| `mcp.graph.calling` | debug | Graph MCP call starting |
+| `mcp.graph.success` | info | Graph MCP call succeeded |
+| `mcp.graph.failed` | warning | Graph MCP call failed |
+
+**LLM Calls:**
+| Event | Level | Description |
+|-------|-------|-------------|
+| `llm.a2ui.generating` | info | A2UI LLM call starting |
+| `llm.a2ui.generated` | info | A2UI LLM call completed |
+| `llm.a2ui.json_error` | error | Invalid JSON from LLM |
+| `llm.a2ui.timeout` | error | LLM request timed out |
+| `llm.classify.starting` | debug | Intent classification starting |
+| `llm.classify.completed` | info | Intent classification completed |
+| `llm.classify.failed` | error | Intent classification failed |
+
+**Task Manager:**
+| Event | Level | Description |
+|-------|-------|-------------|
+| `task.submitted` | info | Task submitted to queue |
+| `task.processing.started` | info | Task processing started |
+| `task.processing.completed` | info | Task completed successfully |
+| `task.processing.failed` | warning | Task completed with error |
+| `task.processing.error` | error | Task threw exception |
+| `task.progress` | debug | Task progress update |
+
+**WebSocket:**
+| Event | Level | Description |
+|-------|-------|-------------|
+| `ws.connected` | info | WebSocket connection opened |
+| `ws.disconnected` | info | WebSocket connection closed |
+| `ws.message.received` | debug | Message received |
+| `ws.chat.started` | info | Chat processing started |
+| `ws.chat.completed` | info | Chat processing completed |
+| `ws.chat.error` | error | Chat processing failed |
+| `ws.task.created` | info | Async task created |
+| `ws.task.completed` | info | Async task finished |
+| `ws.subscribe.started` | info | Task subscription started |
+| `ws.subscribe.completed` | info | Task subscription ended |
+| `ws.auth.failed` | warning | WebSocket auth failed |
+
+**Example Log Queries:**
+```bash
+# Track a specific chat interaction
+cat logs/agui.log | jq 'select(.session_id == "auth0|123" and .event | startswith("ws.chat"))'
+
+# Find slow tool executions (>1s)
+cat logs/agui.log | jq 'select(.event == "tool.completed" and .duration_ms > 1000)'
+
+# Find all errors for a ticker
+cat logs/agui.log | jq 'select(.ticker == "NVDA" and .level == "error")'
+
+# Summarize intent classification
+cat logs/agui.log | jq 'select(.event == "agent.intent.classified") | {intents, tickers, classify_ms}'
+```
 
 ### Observability Environment Variables
 
