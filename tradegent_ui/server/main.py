@@ -465,25 +465,53 @@ async def websocket_endpoint(websocket: WebSocket):
     - Pass token via query parameter: ws://host/ws/agent?token=xxx
     - Authentication is ALWAYS required.
     """
+    import time
+
     # Validate token - authentication is always required
     user = await validate_websocket_token(websocket)
 
     if not user:
+        log.warning("ws.auth.failed", reason="no_valid_token")
         await websocket.close(code=4001, reason="Unauthorized")
         return
 
     session_id = user.sub
     await manager.connect(websocket, session_id)
 
+    log.info(
+        "ws.connected",
+        session_id=session_id,
+        user_email=user.email if hasattr(user, 'email') else None,
+    )
+
+    message_count = 0
+
     try:
         while True:
             data = await websocket.receive_json()
             msg_type = data.get("type")
+            message_count += 1
+
+            log.debug(
+                "ws.message.received",
+                session_id=session_id,
+                msg_type=msg_type,
+                message_count=message_count,
+            )
 
             if msg_type == "message":
                 # Process chat message
                 content = data.get("content", "")
                 async_mode = data.get("async", False)
+                start_time = time.perf_counter()
+
+                log.info(
+                    "ws.chat.started",
+                    session_id=session_id,
+                    async_mode=async_mode,
+                    content_length=len(content),
+                    content_preview=content[:50] if content else "",
+                )
 
                 if async_mode:
                     # Submit to task queue and stream progress
@@ -494,14 +522,31 @@ async def websocket_endpoint(websocket: WebSocket):
                         query=content,
                     )
 
+                    log.info(
+                        "ws.task.created",
+                        session_id=session_id,
+                        task_id=task_id,
+                    )
+
                     await websocket.send_json({
                         "type": "task_created",
                         "task_id": task_id,
                     })
 
                     # Stream progress
+                    progress_count = 0
                     async for progress in task_manager.stream_progress(task_id):
+                        progress_count += 1
                         await websocket.send_json(progress)
+
+                    duration_ms = (time.perf_counter() - start_time) * 1000
+                    log.info(
+                        "ws.task.completed",
+                        session_id=session_id,
+                        task_id=task_id,
+                        progress_updates=progress_count,
+                        duration_ms=round(duration_ms, 2),
+                    )
 
                 else:
                     # Synchronous processing
@@ -510,6 +555,18 @@ async def websocket_endpoint(websocket: WebSocket):
                     try:
                         coordinator = await get_coordinator()
                         response = await coordinator.process(session_id, content)
+
+                        duration_ms = (time.perf_counter() - start_time) * 1000
+                        component_count = len(response.a2ui.get("components", [])) if response.a2ui else 0
+
+                        log.info(
+                            "ws.chat.completed",
+                            session_id=session_id,
+                            success=response.success,
+                            component_count=component_count,
+                            text_length=len(response.text) if response.text else 0,
+                            duration_ms=round(duration_ms, 2),
+                        )
 
                         await websocket.send_json({
                             "type": "response",
@@ -520,6 +577,14 @@ async def websocket_endpoint(websocket: WebSocket):
                         })
 
                     except Exception as e:
+                        duration_ms = (time.perf_counter() - start_time) * 1000
+                        log.error(
+                            "ws.chat.error",
+                            session_id=session_id,
+                            error=str(e),
+                            error_type=type(e).__name__,
+                            duration_ms=round(duration_ms, 2),
+                        )
                         await websocket.send_json({
                             "type": "error",
                             "error": str(e),
@@ -529,17 +594,51 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Subscribe to task progress
                 task_id = data.get("task_id")
                 if task_id:
+                    log.info(
+                        "ws.subscribe.started",
+                        session_id=session_id,
+                        task_id=task_id,
+                    )
                     task_manager = await get_task_manager()
+                    progress_count = 0
                     async for progress in task_manager.stream_progress(task_id):
+                        progress_count += 1
                         await websocket.send_json(progress)
+
+                    log.info(
+                        "ws.subscribe.completed",
+                        session_id=session_id,
+                        task_id=task_id,
+                        progress_updates=progress_count,
+                    )
 
             elif msg_type == "ping":
                 await websocket.send_json({"type": "pong"})
+                log.debug("ws.ping", session_id=session_id)
+
+            else:
+                log.warning(
+                    "ws.message.unknown_type",
+                    session_id=session_id,
+                    msg_type=msg_type,
+                )
 
     except WebSocketDisconnect:
+        log.info(
+            "ws.disconnected",
+            session_id=session_id,
+            message_count=message_count,
+            reason="client_disconnect",
+        )
         manager.disconnect(session_id)
     except Exception as e:
-        log.error("WebSocket error", session_id=session_id, error=str(e))
+        log.error(
+            "ws.error",
+            session_id=session_id,
+            error=str(e),
+            error_type=type(e).__name__,
+            message_count=message_count,
+        )
         manager.disconnect(session_id)
 
 
