@@ -388,10 +388,16 @@ export default function AnalysisPage() {
                 placeholder="Enter ticker symbol (e.g., NVDA)"
                 value={ticker}
                 onChange={(e) => setTicker(e.target.value.toUpperCase())}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && ticker.trim()) {
+                    e.preventDefault();
+                    handleRunAnalysis();
+                  }
+                }}
                 className="pl-9"
               />
             </div>
-            <Button onClick={handleRunAnalysis} disabled={!ticker.trim()}>
+            <Button type="button" onClick={handleRunAnalysis} disabled={!ticker.trim()}>
               <BarChart3 className="h-4 w-4 mr-2" />
               Analyze
             </Button>
@@ -401,6 +407,7 @@ export default function AnalysisPage() {
             {['NVDA', 'AAPL', 'MSFT', 'TSLA', 'AMZN'].map((t) => (
               <Button
                 key={t}
+                type="button"
                 variant="outline"
                 size="sm"
                 onClick={() => setTicker(t)}
