@@ -9,6 +9,7 @@ Provides:
 """
 import hashlib
 import hmac
+import os
 import structlog
 from datetime import datetime, timedelta
 from typing import Optional, Callable
@@ -94,7 +95,6 @@ async def validate_token(token: str) -> UserClaims:
 
     Supports both Auth0 RS256 tokens and built-in HS256 tokens.
     """
-    import os
     settings = get_settings()
 
     # Check for demo token - ONLY allowed in development/debug mode
