@@ -193,6 +193,38 @@ Input: {
 }
 ```
 
+### SVG Visualization (Optional)
+
+Analysis skills can generate SVG dashboard visualizations. This is **optional** and controlled by a database setting.
+
+**Check/Change Setting:**
+
+```bash
+# Check current setting
+python tradegent.py settings get svg_generation_enabled
+
+# Disable SVG generation (recommended if using Agent UI)
+python tradegent.py settings set svg_generation_enabled false
+
+# Enable SVG generation (for file-based workflows)
+python tradegent.py settings set svg_generation_enabled true
+```
+
+**When to Disable:**
+- Using the Agent UI (UI provides its own visualization)
+- Want to reduce disk usage from SVG files
+- Running automated batch analyses
+
+**When to Enable:**
+- Need standalone visual reports for sharing
+- Not using the Agent UI
+- Want local file-based dashboards
+
+**Skill Behavior:**
+- Skills check `nexus.settings` for `svg_generation_enabled` before generating SVGs
+- When disabled, analysis YAML is still saved; only SVG generation is skipped
+- Existing SVG files are not affected
+
 ---
 
 ## Skill Chaining
