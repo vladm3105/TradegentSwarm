@@ -28,10 +28,11 @@ System design and technical foundations.
 | Document | Description |
 |----------|-------------|
 | [Overview](architecture/overview.md) | High-level system architecture |
+| [Skill-Database Mapping](architecture/skill-database-mapping.md) | Skill output to database field mapping |
+| [Database Schema](architecture/database-schema.md) | PostgreSQL and Neo4j schemas |
 | [RAG System](architecture/rag-system.md) | Semantic search and embeddings |
 | [Graph System](architecture/graph-system.md) | Knowledge graph and entity extraction |
 | [MCP Servers](architecture/mcp-servers.md) | MCP server configuration |
-| [Database Schema](architecture/database-schema.md) | PostgreSQL and Neo4j schemas |
 
 ### User Guide
 How to use the platform for trading analysis.
@@ -81,21 +82,27 @@ These documents live alongside their code:
 
 ## Key Concepts
 
-### Three-Layer Data Model
+### Four-Layer Data Model
 
 ```
 Layer 1: FILES (Source of Truth)
   Location: tradegent_knowledge/knowledge/**/*.yaml
   Purpose: Authoritative trading data, portable, rebuildable
 
-Layer 2: RAG (Semantic Search)
+Layer 2: DATABASE (Structured Queries) ← PRIORITY 1
+  Storage: PostgreSQL nexus.kb_* tables
+  Purpose: Fast SQL queries, UI rendering
+
+Layer 3: RAG (Semantic Search) ← PRIORITY 2
   Storage: PostgreSQL with pgvector
   Purpose: Find similar analyses, historical context
 
-Layer 3: GRAPH (Entity Relations)
+Layer 4: GRAPH (Entity Relations) ← PRIORITY 3
   Storage: Neo4j
   Purpose: Ticker peers, risks, bias patterns, relationships
 ```
+
+**Ingestion priority**: DB first (UI needs it immediately), then RAG, then Graph.
 
 ### Trading Modes
 
@@ -111,15 +118,17 @@ Layer 3: GRAPH (Entity Relations)
 Every analysis follows this pattern:
 
 ```
-PRE-ANALYSIS          EXECUTE            POST-SAVE
+PRE-ANALYSIS          EXECUTE            POST-SAVE (priority order)
     │                    │                   │
     ▼                    ▼                   ▼
-┌─────────┐        ┌─────────┐        ┌─────────┐
-│ RAG +   │───────▶│  Run    │───────▶│ Index   │
-│ Graph   │        │ Skill   │        │ RAG +   │
-│ Context │        │ Phases  │        │ Graph   │
-└─────────┘        └─────────┘        └─────────┘
+┌─────────┐        ┌─────────┐        ┌─────────────────────┐
+│ RAG +   │───────▶│  Run    │───────▶│ [1] DB (kb_* tables)│
+│ Graph   │        │ Skill   │        │ [2] RAG (pgvector)  │
+│ Context │        │ Phases  │        │ [3] Graph (Neo4j)   │
+└─────────┘        └─────────┘        └─────────────────────┘
 ```
+
+**UI Visualization**: Rendered from database tables. SVG generation deprecated.
 
 ---
 
@@ -127,10 +136,11 @@ PRE-ANALYSIS          EXECUTE            POST-SAVE
 
 | Component | Version |
 |-----------|---------|
-| Platform | v2.2 |
-| Skills | v2.4 (analysis), v2.1 (other) |
+| Platform | v2.3 |
+| Skills | v2.7 (stock), v2.6 (earnings), v2.1 (other) |
 | RAG | v2.0 |
 | Graph | v1.0 |
+| Ingest | v1.2 (DB-first priority) |
 
 ---
 

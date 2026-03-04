@@ -40,5 +40,6 @@ tmp/
 tradegent_knowledge/
 
 # Claude Code local config (may contain MCP credentials)
-.claude/
-**/.claude/
+# Ignore everything in .claude except rules/
+.claude/*
+!.claude/rules/

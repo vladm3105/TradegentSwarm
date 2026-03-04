@@ -134,10 +134,11 @@ Two complementary systems provide historical context:
    ├─ FAIL → Save analysis, skip execution
    │
    ▼
-5. POST-SAVE INDEXING
+5. POST-SAVE INDEXING (priority order for fast UI)
    │
-   ├─ RAG: embed_document(analysis.yaml)
-   ├─ Graph: extract_document(analysis.yaml)
+   ├─ [1] DB: upsert_kb_*() → UI can display immediately
+   ├─ [2] RAG: embed_document() → semantic search
+   ├─ [3] Graph: extract_document() → entity relations
    └─ GitHub: push_files(tradegent-knowledge)
    │
    ▼
@@ -146,29 +147,33 @@ Two complementary systems provide historical context:
    └─ IB: place_order(...)
 ```
 
-### Knowledge Indexing
+### Knowledge Indexing (ingest.py)
 
 ```
 YAML File (source of truth)
     │
-    ├───────────────┐
-    │               │
-    ▼               ▼
-┌─────────┐   ┌─────────┐
-│   RAG   │   │  Graph  │
-│ Embed   │   │ Extract │
-└────┬────┘   └────┬────┘
-     │             │
-     ▼             ▼
-┌─────────┐   ┌─────────┐
-│pgvector │   │  Neo4j  │
-│ chunks  │   │  nodes  │
-└─────────┘   └─────────┘
+    │  auto-ingest hook triggers ingest.py
+    ▼
+┌─────────────────────────────────────────────────┐
+│  PRIORITY ORDER (optimized for UI delivery)     │
+├─────────────────────────────────────────────────┤
+│  [1] PostgreSQL kb_* tables                     │
+│      └─ UI can display analysis immediately     │
+│                                                 │
+│  [2] pgvector RAG chunks                        │
+│      └─ Semantic search for similar analyses    │
+│                                                 │
+│  [3] Neo4j Graph nodes                          │
+│      └─ Entity relationships and patterns       │
+└─────────────────────────────────────────────────┘
 ```
+
+**Why DB first?** The UI queries `kb_*` tables directly. Database insert is fastest,
+so the UI can display new analysis immediately while RAG/Graph indexing continues.
 
 ---
 
-## Three-Layer Data Model
+## Four-Layer Data Model
 
 ```
 Layer 1: FILES (Source of Truth)
@@ -177,21 +182,32 @@ Location: tradegent_knowledge/knowledge/**/*.yaml
 Properties:
   - Authoritative: Files define what's true
   - Portable: Can move between systems
-  - Rebuildable: RAG/Graph derived from files
+  - Git versioned: Full audit trail
+  - Rebuildable: All derived storage can be rebuilt from files
 
-Layer 2: RAG (Semantic Search)
+Layer 2: DATABASE (Structured Queries) - PRIORITY 1
+─────────────────────────────────
+Storage: PostgreSQL nexus.kb_* tables
+Purpose: Fast SQL queries, UI rendering
+Rebuilds from: Layer 1 files via upsert_kb_*()
+Tables: kb_stock_analyses, kb_earnings_analyses, kb_trade_journals, etc.
+
+Layer 3: RAG (Semantic Search) - PRIORITY 2
 ─────────────────────────────────
 Storage: PostgreSQL with pgvector extension
 Schema: nexus.rag_documents, nexus.rag_chunks
 Rebuilds from: Layer 1 files via embed_document()
 
-Layer 3: GRAPH (Entity Relations)
+Layer 4: GRAPH (Entity Relations) - PRIORITY 3
 ─────────────────────────────────
 Storage: Neo4j
 Rebuilds from: Layer 1 files via extract_document()
 ```
 
-**Conflict resolution:** If RAG/Graph conflict with files, files win. Re-index to fix.
+**Conflict resolution:** If derived storage conflicts with files, files win. Re-ingest to fix.
+
+**UI Visualization:** The tradegent_ui renders visualizations directly from Layer 2
+(kb_* tables). SVG file generation is deprecated (`svg_generation_enabled=false`).
 
 ---
 
@@ -250,7 +266,8 @@ Layer 6: Rate limits
 
 ## Related Documentation
 
+- [Skill-Database Mapping](skill-database-mapping.md) - Complete field mapping from skills to tables
+- [Database Schema](database-schema.md) - Table definitions
 - [RAG System](rag-system.md) - Embedding and search details
 - [Graph System](graph-system.md) - Entity extraction and queries
 - [MCP Servers](mcp-servers.md) - Server configuration
-- [Database Schema](database-schema.md) - Table definitions
