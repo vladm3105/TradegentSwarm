@@ -4,6 +4,7 @@ import { useEffect, useCallback, useRef } from 'react';
 import {
   TradegentWebSocket,
   getWebSocket,
+  resetWebSocket,
   type ConnectionState,
 } from '@/lib/websocket';
 import { useChatStore } from '@/stores/chat-store';
@@ -12,6 +13,7 @@ import { validateA2UIResponse } from '@/types/a2ui';
 
 export function useWebSocket() {
   const wsRef = useRef<TradegentWebSocket | null>(null);
+  const handleMessageRef = useRef<((data: WSResponse) => void) | null>(null);
   const {
     setConnected,
     setStreaming,
@@ -20,78 +22,91 @@ export function useWebSocket() {
     setSessionId,
   } = useChatStore();
 
-  const handleMessage = useCallback(
-    (data: WSResponse) => {
-      switch (data.type) {
-        case 'response': {
-          // Full response received
-          const a2ui = validateA2UIResponse(data.data);
-          if (a2ui) {
-            // Find pending assistant message and update it
-            const messages = useChatStore.getState().messages;
-            const pendingMessage = messages.find(
-              (m) => m.role === 'assistant' && m.status === 'pending'
-            );
-            if (pendingMessage) {
-              updateMessage(pendingMessage.id, {
-                content: a2ui.text,
-                a2ui,
-                status: 'complete',
-              });
-            } else {
-              addMessage({
-                role: 'assistant',
-                content: a2ui.text,
-                a2ui,
-                status: 'complete',
-              });
-            }
-          }
-          setStreaming(false);
-          break;
-        }
+  // Keep handleMessage ref up to date
+  handleMessageRef.current = (data: WSResponse) => {
+    switch (data.type) {
+      case 'response': {
+        // Full response received
+        // Backend sends: { type: 'response', success, text, a2ui, error }
+        const a2ui = validateA2UIResponse(data.a2ui);
+        const responseData = data as { text?: string; error?: string; success?: boolean };
 
-        case 'progress': {
-          // Task progress update - find pending message and update progress
-          const messages = useChatStore.getState().messages;
-          const pendingMessage = messages.find(
-            (m) => m.role === 'assistant' && (m.status === 'pending' || m.status === 'streaming')
-          );
+        // Find pending or streaming assistant message
+        const messages = useChatStore.getState().messages;
+        const pendingMessage = messages.find(
+          (m) => m.role === 'assistant' && (m.status === 'pending' || m.status === 'streaming')
+        );
 
-          if (pendingMessage) {
-            updateMessage(pendingMessage.id, {
-              status: 'streaming',
-              progress: data.progress,
-              progressMessage: data.message || `Processing...`,
-              taskId: data.task_id,
-            });
-          }
-          break;
-        }
+        // Determine content: use a2ui.text if available, else top-level text
+        const content = a2ui?.text ?? responseData.text ?? '';
 
-        case 'error': {
-          // Error response
-          const messages = useChatStore.getState().messages;
-          const pendingMessage = messages.find(
-            (m) => m.role === 'assistant' && m.status === 'pending'
-          );
-          if (pendingMessage) {
-            updateMessage(pendingMessage.id, {
-              content: data.error || 'An error occurred',
-              status: 'error',
-              error: data.error,
-            });
-          }
-          setStreaming(false);
-          break;
+        if (pendingMessage) {
+          updateMessage(pendingMessage.id, {
+            content,
+            a2ui: a2ui ?? undefined,
+            status: responseData.error ? 'error' : 'complete',
+            error: responseData.error,
+          });
+        } else if (content || a2ui) {
+          addMessage({
+            role: 'assistant',
+            content,
+            a2ui: a2ui ?? undefined,
+            status: responseData.error ? 'error' : 'complete',
+            error: responseData.error,
+          });
         }
+        setStreaming(false);
+        break;
       }
-    },
-    [addMessage, updateMessage, setStreaming]
-  );
+
+      case 'progress': {
+        // Task progress update - find pending message and update progress
+        const messages = useChatStore.getState().messages;
+        const pendingMessage = messages.find(
+          (m) => m.role === 'assistant' && (m.status === 'pending' || m.status === 'streaming')
+        );
+
+        if (pendingMessage) {
+          updateMessage(pendingMessage.id, {
+            status: 'streaming',
+            progress: data.progress,
+            progressMessage: data.message || `Processing...`,
+            taskId: data.task_id,
+          });
+        }
+        break;
+      }
+
+      case 'error': {
+        // Error response - find pending or streaming message
+        const messages = useChatStore.getState().messages;
+        const pendingMessage = messages.find(
+          (m) => m.role === 'assistant' && (m.status === 'pending' || m.status === 'streaming')
+        );
+        if (pendingMessage) {
+          updateMessage(pendingMessage.id, {
+            content: data.error || 'An error occurred',
+            status: 'error',
+            error: data.error,
+          });
+        }
+        setStreaming(false);
+        break;
+      }
+    }
+  };
+
+  // Stable message handler that delegates to ref
+  const handleMessage = useCallback((data: WSResponse) => {
+    handleMessageRef.current?.(data);
+  }, []);
 
   const connect = useCallback(() => {
     if (wsRef.current) return;
+
+    // Reset singleton to ensure fresh instance with new callback
+    resetWebSocket();
 
     wsRef.current = getWebSocket({
       onMessage: handleMessage,
@@ -114,7 +129,7 @@ export function useWebSocket() {
   }, [handleMessage, setConnected, setSessionId]);
 
   const disconnect = useCallback(() => {
-    wsRef.current?.disconnect();
+    resetWebSocket();
     wsRef.current = null;
     setConnected(false);
   }, [setConnected]);
@@ -146,13 +161,15 @@ export function useWebSocket() {
     wsRef.current?.unsubscribeFromTask(taskId);
   }, []);
 
-  // Auto-connect on mount
+  // Auto-connect on mount only
   useEffect(() => {
     connect();
     return () => {
       disconnect();
     };
-  }, [connect, disconnect]);
+    // Only run on mount/unmount, not on callback changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return {
     connect,

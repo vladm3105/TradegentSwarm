@@ -1,0 +1,31 @@
+{
+  "mcpServers": {
+    "ib-mcp": {
+      "transport": "sse",
+      "url": "http://localhost:8100/sse"
+    },
+    "trading-rag": {
+      "command": "python",
+      "args": ["/opt/data/tradegent_swarm/tradegent/rag/mcp_server.py"],
+      "cwd": "/opt/data/tradegent_swarm/tradegent",
+      "env": {
+        "PYTHONPATH": "/opt/data/tradegent_swarm/tradegent",
+        "PG_USER": "tradegent",
+        "PG_HOST": "localhost",
+        "PG_PORT": "5433",
+        "PG_DB": "tradegent",
+        "EMBED_PROVIDER": "openai"
+      }
+    },
+    "trading-graph": {
+      "command": "python",
+      "args": ["/opt/data/tradegent_swarm/tradegent/graph/mcp_server.py"],
+      "cwd": "/opt/data/tradegent_swarm/tradegent",
+      "env": {
+        "PYTHONPATH": "/opt/data/tradegent_swarm/tradegent",
+        "NEO4J_URI": "bolt://localhost:7688",
+        "NEO4J_USER": "neo4j"
+      }
+    }
+  }
+}

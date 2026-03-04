@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Auto-ingest script for knowledge base documents.
 
-Handles:
-- RAG embedding (pgvector)
-- Graph extraction (Neo4j)
-- Database storage (PostgreSQL kb_* tables)
-- GitHub push (optional, via MCP or git)
+Ingestion Priority (optimized for UI delivery time):
+    1. Database (PostgreSQL kb_* tables) - fastest, needed by UI immediately
+    2. RAG embedding (pgvector) - semantic search
+    3. Graph extraction (Neo4j) - entity relationships
 
 Usage:
     python ingest.py <file_path> [--skip-github] [--skip-db]
@@ -133,8 +132,27 @@ def ingest_to_database(file_path: Path) -> dict:
             elif doc_type == "scanner-config":
                 record_id = db.upsert_kb_scanner_config(str(file_path), data)
                 table = "kb_scanner_configs"
+            elif doc_type == "scanner-run":
+                # Scanner execution results
+                record_id = db.upsert_kb_scanner_run(data)
+                table = "kb_scanner_runs"
             else:
                 return {"success": False, "error": f"Unknown doc_type: {doc_type}", "skipped": True}
+
+            # Post-processing: Extract earnings results from post-earnings-review
+            if doc_type == "post-earnings-review" and record_id:
+                earnings_result = extract_earnings_result_from_review(data, record_id)
+                if earnings_result:
+                    try:
+                        er_id = db.upsert_kb_earnings_result(
+                            ticker=earnings_result["ticker"],
+                            earnings_date=earnings_result["earnings_date"],
+                            data=earnings_result,
+                            source_review_id=record_id
+                        )
+                        log.info(f"Extracted earnings result (id={er_id}) from review (id={record_id})")
+                    except Exception as e:
+                        log.warning(f"Failed to extract earnings result from review: {e}")
 
             return {
                 "success": True,
@@ -147,6 +165,73 @@ def ingest_to_database(file_path: Path) -> dict:
 
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+def extract_earnings_result_from_review(data: dict, review_id: int) -> dict | None:
+    """Extract earnings result data from a post-earnings-review document.
+
+    Args:
+        data: The post-earnings-review YAML data
+        review_id: The ID of the review record in kb_reviews
+
+    Returns:
+        Extracted earnings result dict or None if insufficient data
+    """
+    meta = data.get("_meta", {})
+    ticker = meta.get("ticker") or data.get("ticker")
+
+    # Get earnings date from multiple possible sources
+    earnings_date = (
+        data.get("earnings_release", {}).get("date")
+        or data.get("earnings_date")
+        or meta.get("earnings_date")
+    )
+
+    if not ticker or not earnings_date:
+        log.debug(f"Cannot extract earnings result: missing ticker or date")
+        return None
+
+    # Extract actual results from the review
+    actual = data.get("actual_results", data.get("actual", {}))
+    forecast = data.get("forecast_comparison", data.get("forecast", {}))
+    accuracy = data.get("accuracy_assessment", data.get("accuracy", {}))
+    reaction = data.get("stock_reaction", data.get("reaction", {}))
+
+    # Build earnings result record
+    result = {
+        "ticker": ticker,
+        "earnings_date": earnings_date,
+        "source_review_id": review_id,
+        # Actual EPS
+        "actual_eps": actual.get("eps") or actual.get("actual_eps"),
+        "consensus_eps": forecast.get("consensus_eps") or forecast.get("expected_eps"),
+        "eps_surprise": actual.get("eps_surprise") or actual.get("surprise"),
+        "eps_surprise_pct": actual.get("eps_surprise_pct"),
+        # Actual Revenue
+        "actual_revenue": actual.get("revenue") or actual.get("actual_revenue"),
+        "consensus_revenue": forecast.get("consensus_revenue"),
+        "revenue_surprise_pct": actual.get("revenue_surprise_pct"),
+        # Guidance
+        "guidance_direction": actual.get("guidance", {}).get("direction") or actual.get("guidance_direction"),
+        "guidance_vs_consensus": actual.get("guidance", {}).get("vs_consensus"),
+        # Reaction
+        "reaction_1d_pct": reaction.get("day_1_pct") or reaction.get("1d_pct"),
+        "reaction_3d_pct": reaction.get("day_3_pct") or reaction.get("3d_pct"),
+        "reaction_5d_pct": reaction.get("day_5_pct") or reaction.get("5d_pct"),
+        "price_at_release": reaction.get("price_at_release"),
+        "price_after_1d": reaction.get("price_after_1d"),
+        # Forecast accuracy
+        "forecast_accuracy_score": accuracy.get("overall_score") or accuracy.get("score"),
+        "p_beat_predicted": forecast.get("p_beat") or forecast.get("predicted_p_beat"),
+        "beat_occurred": actual.get("beat") if isinstance(actual.get("beat"), bool) else None,
+    }
+
+    # Only return if we have meaningful data
+    if result.get("actual_eps") is not None or result.get("actual_revenue") is not None:
+        return result
+
+    log.debug(f"No actual results found in post-earnings-review for {ticker}")
+    return None
 
 
 def get_relative_knowledge_path(file_path: Path) -> str | None:
@@ -201,50 +286,53 @@ def main():
     results = {
         "file": str(file_path),
         "relative_path": rel_path,
+        "db": None,
         "rag": None,
         "graph": None,
-        "db": None,
     }
 
-    # RAG embedding
-    print(f"Embedding in RAG: {file_path.name}...", file=sys.stderr)
-    results["rag"] = ingest_to_rag(file_path)
-
-    # Graph extraction
-    print(f"Extracting to Graph: {file_path.name}...", file=sys.stderr)
-    results["graph"] = ingest_to_graph(file_path)
-
-    # Database insert
+    # Priority 1: Database insert (fastest, needed by UI immediately)
     if not args.skip_db:
-        print(f"Inserting to Database: {file_path.name}...", file=sys.stderr)
+        print(f"[1/3] Database: {file_path.name}...", file=sys.stderr)
         results["db"] = ingest_to_database(file_path)
     else:
         results["db"] = {"success": False, "skipped": True}
 
+    # Priority 2: RAG embedding (for semantic search)
+    print(f"[2/3] RAG: {file_path.name}...", file=sys.stderr)
+    results["rag"] = ingest_to_rag(file_path)
+
+    # Priority 3: Graph extraction (for entity relationships)
+    print(f"[3/3] Graph: {file_path.name}...", file=sys.stderr)
+    results["graph"] = ingest_to_graph(file_path)
+
     # Summary
+    db_status = "✓" if results["db"]["success"] else ("⊘" if results["db"].get("skipped") else "✗")
     rag_status = "✓" if results["rag"]["success"] else "✗"
     graph_status = "✓" if results["graph"]["success"] else "✗"
-    db_status = "✓" if results["db"]["success"] else ("⊘" if results["db"].get("skipped") else "✗")
 
-    summary = f"Ingested {file_path.name}: RAG {rag_status}, Graph {graph_status}, DB {db_status}"
+    summary = f"Ingested {file_path.name}: DB {db_status}, RAG {rag_status}, Graph {graph_status}"
 
     if args.json:
         results["summary"] = summary
         print(json.dumps(results, indent=2))
     else:
         print(summary)
-        if results["rag"]["success"]:
-            print(f"  RAG: {results['rag']['chunks']} chunks")
-        else:
-            print(f"  RAG error: {results['rag']['error']}", file=sys.stderr)
-        if results["graph"]["success"]:
-            print(f"  Graph: {results['graph']['entities']} entities, {results['graph']['relations']} relations")
-        else:
-            print(f"  Graph error: {results['graph']['error']}", file=sys.stderr)
+        # DB first (priority 1)
         if results["db"]["success"]:
             print(f"  DB: {results['db']['table']} (id={results['db']['record_id']})")
         elif not results["db"].get("skipped"):
             print(f"  DB error: {results['db'].get('error', 'unknown')}", file=sys.stderr)
+        # RAG second (priority 2)
+        if results["rag"]["success"]:
+            print(f"  RAG: {results['rag']['chunks']} chunks")
+        else:
+            print(f"  RAG error: {results['rag']['error']}", file=sys.stderr)
+        # Graph third (priority 3)
+        if results["graph"]["success"]:
+            print(f"  Graph: {results['graph']['entities']} entities, {results['graph']['relations']} relations")
+        else:
+            print(f"  Graph error: {results['graph']['error']}", file=sys.stderr)
 
     # Determine exit code based on results
     rag_ok = results["rag"]["success"]

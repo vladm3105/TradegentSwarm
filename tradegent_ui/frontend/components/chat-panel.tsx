@@ -123,32 +123,39 @@ function SessionHistoryDropdown({
   sessions,
   onLoadSession,
   onArchiveSession,
+  onOpen,
   loading,
 }: {
   sessions: SessionSummary[];
   onLoadSession: (session: SessionSummary) => void;
   onArchiveSession: (sessionId: string) => void;
+  onOpen?: () => void;
   loading: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
 
-  if (loading) {
-    return (
-      <Button variant="ghost" size="icon" disabled>
-        <Loader2 className="h-4 w-4 animate-spin" />
-      </Button>
-    );
-  }
+  const handleOpen = () => {
+    if (!isOpen) {
+      // Fetch sessions when opening the dropdown
+      onOpen?.();
+    }
+    setIsOpen(!isOpen);
+  };
 
   return (
     <div className="relative">
       <Button
         variant="ghost"
         size="icon"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={handleOpen}
         title="Session history"
+        disabled={loading}
       >
-        <History className="h-4 w-4" />
+        {loading ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <History className="h-4 w-4" />
+        )}
       </Button>
 
       {isOpen && (
@@ -254,13 +261,12 @@ export function ChatPanel() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Focus input when panel opens
+  // Focus input when panel opens (sessions fetched lazily when history dropdown opens)
   useEffect(() => {
     if (chatPanelOpen) {
       setTimeout(() => inputRef.current?.focus(), 100);
-      fetchSessions();
     }
-  }, [chatPanelOpen, fetchSessions]);
+  }, [chatPanelOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -398,6 +404,7 @@ export function ChatPanel() {
             sessions={sessionsList}
             onLoadSession={handleLoadSession}
             onArchiveSession={handleArchiveSession}
+            onOpen={fetchSessions}
             loading={loadingSessions}
           />
 

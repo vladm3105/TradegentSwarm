@@ -397,7 +397,11 @@ export default function AnalysisPage() {
                 className="pl-9"
               />
             </div>
-            <Button type="button" onClick={handleRunAnalysis} disabled={!ticker.trim()}>
+            <Button
+              type="button"
+              disabled={!ticker.trim()}
+              onClick={() => handleRunAnalysis()}
+            >
               <BarChart3 className="h-4 w-4 mr-2" />
               Analyze
             </Button>

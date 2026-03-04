@@ -41,8 +41,44 @@ class AnalysisAgent(BaseAgent):
         tool_results = {}
 
         # Determine which tools to call based on query
-        if any(word in query_lower for word in ["analyze", "analysis", "run"]):
-            # Run analysis - for each ticker
+        # Check if user wants to RUN a new analysis vs RETRIEVE existing
+        wants_new_analysis = any(word in query_lower for word in [
+            "analyze", "run analysis", "new analysis", "stock analysis",
+            "earnings analysis", "fresh analysis"
+        ])
+        wants_existing = any(word in query_lower for word in [
+            "get analysis", "show analysis", "last analysis", "latest analysis",
+            "previous analysis", "existing analysis", "find analysis"
+        ])
+
+        if wants_new_analysis and not wants_existing and tickers:
+            # Run NEW analysis via subprocess
+            log.info("Running new analysis", tickers=tickers)
+
+            for ticker in tickers[:1]:  # Limit to 1 ticker for new analysis
+                # Determine analysis type from query
+                analysis_type = "earnings" if "earnings" in query_lower else "stock"
+
+                result = await self.execute_tool(
+                    "run_analysis",
+                    {"ticker": ticker, "analysis_type": analysis_type},
+                )
+
+                if result.success:
+                    tool_results[f"new_analysis_{ticker}"] = result.result
+
+                    # Also retrieve the just-created analysis from RAG for display
+                    rag_result = await self.execute_tool(
+                        "get_analysis",
+                        {"ticker": ticker, "query": "latest analysis recommendation gate"},
+                    )
+                    if rag_result.success:
+                        tool_results[f"analysis_{ticker}"] = rag_result.result
+                else:
+                    tool_results[f"error_{ticker}"] = result.error
+
+        elif any(word in query_lower for word in ["analyze", "analysis", "run"]):
+            # Retrieve existing analysis - for each ticker
             for ticker in tickers[:3]:  # Limit to 3 tickers
                 result = await self.execute_tool(
                     "get_analysis",

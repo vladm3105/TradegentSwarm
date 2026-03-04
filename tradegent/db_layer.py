@@ -2163,6 +2163,17 @@ class NexusDB:
         summary = data.get("summary", {})
         scoring = data.get("scoring", {})
         threat = data.get("threat_assessment", {})
+        catalyst = data.get("catalyst", {})
+        bull_case = data.get("bull_case_analysis", {})
+        bear_case = data.get("bear_case_analysis", {})
+
+        # Extract risk/reward ratio from gate criteria or gate.rr_actual
+        rr_criteria = gate.get("criteria", {}).get("risk_reward", {})
+        risk_reward = rr_criteria.get("value") if isinstance(rr_criteria, dict) else gate.get("rr_actual")
+
+        # Extract position size from trade_plan
+        position_sizing = trade.get("position_sizing", {})
+        position_size = position_sizing.get("max_portfolio_pct")
 
         try:
             with self.conn.cursor() as cur:
@@ -2174,10 +2185,13 @@ class NexusDB:
                         bull_probability, base_probability, bear_probability,
                         entry_price, stop_price, target_1_price, target_2_price,
                         catalyst_score, technical_score, fundamental_score, sentiment_score,
-                        total_threat_level, yaml_content
+                        total_threat_level, yaml_content,
+                        bull_case_strength, bear_case_strength,
+                        catalyst_type, catalyst_date, risk_reward_ratio, position_size_pct, days_to_catalyst
                     ) VALUES (
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                     )
                     ON CONFLICT (file_path) DO UPDATE SET
                         current_price = EXCLUDED.current_price,
@@ -2199,6 +2213,13 @@ class NexusDB:
                         sentiment_score = EXCLUDED.sentiment_score,
                         total_threat_level = EXCLUDED.total_threat_level,
                         yaml_content = EXCLUDED.yaml_content,
+                        bull_case_strength = EXCLUDED.bull_case_strength,
+                        bear_case_strength = EXCLUDED.bear_case_strength,
+                        catalyst_type = EXCLUDED.catalyst_type,
+                        catalyst_date = EXCLUDED.catalyst_date,
+                        risk_reward_ratio = EXCLUDED.risk_reward_ratio,
+                        position_size_pct = EXCLUDED.position_size_pct,
+                        days_to_catalyst = EXCLUDED.days_to_catalyst,
                         updated_at = now()
                     RETURNING id
                 """, [
@@ -2221,10 +2242,18 @@ class NexusDB:
                     summary.get("key_levels", {}).get("target_2"),
                     scoring.get("catalyst_score"),  # v2.7: scoring section
                     scoring.get("technical_score"),
-                    scoring.get("fundamental_score"),
+                    scoring.get("fundamental_score") or scoring.get("environment_score"),  # v2.7 may use environment_score
                     scoring.get("sentiment_score"),
                     threat.get("total_threat_level"),  # v2.7: threat_assessment
                     json.dumps(data, default=str),
+                    # New fields (migration 016)
+                    bull_case.get("strength"),
+                    bear_case.get("strength"),
+                    catalyst.get("type"),
+                    catalyst.get("date"),
+                    risk_reward,
+                    position_size,  # Added: from trade_plan.position_sizing.max_portfolio_pct
+                    catalyst.get("days_until"),
                 ])
                 result = cur.fetchone()
                 if result is None:
@@ -2299,14 +2328,44 @@ class NexusDB:
 
         meta = data.get("_meta", {})
         decision = data.get("decision", {})
-        gate = decision.get("do_nothing_gate", {})
-        cases = data.get("case_analysis", {})
+
+        # v2.5: do_nothing_gate is at ROOT level, not under decision
+        gate = data.get("do_nothing_gate", {}) or decision.get("do_nothing_gate", {})
+
+        # v2.5: case analyses are at ROOT level (bull_case_analysis, bear_case_analysis)
+        bull_case = data.get("bull_case_analysis", {}) or data.get("case_analysis", {}).get("bull_case", {})
+        bear_case = data.get("bear_case_analysis", {}) or data.get("case_analysis", {}).get("bear_case", {})
+
+        scenarios = data.get("scenarios", {})
+        threat = data.get("threat_assessment", {})
+        trade = data.get("trade_plan", {})
+        preparation = data.get("preparation", {})
+        summary = data.get("summary", {})
+        probability = data.get("probability", {})
+
+        # v2.6: scoring section added for consistency with stock-analysis
+        scoring = data.get("scoring", {})
 
         # Extract earnings fields from root level (v2.4+ schema)
         # Also check under "earnings" for older schemas
         earnings_date = data.get("earnings_date") or data.get("earnings", {}).get("date")
         earnings_time = data.get("earnings_time") or data.get("earnings", {}).get("time")
         days_to_earnings = data.get("days_to_earnings") or data.get("earnings", {}).get("days_to_earnings")
+
+        # Extract risk/reward ratio from gate criteria
+        rr_criteria = gate.get("criteria", {}).get("risk_reward", {})
+        risk_reward = rr_criteria.get("value") if isinstance(rr_criteria, dict) else gate.get("rr_actual")
+
+        # v2.5: IV data is under preparation.implied_move, not options_data
+        implied_move = preparation.get("implied_move", {})
+        iv_rank = implied_move.get("iv_rank") or data.get("options_data", {}).get("iv_rank")
+        expected_move_pct = implied_move.get("percentage") or data.get("options_data", {}).get("expected_move_pct")
+
+        # v2.5: scenarios use strong_beat/modest_beat/modest_miss/strong_miss (not bull/base/bear/disaster)
+        bull_prob = scenarios.get("strong_beat", {}).get("probability") or scenarios.get("bull", {}).get("probability")
+        base_prob = scenarios.get("modest_beat", {}).get("probability") or scenarios.get("base", {}).get("probability")
+        bear_prob = scenarios.get("modest_miss", {}).get("probability") or scenarios.get("bear", {}).get("probability")
+        disaster_prob = scenarios.get("strong_miss", {}).get("probability") or scenarios.get("disaster", {}).get("probability")
 
         try:
             with self.conn.cursor() as cur:
@@ -2315,12 +2374,39 @@ class NexusDB:
                         ticker, analysis_date, schema_version, file_path,
                         earnings_date, earnings_time, days_to_earnings,
                         recommendation, confidence, p_beat, expected_value_pct, gate_result,
-                        bull_case_strength, bear_case_strength, yaml_content
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        bull_case_strength, bear_case_strength, yaml_content,
+                        current_price, entry_price, stop_price, target_1_price, target_2_price,
+                        bull_probability, base_probability, bear_probability, disaster_probability,
+                        catalyst_score, technical_score, fundamental_score, sentiment_score,
+                        total_threat_level, gate_criteria_met, risk_reward_ratio,
+                        iv_rank, expected_move_pct
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    )
                     ON CONFLICT (file_path) DO UPDATE SET
                         recommendation = EXCLUDED.recommendation,
                         confidence = EXCLUDED.confidence,
                         yaml_content = EXCLUDED.yaml_content,
+                        current_price = EXCLUDED.current_price,
+                        entry_price = EXCLUDED.entry_price,
+                        stop_price = EXCLUDED.stop_price,
+                        target_1_price = EXCLUDED.target_1_price,
+                        target_2_price = EXCLUDED.target_2_price,
+                        bull_probability = EXCLUDED.bull_probability,
+                        base_probability = EXCLUDED.base_probability,
+                        bear_probability = EXCLUDED.bear_probability,
+                        disaster_probability = EXCLUDED.disaster_probability,
+                        catalyst_score = EXCLUDED.catalyst_score,
+                        technical_score = EXCLUDED.technical_score,
+                        fundamental_score = EXCLUDED.fundamental_score,
+                        sentiment_score = EXCLUDED.sentiment_score,
+                        total_threat_level = EXCLUDED.total_threat_level,
+                        gate_criteria_met = EXCLUDED.gate_criteria_met,
+                        risk_reward_ratio = EXCLUDED.risk_reward_ratio,
+                        iv_rank = EXCLUDED.iv_rank,
+                        expected_move_pct = EXCLUDED.expected_move_pct,
                         updated_at = now()
                     RETURNING id
                 """, [
@@ -2332,13 +2418,39 @@ class NexusDB:
                     earnings_time,
                     days_to_earnings,
                     decision.get("recommendation"),
-                    decision.get("confidence"),
-                    data.get("probability", {}).get("p_beat"),
-                    decision.get("expected_value_pct"),
-                    gate.get("result"),
-                    cases.get("bull_case", {}).get("strength"),
-                    cases.get("bear_case", {}).get("strength"),
+                    # v2.5: confidence_pct, not just confidence
+                    decision.get("confidence_pct") or decision.get("confidence"),
+                    # v2.5: probability.final_probability.p_beat
+                    probability.get("final_probability", {}).get("p_beat") or probability.get("p_beat"),
+                    # v2.5: expected_value from scenarios section
+                    decision.get("expected_value_pct") or scenarios.get("expected_value"),
+                    # v2.5: gate_result at ROOT, not under decision
+                    gate.get("gate_result") or gate.get("result"),
+                    # v2.5: case analyses at ROOT level
+                    bull_case.get("strength"),
+                    bear_case.get("strength"),
                     json.dumps(data, default=str),
+                    # New fields (migration 016)
+                    data.get("current_price"),
+                    trade.get("entry", {}).get("price") or summary.get("key_levels", {}).get("entry"),
+                    trade.get("stop_loss", {}).get("price") or trade.get("stop", {}).get("price") or summary.get("key_levels", {}).get("stop"),
+                    trade.get("targets", {}).get("target_1") or trade.get("target_1", {}).get("price") or summary.get("key_levels", {}).get("target_1"),
+                    trade.get("targets", {}).get("target_2") or trade.get("target_2", {}).get("price") or summary.get("key_levels", {}).get("target_2"),
+                    # v2.5: scenario names fixed
+                    bull_prob,
+                    base_prob,
+                    bear_prob,
+                    disaster_prob,
+                    # v2.6: scoring section added (consistent with stock-analysis)
+                    scoring.get("catalyst_score"),
+                    scoring.get("technical_score"),
+                    scoring.get("fundamental_score"),
+                    scoring.get("sentiment_score"),
+                    threat.get("total_threat_level") or threat.get("total_level") or threat.get("primary_concern"),
+                    gate.get("gates_passed"),
+                    risk_reward,
+                    iv_rank,
+                    expected_move_pct,
                 ])
                 result = cur.fetchone()
                 if result is None:
@@ -2767,6 +2879,132 @@ class NexusDB:
             """, [review_type])
             return [dict(r) for r in cur.fetchall()]
 
+    # ─── KB Earnings Results ───────────────────────────────────────────────────
+
+    def upsert_kb_earnings_result(self, ticker: str, earnings_date, data: dict, source_review_id: int = None) -> int:
+        """Upsert an earnings result into kb_earnings_results. Returns ID."""
+        ticker = self._validate_ticker(ticker, "earnings result")
+
+        # Extract data with fallbacks
+        eps = data.get("eps", {})
+        revenue = data.get("revenue", {})
+        guidance_data = data.get("guidance", {}) if isinstance(data.get("guidance"), dict) else {}
+        key_metric = data.get("key_metric", {})
+        reaction = data.get("stock_reaction", {})
+
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO nexus.kb_earnings_results (
+                        ticker, earnings_date, earnings_time, fiscal_quarter, fiscal_year,
+                        eps_actual, eps_consensus, eps_whisper, eps_surprise_pct,
+                        revenue_actual, revenue_consensus, revenue_surprise_pct,
+                        eps_yoy_growth_pct, revenue_yoy_growth_pct,
+                        guidance, guidance_details,
+                        key_metric_name, key_metric_actual, key_metric_consensus, key_metric_surprise_pct,
+                        price_before, day1_move_pct, week1_move_pct, gap_direction, day1_direction, reaction_notes,
+                        data_source, data_timestamp, source_review_id, yaml_content
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    )
+                    ON CONFLICT (ticker, earnings_date) DO UPDATE SET
+                        eps_actual = EXCLUDED.eps_actual,
+                        eps_consensus = EXCLUDED.eps_consensus,
+                        eps_whisper = EXCLUDED.eps_whisper,
+                        eps_surprise_pct = EXCLUDED.eps_surprise_pct,
+                        revenue_actual = EXCLUDED.revenue_actual,
+                        revenue_consensus = EXCLUDED.revenue_consensus,
+                        revenue_surprise_pct = EXCLUDED.revenue_surprise_pct,
+                        guidance = EXCLUDED.guidance,
+                        guidance_details = EXCLUDED.guidance_details,
+                        day1_move_pct = EXCLUDED.day1_move_pct,
+                        week1_move_pct = EXCLUDED.week1_move_pct,
+                        gap_direction = EXCLUDED.gap_direction,
+                        day1_direction = EXCLUDED.day1_direction,
+                        reaction_notes = EXCLUDED.reaction_notes,
+                        yaml_content = EXCLUDED.yaml_content,
+                        updated_at = now()
+                    RETURNING id
+                """, [
+                    ticker,
+                    earnings_date,
+                    data.get("earnings_time"),
+                    data.get("fiscal_quarter"),
+                    data.get("fiscal_year"),
+                    eps.get("actual"),
+                    eps.get("consensus"),
+                    eps.get("whisper"),
+                    eps.get("surprise_pct"),
+                    revenue.get("actual") or (revenue.get("actual_b", 0) * 1000 if revenue.get("actual_b") else None),
+                    revenue.get("consensus") or (revenue.get("consensus_b", 0) * 1000 if revenue.get("consensus_b") else None),
+                    revenue.get("surprise_pct"),
+                    data.get("eps_yoy_growth_pct"),
+                    data.get("yoy_growth_pct") or data.get("revenue_yoy_growth_pct"),
+                    data.get("guidance") if isinstance(data.get("guidance"), str) else guidance_data.get("direction"),
+                    data.get("guidance_details") or guidance_data.get("details"),
+                    key_metric.get("name"),
+                    key_metric.get("actual"),
+                    key_metric.get("consensus"),
+                    key_metric.get("surprise_pct"),
+                    reaction.get("price_before") or reaction.get("intraday_low"),
+                    reaction.get("day1_move_pct"),
+                    reaction.get("week1_move_pct"),
+                    reaction.get("gap_direction"),
+                    reaction.get("day1_direction"),
+                    reaction.get("reaction_notes"),
+                    data.get("data_source"),
+                    data.get("data_timestamp"),
+                    source_review_id,
+                    json.dumps(data, default=str),
+                ])
+                result = cur.fetchone()
+                if result is None:
+                    raise RuntimeError(f"Upsert returned no ID for {ticker} {earnings_date}")
+            self.conn.commit()
+            return result["id"]
+        except Exception as e:
+            self.conn.rollback()
+            log.error(f"Failed to upsert earnings result {ticker} {earnings_date}: {e}")
+            raise
+
+    def get_kb_earnings_result(self, ticker: str, earnings_date=None) -> dict | None:
+        """Get earnings result by ticker and optional date."""
+        with self.conn.cursor() as cur:
+            if earnings_date:
+                cur.execute("""
+                    SELECT * FROM nexus.kb_earnings_results
+                    WHERE ticker = %s AND earnings_date = %s
+                """, [ticker.upper(), earnings_date])
+            else:
+                cur.execute("""
+                    SELECT * FROM nexus.kb_earnings_results
+                    WHERE ticker = %s
+                    ORDER BY earnings_date DESC LIMIT 1
+                """, [ticker.upper()])
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def get_ticker_earnings_history(self, ticker: str) -> list[dict]:
+        """Get all earnings results for a ticker."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM nexus.kb_earnings_results
+                WHERE ticker = %s
+                ORDER BY earnings_date DESC
+            """, [ticker.upper()])
+            return [dict(r) for r in cur.fetchall()]
+
+    def get_earnings_surprises(self, limit: int = 20) -> list[dict]:
+        """Get recent earnings surprises with reaction classification."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM nexus.v_earnings_surprises
+                LIMIT %s
+            """, [limit])
+            return [dict(r) for r in cur.fetchall()]
+
     # ─── KB Learnings ──────────────────────────────────────────────────────────
 
     def upsert_kb_learning(self, file_path: str, data: dict) -> int:
@@ -3080,3 +3318,277 @@ class NexusDB:
             updated = cur.fetchone() is not None
         self.conn.commit()
         return updated
+
+    # ─── KB Scanner Runs ──────────────────────────────────────────────────────
+
+    def upsert_kb_scanner_run(self, data: dict) -> int:
+        """Insert a scanner run result into kb_scanner_runs. Returns ID.
+
+        Args:
+            data: Scanner run data with fields:
+                - run_id: Unique run identifier
+                - scanner_name: Scanner code/name
+                - scanner_config_id: Optional FK to kb_scanner_configs
+                - file_path: Optional path to saved YAML file
+                - run_timestamp: When the scan was executed
+                - schedule_type: daily, intraday, weekly
+                - market_phase: premarket, open, mid_day, close, after_hours
+                - market_regime: bull, bear, neutral, high_volatility
+                - vix_level: Current VIX
+                - spy_change_pct: SPY % change
+                - universe_size: Total candidates scanned
+                - passed_quality_filters: After quality filter
+                - passed_liquidity_filters: After liquidity filter
+                - scored_candidates: Total scored
+                - high_score_count: Score >= 7.5
+                - watchlist_count: Score 5.5-7.4
+                - skipped_count: Score < 5.5
+                - top_candidate_ticker: Best candidate ticker
+                - top_candidate_score: Best candidate score
+                - top_candidate_action: Action taken (analyze, watch)
+                - candidates: Full list of candidates (stored in yaml_content)
+        """
+        run_id = data.get("run_id") or f"{data.get('scanner_name', 'UNKNOWN')}_{datetime.now(ET).strftime('%Y%m%dT%H%M%S')}"
+
+        # Parse run_timestamp
+        run_ts = data.get("run_timestamp")
+        if isinstance(run_ts, str):
+            try:
+                run_ts = datetime.fromisoformat(run_ts.replace("Z", "+00:00"))
+            except ValueError:
+                run_ts = datetime.now(ET)
+        elif run_ts is None:
+            run_ts = datetime.now(ET)
+
+        # Get top candidate from candidates list if not provided
+        top_ticker = data.get("top_candidate_ticker")
+        top_score = data.get("top_candidate_score")
+        top_action = data.get("top_candidate_action")
+
+        candidates = data.get("candidates", [])
+        if candidates and not top_ticker:
+            # Sort by score descending and get first
+            sorted_candidates = sorted(candidates, key=lambda x: x.get("score", 0), reverse=True)
+            if sorted_candidates:
+                top = sorted_candidates[0]
+                top_ticker = top.get("ticker")
+                top_score = top.get("score")
+                top_action = top.get("action", "analyze" if (top.get("score") or 0) >= 7.5 else "watch")
+
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO nexus.kb_scanner_runs (
+                        run_id, scanner_name, scanner_config_id, file_path,
+                        run_timestamp, schedule_type, market_phase,
+                        market_regime, vix_level, spy_change_pct,
+                        universe_size, passed_quality_filters, passed_liquidity_filters,
+                        scored_candidates, high_score_count, watchlist_count, skipped_count,
+                        top_candidate_ticker, top_candidate_score, top_candidate_action,
+                        yaml_content
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (scanner_name, run_timestamp) DO UPDATE SET
+                        yaml_content = EXCLUDED.yaml_content,
+                        high_score_count = EXCLUDED.high_score_count,
+                        watchlist_count = EXCLUDED.watchlist_count
+                    RETURNING id
+                """, [
+                    run_id,
+                    data.get("scanner_name"),
+                    data.get("scanner_config_id"),
+                    data.get("file_path"),
+                    run_ts,
+                    data.get("schedule_type"),
+                    data.get("market_phase"),
+                    data.get("market_regime"),
+                    data.get("vix_level"),
+                    data.get("spy_change_pct"),
+                    data.get("universe_size"),
+                    data.get("passed_quality_filters"),
+                    data.get("passed_liquidity_filters"),
+                    data.get("scored_candidates") or len(candidates),
+                    data.get("high_score_count") or len([c for c in candidates if (c.get("score") or 0) >= 7.5]),
+                    data.get("watchlist_count") or len([c for c in candidates if 5.5 <= (c.get("score") or 0) < 7.5]),
+                    data.get("skipped_count") or len([c for c in candidates if (c.get("score") or 0) < 5.5]),
+                    top_ticker,
+                    top_score,
+                    top_action,
+                    json.dumps(data),
+                ])
+                result = cur.fetchone()
+                if result is None:
+                    raise RuntimeError(f"Upsert scanner run returned no ID for {run_id}")
+            self.conn.commit()
+            return result["id"]
+        except Exception as e:
+            self.conn.rollback()
+            log.error(f"Failed to upsert scanner run {run_id}: {e}")
+            raise
+
+    def get_kb_scanner_runs(
+        self,
+        scanner_name: str = None,
+        market_regime: str = None,
+        since: datetime = None,
+        limit: int = 20
+    ) -> list[dict]:
+        """Get scanner runs with optional filters."""
+        conditions = []
+        params = []
+
+        if scanner_name:
+            conditions.append("scanner_name = %s")
+            params.append(scanner_name)
+        if market_regime:
+            conditions.append("market_regime = %s")
+            params.append(market_regime)
+        if since:
+            conditions.append("run_timestamp >= %s")
+            params.append(since)
+
+        where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
+        params.append(limit)
+
+        with self.conn.cursor() as cur:
+            cur.execute(f"""
+                SELECT * FROM nexus.kb_scanner_runs
+                {where_clause}
+                ORDER BY run_timestamp DESC
+                LIMIT %s
+            """, params)
+            return [dict(r) for r in cur.fetchall()]
+
+    # ─── KB Price History ─────────────────────────────────────────────────────
+
+    def upsert_kb_price_history(
+        self,
+        ticker: str,
+        price_date: date,
+        open_price: float,
+        high_price: float,
+        low_price: float,
+        close_price: float,
+        volume: int,
+        adj_close: float = None,
+        source: str = "ib_mcp"
+    ) -> int:
+        """Insert or update a price bar. Returns ID.
+
+        Args:
+            ticker: Stock symbol
+            price_date: Date of the price bar
+            open_price: Opening price
+            high_price: High price
+            low_price: Low price
+            close_price: Closing price
+            volume: Trading volume
+            adj_close: Adjusted close (optional)
+            source: Data source (ib_mcp, yahoo, polygon)
+        """
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO nexus.kb_price_history (
+                        ticker, price_date, open_price, high_price, low_price,
+                        close_price, adj_close, volume, data_source
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (ticker, price_date) DO UPDATE SET
+                        open_price = EXCLUDED.open_price,
+                        high_price = EXCLUDED.high_price,
+                        low_price = EXCLUDED.low_price,
+                        close_price = EXCLUDED.close_price,
+                        adj_close = EXCLUDED.adj_close,
+                        volume = EXCLUDED.volume,
+                        data_source = EXCLUDED.data_source
+                    RETURNING id
+                """, [ticker, price_date, open_price, high_price, low_price, close_price, adj_close, volume, source])
+                result = cur.fetchone()
+            self.conn.commit()
+            return result["id"] if result else None
+        except Exception as e:
+            self.conn.rollback()
+            log.error(f"Failed to upsert price history for {ticker} {price_date}: {e}")
+            raise
+
+    def bulk_upsert_kb_price_history(
+        self,
+        ticker: str,
+        bars: list[dict],
+        source: str = "ib_mcp"
+    ) -> int:
+        """Bulk insert price bars. Returns count inserted.
+
+        Args:
+            ticker: Stock symbol
+            bars: List of dicts with keys: date, open, high, low, close, volume, adj_close (optional)
+            source: Data source (ib_mcp, yahoo, polygon)
+        """
+        if not bars:
+            return 0
+
+        try:
+            with self.conn.cursor() as cur:
+                # Use executemany for bulk insert
+                values = [
+                    (
+                        ticker,
+                        bar.get("date"),
+                        bar.get("open"),
+                        bar.get("high"),
+                        bar.get("low"),
+                        bar.get("close"),
+                        bar.get("adj_close"),
+                        bar.get("volume"),
+                        source
+                    )
+                    for bar in bars
+                ]
+                cur.executemany("""
+                    INSERT INTO nexus.kb_price_history (
+                        ticker, price_date, open_price, high_price, low_price,
+                        close_price, adj_close, volume, data_source
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (ticker, price_date) DO UPDATE SET
+                        open_price = EXCLUDED.open_price,
+                        high_price = EXCLUDED.high_price,
+                        low_price = EXCLUDED.low_price,
+                        close_price = EXCLUDED.close_price,
+                        adj_close = EXCLUDED.adj_close,
+                        volume = EXCLUDED.volume,
+                        data_source = EXCLUDED.data_source
+                """, values)
+            self.conn.commit()
+            return len(bars)
+        except Exception as e:
+            self.conn.rollback()
+            log.error(f"Failed to bulk upsert price history for {ticker}: {e}")
+            raise
+
+    def get_kb_price_history(
+        self,
+        ticker: str,
+        start_date: date = None,
+        end_date: date = None,
+        limit: int = 100
+    ) -> list[dict]:
+        """Get price history for a ticker."""
+        conditions = ["ticker = %s"]
+        params = [ticker]
+
+        if start_date:
+            conditions.append("price_date >= %s")
+            params.append(start_date)
+        if end_date:
+            conditions.append("price_date <= %s")
+            params.append(end_date)
+
+        params.append(limit)
+
+        with self.conn.cursor() as cur:
+            cur.execute(f"""
+                SELECT * FROM nexus.kb_price_history
+                WHERE {' AND '.join(conditions)}
+                ORDER BY price_date DESC
+                LIMIT %s
+            """, params)
+            return [dict(r) for r in cur.fetchall()]

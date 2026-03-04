@@ -150,10 +150,17 @@ export interface WSMessage {
 
 export interface WSResponse {
   type: 'response' | 'progress' | 'error' | 'pong';
-  data?: unknown;
+  // Response fields (type: 'response')
+  success?: boolean;
+  text?: string;
+  a2ui?: unknown;  // A2UIResponse object
+  // Progress fields (type: 'progress')
   task_id?: string;
   progress?: number;
   message?: string;
+  // Error fields (type: 'error')
   error?: string;
   code?: string;  // Error code for specific error types (e.g., AUTH_ERROR)
+  // Deprecated - kept for backwards compatibility
+  data?: unknown;
 }

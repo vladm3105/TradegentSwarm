@@ -123,6 +123,29 @@ CREATE TABLE nexus.service_status (
 
 ---
 
+### Schema: `nexus` (Knowledge Base Tables)
+
+Full YAML content storage for analysis and trade data. See [Skill-Database Mapping](skill-database-mapping.md) for complete field mappings.
+
+| Table | Purpose | Skill |
+|-------|---------|-------|
+| `kb_stock_analyses` | Stock analysis storage | stock-analysis |
+| `kb_earnings_analyses` | Earnings analysis storage | earnings-analysis |
+| `kb_earnings_results` | Actual earnings outcomes | post-earnings-review |
+| `kb_research_analyses` | Research/macro analysis | research |
+| `kb_ticker_profiles` | Ticker profiles | ticker-profile |
+| `kb_trade_journals` | Trade records | trade-journal |
+| `kb_watchlist_entries` | Watchlist entries | watchlist |
+| `kb_reviews` | All review types | post-trade-review, post-earnings-review |
+| `kb_learnings` | Extracted learnings | (extracted from reviews) |
+| `kb_strategies` | Strategy definitions | (manual) |
+| `kb_scanner_configs` | Scanner configurations | scan |
+| `kb_alert_tracking` | Price alert monitoring | (from analyses) |
+| `kb_target_tracking` | Target verification | (from analyses) |
+| `kb_price_history` | Historical OHLCV | (from IB MCP) |
+
+---
+
 ### Schema: `nexus` (RAG Tables)
 
 RAG embedding storage using pgvector.
@@ -353,3 +376,4 @@ MATCH (n) DETACH DELETE n;
 - [Architecture Overview](overview.md)
 - [RAG System](rag-system.md)
 - [Graph System](graph-system.md)
+- [Skill-Database Mapping](skill-database-mapping.md) - Complete field mapping from skill templates to database tables

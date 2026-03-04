@@ -159,10 +159,141 @@ class BaseAgent(ABC):
         """Execute a subprocess command (e.g., Claude Code CLI).
 
         This is for long-running operations like full analysis.
-        Returns immediately with a task ID for polling.
+        For tradegent_analyze, runs the tradegent CLI and returns results.
         """
-        # For now, return a placeholder
-        # In production, this would spawn a subprocess and return task_id
+        import asyncio
+        import json
+        from pathlib import Path
+
+        if mapping.mcp_tool == "tradegent_analyze":
+            ticker = params.get("ticker", "").upper()
+            analysis_type = params.get("type", "stock")
+
+            if not ticker:
+                return MCPResponse(success=False, error="Ticker is required")
+
+            # Run tradegent CLI
+            tradegent_dir = Path("/opt/data/tradegent_swarm/tradegent")
+            cmd = [
+                "python", "tradegent.py", "analyze", ticker,
+                "--type", analysis_type
+            ]
+
+            log.info(
+                "subprocess.starting",
+                tool=mapping.mcp_tool,
+                ticker=ticker,
+                analysis_type=analysis_type,
+            )
+
+            try:
+                process = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    cwd=str(tradegent_dir),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    env={**dict(__import__("os").environ), "PYTHONUNBUFFERED": "1"},
+                )
+
+                stdout, stderr = await asyncio.wait_for(
+                    process.communicate(),
+                    timeout=600  # 10 minute timeout
+                )
+
+                stdout_text = stdout.decode() if stdout else ""
+                stderr_text = stderr.decode() if stderr else ""
+
+                if process.returncode != 0:
+                    log.error(
+                        "subprocess.failed",
+                        ticker=ticker,
+                        returncode=process.returncode,
+                        stderr=stderr_text[:500],
+                    )
+                    return MCPResponse(
+                        success=False,
+                        error=f"Analysis failed: {stderr_text[:200]}",
+                    )
+
+                # Parse output for result info
+                result = {
+                    "status": "completed",
+                    "ticker": ticker,
+                    "analysis_type": analysis_type,
+                    "output": stdout_text[-2000:] if len(stdout_text) > 2000 else stdout_text,
+                }
+
+                # Combine stdout and stderr for parsing (some output may go to stderr)
+                combined_output = stdout_text + "\n" + stderr_text
+
+                # Try to extract key metrics from output
+                import re
+                import glob as glob_module
+
+                # Extract file path from output
+                file_path = None
+                if match := re.search(r"File:\s*(.+\.yaml)", combined_output):
+                    file_path = match.group(1).strip()
+                elif match := re.search(r"(tradegent_knowledge/knowledge/[^\s]+\.yaml)", combined_output):
+                    file_path = match.group(1).strip()
+                elif match := re.search(r"(/[^\s]+\.yaml)", combined_output):
+                    file_path = match.group(1).strip()
+
+                # Fallback: find most recent YAML file for this ticker
+                if not file_path:
+                    knowledge_dirs = [
+                        f"/opt/data/tradegent_swarm/tradegent_knowledge/knowledge/analysis/{analysis_type}",
+                        "/opt/data/tradegent_swarm/tradegent_knowledge/knowledge/analysis/stock",
+                        "/opt/data/tradegent_swarm/tradegent_knowledge/knowledge/analysis/earnings",
+                    ]
+                    for kdir in knowledge_dirs:
+                        pattern = f"{kdir}/{ticker}_*.yaml"
+                        files = sorted(glob_module.glob(pattern), key=lambda x: Path(x).stat().st_mtime, reverse=True)
+                        if files:
+                            # Check if file was created in the last 15 minutes
+                            import time
+                            if time.time() - Path(files[0]).stat().st_mtime < 900:
+                                file_path = files[0]
+                                log.info("subprocess.file_found_by_search", file_path=file_path, ticker=ticker)
+                                break
+
+                if file_path:
+                    result["file_path"] = file_path
+
+                if match := re.search(r"Gate:\s*(\w+)", combined_output):
+                    result["gate_result"] = match.group(1).strip()
+                if match := re.search(r"Rec:\s*(\w+)", combined_output):
+                    result["recommendation"] = match.group(1).strip()
+                if match := re.search(r"\((\d+)%\)", combined_output):
+                    result["confidence"] = int(match.group(1))
+
+                log.info(
+                    "subprocess.completed",
+                    ticker=ticker,
+                    file_path=result.get("file_path"),
+                    gate_result=result.get("gate_result"),
+                    recommendation=result.get("recommendation"),
+                )
+
+                # Auto-ingest to knowledge base (RAG + Graph + DB)
+                if result.get("file_path"):
+                    await self._auto_ingest(result["file_path"], ticker)
+                else:
+                    log.warning("subprocess.no_file_path", ticker=ticker, output_snippet=combined_output[:500])
+
+                return MCPResponse(success=True, result=result)
+
+            except asyncio.TimeoutError:
+                log.error("subprocess.timeout", ticker=ticker)
+                return MCPResponse(
+                    success=False,
+                    error=f"Analysis timeout for {ticker} (5 min limit)",
+                )
+            except Exception as e:
+                log.error("subprocess.error", ticker=ticker, error=str(e))
+                return MCPResponse(success=False, error=str(e))
+
+        # Default: placeholder for other subprocess tools
         return MCPResponse(
             success=True,
             result={
@@ -186,6 +317,86 @@ class BaseAgent(ABC):
                 "message": f"Database {mapping.mcp_tool} executed with params: {params}",
             },
         )
+
+    async def _auto_ingest(self, file_path: str, ticker: str) -> None:
+        """Auto-ingest analysis file to knowledge base (RAG + Graph + DB).
+
+        Calls tradegent/scripts/ingest.py to handle:
+        - RAG embedding (pgvector)
+        - Graph extraction (Neo4j)
+        - Database storage (PostgreSQL kb_* tables)
+        """
+        import asyncio
+        from pathlib import Path
+
+        knowledge_base = Path("/opt/data/tradegent_swarm/tradegent_knowledge/knowledge")
+        tradegent_dir = Path("/opt/data/tradegent_swarm/tradegent")
+
+        # Resolve the file path
+        file_path_obj = Path(file_path)
+
+        # Handle relative paths from tradegent directory
+        if not file_path_obj.is_absolute():
+            # Check if it's relative to tradegent dir (e.g., ../tradegent_knowledge/...)
+            if file_path.startswith(".."):
+                file_path_obj = (tradegent_dir / file_path).resolve()
+            elif file_path.startswith("tradegent_knowledge"):
+                file_path_obj = Path("/opt/data/tradegent_swarm") / file_path
+            else:
+                # Check common locations
+                candidates = [
+                    knowledge_base / "analysis" / "stock" / file_path_obj.name,
+                    knowledge_base / "analysis" / "earnings" / file_path_obj.name,
+                    tradegent_dir / "analyses" / file_path_obj.name,
+                ]
+                for candidate in candidates:
+                    if candidate.exists():
+                        file_path_obj = candidate
+                        break
+
+        # Verify file exists
+        if not file_path_obj.exists():
+            log.warning("ingest.file_not_found", file_path=str(file_path_obj), original_path=file_path, ticker=ticker)
+            return
+
+        log.info("ingest.file_resolved", original=file_path, resolved=str(file_path_obj), ticker=ticker)
+
+        # Run ingest.py
+        cmd = ["python", "scripts/ingest.py", str(file_path_obj)]
+
+        log.info("ingest.starting", file_path=str(file_path_obj), ticker=ticker)
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                cwd=str(tradegent_dir),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env={**dict(__import__("os").environ), "PYTHONUNBUFFERED": "1"},
+            )
+
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(),
+                timeout=120  # 2 minute timeout for ingest
+            )
+
+            stdout_text = stdout.decode() if stdout else ""
+            stderr_text = stderr.decode() if stderr else ""
+
+            if process.returncode == 0:
+                log.info("ingest.completed", ticker=ticker, output=stdout_text[:200])
+            else:
+                log.warning(
+                    "ingest.partial_failure",
+                    ticker=ticker,
+                    returncode=process.returncode,
+                    stderr=stderr_text[:200],
+                )
+
+        except asyncio.TimeoutError:
+            log.error("ingest.timeout", ticker=ticker)
+        except Exception as e:
+            log.error("ingest.error", ticker=ticker, error=str(e))
 
     @abstractmethod
     async def process(

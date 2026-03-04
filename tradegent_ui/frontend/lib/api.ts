@@ -45,10 +45,16 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
     'Content-Type': 'application/json',
   };
 
-  // Get session with access token
-  const session = await getSession();
-  if (session?.accessToken) {
-    headers['Authorization'] = `Bearer ${session.accessToken}`;
+  // Get session with access token - wrap in try/catch to prevent redirect issues
+  try {
+    const session = await getSession();
+    if (session?.accessToken) {
+      headers['Authorization'] = `Bearer ${session.accessToken}`;
+    }
+  } catch (error) {
+    // Log but don't throw - allow request to proceed without auth header
+    // The backend will return 401 if auth is required
+    log.warn('Failed to get session for auth headers', { error: String(error) });
   }
 
   return headers;
