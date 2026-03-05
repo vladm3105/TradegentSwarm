@@ -55,6 +55,21 @@ The UI renders visualizations dynamically from PostgreSQL `kb_*` tables:
 - `kb_trade_journals` → Trade history
 - `kb_target_tracking` → Target verification
 
+## Analysis Save Policy
+
+**All analyses are saved regardless of gate result:**
+
+| Gate Result | Saved | Indexed | Purpose |
+|-------------|-------|---------|---------|
+| PASS | ✅ | ✅ | Execute trades |
+| MARGINAL | ✅ | ✅ | Watchlist candidates |
+| FAIL | ✅ | ✅ | Bot signals, statistics, learning |
+
+FAIL results contain valuable data:
+- `recommendation: NO_POSITION` signals bots to close/avoid
+- Historical FAIL patterns improve future analysis
+- Win rate and calibration metrics require all outcomes
+
 ## Conflict Resolution
 
 If derived storage conflicts with files, **files win**. Re-ingest to fix.

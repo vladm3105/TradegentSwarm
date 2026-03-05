@@ -71,8 +71,23 @@ Input: {"symbol": "NVDA", "duration": "3 M", "bar_size": "1 day"}
 1. Read `SKILL.md` from `tradegent_knowledge/skills/{skill-name}/`
 2. Follow workflow steps exactly
 3. Use `template.yaml` structure for output
-4. Save to `tradegent_knowledge/knowledge/` folder
+4. **ALWAYS save to `tradegent_knowledge/knowledge/` folder regardless of gate result**
 5. Auto-ingest hook handles indexing (DB → RAG → Graph)
+
+## Gate Results and Saving
+
+**CRITICAL: Always save analysis YAML files regardless of gate result.**
+
+| Gate Result | Recommendation | Save YAML | Why |
+|-------------|----------------|-----------|-----|
+| PASS | BUY/SELL | ✅ Yes | Execute trade |
+| MARGINAL | WATCH | ✅ Yes | Monitor for entry |
+| FAIL | NO_POSITION | ✅ Yes | Trading bot signals, statistics, learning |
+
+FAIL results are essential for:
+- Trading bot guidance (close positions, avoid entry)
+- Historical statistics and win rate tracking
+- Future learning and model calibration
 
 ## Workflow Chains
 
