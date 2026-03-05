@@ -458,6 +458,8 @@ Pay special attention to:
 
 OUTPUT FORMAT: Use the exact output format from the skill.
 CRITICAL: If the Do Nothing gate FAILS, state NO POSITION RECOMMENDED.
+CRITICAL: ALWAYS save the YAML file to tradegent_knowledge/knowledge/analysis/earnings/ regardless of gate result.
+FAIL results are needed for trading bots, statistics, and learning.
 {json_block}"""
 
     elif analysis_type == AnalysisType.STOCK:
@@ -474,6 +476,9 @@ DATA GATHERING (use tools):
 4. Via Web Search: Get {ticker} sector and competitor performance
 
 ANALYSIS: Run the complete stock analysis framework.
+
+CRITICAL: ALWAYS save the YAML file to tradegent_knowledge/knowledge/analysis/stock/ regardless of gate result.
+FAIL results are needed for trading bots, statistics, and learning.
 {json_block}"""
 
     elif analysis_type == AnalysisType.POSTMORTEM:
