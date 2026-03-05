@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { componentRegistry } from '@/components/tradegent-components';
 import { ErrorCard } from '@/components/tradegent-components';
 import { validateA2UIResponse, type A2UIResponse, type A2UIComponent } from '@/types/a2ui';
+import { logger } from '@/lib/logger';
 
 interface A2UIRendererProps {
   response: A2UIResponse | unknown;
@@ -17,8 +18,10 @@ interface RenderComponentProps {
 
 function RenderComponent({ component, index }: RenderComponentProps) {
   const Component = componentRegistry[component.type];
+  const startTime = typeof performance !== 'undefined' ? performance.now() : 0;
 
   if (!Component) {
+    logger.a2uiRender(component.type, false, 0, 'Unknown component type');
     return (
       <ErrorCard
         code="UNKNOWN_COMPONENT"
@@ -30,8 +33,13 @@ function RenderComponent({ component, index }: RenderComponentProps) {
   }
 
   try {
-    return <Component key={index} {...component.props} />;
+    const element = <Component key={index} {...component.props} />;
+    const renderMs = typeof performance !== 'undefined' ? performance.now() - startTime : 0;
+    logger.a2uiRender(component.type, true, renderMs);
+    return element;
   } catch (error) {
+    const renderMs = typeof performance !== 'undefined' ? performance.now() - startTime : 0;
+    logger.a2uiRender(component.type, false, renderMs, String(error));
     return (
       <ErrorCard
         code="RENDER_ERROR"
@@ -46,7 +54,10 @@ function RenderComponent({ component, index }: RenderComponentProps) {
 export function A2UIRenderer({ response, className }: A2UIRendererProps) {
   // Validate and parse the response
   const validatedResponse = useMemo(() => {
-    if (!response) return null;
+    if (!response) {
+      logger.debug('A2UI renderer: no response');
+      return null;
+    }
 
     // If already validated, use as is
     if (
@@ -54,20 +65,35 @@ export function A2UIRenderer({ response, className }: A2UIRendererProps) {
       'type' in response &&
       (response as A2UIResponse).type === 'a2ui'
     ) {
-      return validateA2UIResponse(response);
+      const result = validateA2UIResponse(response);
+      logger.a2uiValidated(!!result, result ? undefined : 'Pre-validated response invalid');
+
+      if (result) {
+        logger.info('A2UI rendering', {
+          componentCount: result.components.length,
+          componentTypes: result.components.map(c => c.type),
+        });
+        logger.a2uiPayload('validated-response', result);
+      }
+      return result;
     }
 
     // Try to parse if it's a string
     if (typeof response === 'string') {
       try {
         const parsed = JSON.parse(response);
-        return validateA2UIResponse(parsed);
+        const result = validateA2UIResponse(parsed);
+        logger.a2uiValidated(!!result, result ? undefined : 'Parsed string response invalid');
+        return result;
       } catch {
+        logger.a2uiValidated(false, 'JSON parse failed');
         return null;
       }
     }
 
-    return validateA2UIResponse(response);
+    const result = validateA2UIResponse(response);
+    logger.a2uiValidated(!!result, result ? undefined : 'Unknown response format invalid');
+    return result;
   }, [response]);
 
   if (!validatedResponse) {

@@ -20,7 +20,22 @@ from .logging import setup_logging, get_log_file
 from .task_manager import get_task_manager
 from .dashboard import router as dashboard_router
 from .database import close_pool
-from .routes import auth_router, admin_router, users_router, settings_router, trades_router, watchlist_router, scanners_router, sessions_router
+from .routes import (
+    auth_router,
+    admin_router,
+    users_router,
+    settings_router,
+    trades_router,
+    watchlist_router,
+    scanners_router,
+    sessions_router,
+    automation_router,
+    alerts_router,
+    notifications_router,
+    analytics_router,
+    orders_router,
+    schedules_router,
+)
 from .analyses import router as analyses_router
 from shared.observability import (
     set_correlation_id,
@@ -129,6 +144,13 @@ app.include_router(trades_router)
 app.include_router(watchlist_router)
 app.include_router(scanners_router)
 app.include_router(sessions_router)
+# Safety and automation routes
+app.include_router(automation_router)
+app.include_router(alerts_router)
+app.include_router(notifications_router)
+app.include_router(analytics_router)
+app.include_router(orders_router)
+app.include_router(schedules_router)
 
 
 # Public endpoints that don't require authentication
@@ -568,6 +590,15 @@ async def websocket_endpoint(websocket: WebSocket):
                             duration_ms=round(duration_ms, 2),
                         )
 
+                        # Log A2UI payload before sending (debug level)
+                        log.debug(
+                            "ws.a2ui.sending",
+                            session_id=session_id,
+                            payload_size=len(str(response.a2ui)) if response.a2ui else 0,
+                            component_count=component_count,
+                            component_types=[c.get("type") for c in (response.a2ui.get("components", []) if response.a2ui else [])],
+                        )
+
                         await websocket.send_json({
                             "type": "response",
                             "success": response.success,
@@ -640,6 +671,108 @@ async def websocket_endpoint(websocket: WebSocket):
             message_count=message_count,
         )
         manager.disconnect(session_id)
+
+
+# WebSocket endpoint for real-time streaming (prices, portfolio, orders)
+@app.websocket("/ws/stream")
+async def websocket_stream_endpoint(websocket: WebSocket):
+    """WebSocket endpoint for real-time data streaming.
+
+    Protocol:
+    - Client sends: {"type": "subscribe", "channel": "prices", "tickers": ["NVDA", "AAPL"]}
+    - Client sends: {"type": "subscribe", "channel": "portfolio"}
+    - Client sends: {"type": "subscribe", "channel": "orders"}
+    - Client sends: {"type": "unsubscribe", "channel": "prices", "tickers": ["NVDA"]}
+    - Server sends: {"type": "price_update", "ticker": "NVDA", "data": {...}}
+    - Server sends: {"type": "portfolio_update", "data": {...}}
+    - Server sends: {"type": "orders_update", "added": [...], "updated": [...], "removed": [...]}
+
+    Authentication:
+    - Pass token via query parameter: ws://host/ws/stream?token=xxx
+    """
+    from .websocket import (
+        get_price_stream_manager,
+        get_portfolio_stream_manager,
+        get_order_stream_manager,
+    )
+
+    # Validate token
+    user = await validate_websocket_token(websocket)
+    if not user:
+        log.warning("ws.stream.auth.failed", reason="no_valid_token")
+        await websocket.close(code=4001, reason="Unauthorized")
+        return
+
+    await websocket.accept()
+    session_id = user.sub
+
+    log.info("ws.stream.connected", session_id=session_id)
+
+    price_manager = get_price_stream_manager()
+    portfolio_manager = get_portfolio_stream_manager()
+    order_manager = get_order_stream_manager()
+
+    # Start stream managers if not already running
+    await price_manager.start()
+    await portfolio_manager.start()
+    await order_manager.start()
+
+    subscribed_channels: set[str] = set()
+
+    try:
+        while True:
+            data = await websocket.receive_json()
+            msg_type = data.get("type")
+
+            if msg_type == "subscribe":
+                channel = data.get("channel")
+
+                if channel == "prices":
+                    tickers = data.get("tickers", [])
+                    if tickers:
+                        await price_manager.subscribe(websocket, tickers)
+                        subscribed_channels.add("prices")
+                        log.debug("ws.stream.subscribed", channel="prices", tickers=tickers)
+
+                elif channel == "portfolio":
+                    await portfolio_manager.subscribe(websocket)
+                    subscribed_channels.add("portfolio")
+                    log.debug("ws.stream.subscribed", channel="portfolio")
+
+                elif channel == "orders":
+                    await order_manager.subscribe(websocket)
+                    subscribed_channels.add("orders")
+                    log.debug("ws.stream.subscribed", channel="orders")
+
+            elif msg_type == "unsubscribe":
+                channel = data.get("channel")
+
+                if channel == "prices":
+                    tickers = data.get("tickers")
+                    await price_manager.unsubscribe(websocket, tickers)
+                    if not tickers:
+                        subscribed_channels.discard("prices")
+
+                elif channel == "portfolio":
+                    await portfolio_manager.unsubscribe(websocket)
+                    subscribed_channels.discard("portfolio")
+
+                elif channel == "orders":
+                    await order_manager.unsubscribe(websocket)
+                    subscribed_channels.discard("orders")
+
+            elif msg_type == "ping":
+                await websocket.send_json({"type": "pong"})
+
+    except WebSocketDisconnect:
+        log.info("ws.stream.disconnected", session_id=session_id)
+    except Exception as e:
+        log.error("ws.stream.error", session_id=session_id, error=str(e))
+    finally:
+        # Cleanup subscriptions
+        await price_manager.unsubscribe(websocket)
+        await portfolio_manager.unsubscribe(websocket)
+        await order_manager.unsubscribe(websocket)
 
 
 # Run with uvicorn

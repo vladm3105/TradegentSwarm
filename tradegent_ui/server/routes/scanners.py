@@ -48,9 +48,10 @@ class ScannerConfig(BaseModel):
     scanner_code: str
     name: str
     description: Optional[str] = None
-    scanner_type: str
+    scanner_type: Optional[str] = None  # instrument type (STK, etc.)
     is_enabled: bool
-    schedule: Optional[str] = None
+    auto_analyze: bool = False
+    analysis_type: Optional[str] = None
     last_run: Optional[str] = None
     last_run_status: Optional[str] = None
     candidates_count: Optional[int] = None
@@ -101,11 +102,11 @@ async def list_scanners(
                 params = []
 
                 if scanner_type:
-                    conditions.append("scanner_type = %s")
+                    conditions.append("s.instrument = %s")
                     params.append(scanner_type)
 
                 if enabled_only:
-                    conditions.append("is_enabled = true")
+                    conditions.append("s.is_enabled = true")
 
                 where_clause = ""
                 if conditions:
@@ -116,11 +117,12 @@ async def list_scanners(
                     SELECT
                         s.id,
                         s.scanner_code,
-                        s.name,
+                        s.display_name as name,
                         s.description,
-                        s.scanner_type,
+                        s.instrument as scanner_type,
                         s.is_enabled,
-                        s.schedule,
+                        s.auto_analyze,
+                        s.analysis_type,
                         r.started_at as last_run,
                         r.status as last_run_status,
                         CASE
@@ -138,7 +140,7 @@ async def list_scanners(
                         LIMIT 1
                     ) r ON true
                     {where_clause}
-                    ORDER BY s.scanner_type, s.name
+                    ORDER BY s.instrument, s.display_name
                 """, params)
 
                 rows = cur.fetchall()
@@ -147,11 +149,12 @@ async def list_scanners(
                     scanners.append(ScannerConfig(
                         id=row["id"],
                         scanner_code=row["scanner_code"],
-                        name=row["name"],
+                        name=row["name"] or row["scanner_code"],
                         description=row["description"],
                         scanner_type=row["scanner_type"],
                         is_enabled=row["is_enabled"],
-                        schedule=row["schedule"],
+                        auto_analyze=row["auto_analyze"] or False,
+                        analysis_type=row["analysis_type"],
                         last_run=row["last_run"].isoformat() if row["last_run"] else None,
                         last_run_status=row["last_run_status"],
                         candidates_count=row["candidates_count"],

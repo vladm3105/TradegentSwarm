@@ -26,6 +26,7 @@ Skills in `.claude/skills/` auto-invoke based on context. Each skill has:
 | **fill-analysis** | v1.0 | Learning |
 | **position-close-review** | v1.0 | Monitoring |
 | **expiration-review** | v1.0 | Learning |
+| **iplan-review** | v1.0 | Quality Assurance |
 
 > **Note**: `visualize-analysis` is DEPRECATED - UI renders from database.
 

@@ -127,9 +127,16 @@ class Coordinator:
             # Handle multi-intent
             response = await self._route_multi(classifications, resolved_query, context)
 
-        # Log completion
+        # Log completion with detailed A2UI breakdown
         total_ms = (time.perf_counter() - start_time) * 1000
-        component_count = len(response.a2ui.get("components", [])) if response.a2ui else 0
+        components = response.a2ui.get("components", []) if response.a2ui else []
+        component_count = len(components)
+
+        # Build component type breakdown for debugging
+        component_types = {}
+        for comp in components:
+            comp_type = comp.get("type", "unknown")
+            component_types[comp_type] = component_types.get(comp_type, 0) + 1
 
         log.info(
             "agent.process.completed",
@@ -138,9 +145,26 @@ class Coordinator:
             intents=intents,
             tickers=tickers,
             component_count=component_count,
+            component_types=component_types,
+            text_length=len(response.text) if response.text else 0,
             duration_ms=round(total_ms, 2),
             has_error=response.error is not None,
         )
+
+        # Debug: log full A2UI structure when debug enabled
+        if component_count > 0:
+            log.debug(
+                "agent.a2ui.components",
+                session_id=session_id,
+                a2ui_text_preview=(response.a2ui.get("text", "")[:100] if response.a2ui else ""),
+                components=[
+                    {
+                        "type": c.get("type"),
+                        "props_keys": list(c.get("props", {}).keys()),
+                    }
+                    for c in components
+                ],
+            )
 
         return response
 

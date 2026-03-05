@@ -10,6 +10,7 @@ import {
 import { useChatStore } from '@/stores/chat-store';
 import type { WSResponse } from '@/types/api';
 import { validateA2UIResponse } from '@/types/a2ui';
+import { logger } from '@/lib/logger';
 
 export function useWebSocket() {
   const wsRef = useRef<TradegentWebSocket | null>(null);
@@ -26,9 +27,17 @@ export function useWebSocket() {
   handleMessageRef.current = (data: WSResponse) => {
     switch (data.type) {
       case 'response': {
+        // Log A2UI response received
+        logger.a2uiReceived(data.a2ui, { source: 'websocket' });
+
         // Full response received
         // Backend sends: { type: 'response', success, text, a2ui, error }
         const a2ui = validateA2UIResponse(data.a2ui);
+        logger.a2uiValidated(!!a2ui, a2ui ? undefined : 'Validation returned null');
+
+        // Log full payload in A2UI debug mode
+        logger.a2uiPayload('websocket-response', data);
+
         const responseData = data as { text?: string; error?: string; success?: boolean };
 
         // Find pending or streaming assistant message

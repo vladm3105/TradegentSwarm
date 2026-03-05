@@ -23,12 +23,18 @@ class Logger {
   private correlationId: string | null = null;
   private component: string = 'frontend';
   private isDebugEnabled: boolean;
+  private a2uiDebugEnabled: boolean;
 
   private constructor() {
     this.isDebugEnabled =
       typeof window !== 'undefined' &&
       (process.env.NEXT_PUBLIC_DEBUG === 'true' ||
         localStorage.getItem('debug') === 'true');
+
+    // Initialize A2UI debug from localStorage
+    this.a2uiDebugEnabled =
+      typeof window !== 'undefined' &&
+      localStorage.getItem('a2ui_debug') === 'true';
   }
 
   static getInstance(): Logger {
@@ -143,6 +149,69 @@ class Logger {
     this.info(`Action: ${action}`, context);
   }
 
+  // ============ A2UI Logging Methods ============
+
+  /** Log A2UI response received from backend */
+  a2uiReceived(response: unknown, context?: LogContext): void {
+    const a2ui = response as { type?: string; text?: string; components?: unknown[] };
+    this.debug('A2UI response received', {
+      type: a2ui?.type,
+      hasText: !!a2ui?.text,
+      textLength: a2ui?.text?.length ?? 0,
+      componentCount: a2ui?.components?.length ?? 0,
+      componentTypes: a2ui?.components?.map((c: unknown) => (c as { type?: string })?.type) ?? [],
+      ...context,
+    });
+  }
+
+  /** Log A2UI validation result */
+  a2uiValidated(valid: boolean, error?: string, context?: LogContext): void {
+    if (valid) {
+      this.debug('A2UI validation passed', context);
+    } else {
+      this.warn('A2UI validation failed', { error, ...context });
+    }
+  }
+
+  /** Log A2UI component render with timing */
+  a2uiRender(componentType: string, success: boolean, renderMs?: number, error?: string, context?: LogContext): void {
+    if (success) {
+      this.debug(`A2UI render: ${componentType}`, { renderMs, ...context });
+    } else {
+      this.error(`A2UI render failed: ${componentType}`, { error, renderMs, ...context });
+    }
+  }
+
+  /** Enable A2UI debug mode for full payload logging */
+  enableA2UIDebug(): void {
+    this.a2uiDebugEnabled = true;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('a2ui_debug', 'true');
+    }
+    this.info('A2UI debug mode enabled');
+  }
+
+  /** Disable A2UI debug mode */
+  disableA2UIDebug(): void {
+    this.a2uiDebugEnabled = false;
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('a2ui_debug');
+    }
+    this.info('A2UI debug mode disabled');
+  }
+
+  /** Log full A2UI payload (only in A2UI debug mode) */
+  a2uiPayload(label: string, payload: unknown): void {
+    if (this.a2uiDebugEnabled) {
+      this.debug(`A2UI payload: ${label}`, { payload });
+    }
+  }
+
+  /** Check if A2UI debug is enabled */
+  isA2UIDebugEnabled(): boolean {
+    return this.a2uiDebugEnabled;
+  }
+
   // Get stored logs for debugging
   getLogs(): LogEntry[] {
     if (typeof window === 'undefined') return [];
@@ -171,7 +240,25 @@ export function createLogger(component: string): Logger {
   return log;
 }
 
+// Type declaration for window extensions
+interface WindowWithDebug {
+  __logger: Logger;
+  __a2uiDebug: {
+    enable: () => void;
+    disable: () => void;
+    isEnabled: () => boolean;
+    getLogs: () => LogEntry[];
+  };
+}
+
 // Make logger available globally for debugging
 if (typeof window !== 'undefined') {
-  (window as unknown as { __logger: Logger }).__logger = logger;
+  const win = window as unknown as WindowWithDebug;
+  win.__logger = logger;
+  win.__a2uiDebug = {
+    enable: () => logger.enableA2UIDebug(),
+    disable: () => logger.disableA2UIDebug(),
+    isEnabled: () => logger.isA2UIDebugEnabled(),
+    getLogs: () => logger.getLogs().filter(l => l.message.includes('A2UI')),
+  };
 }
