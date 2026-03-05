@@ -1,17 +1,17 @@
 ---
-title: Stock Analysis v2.6
+title: Stock Analysis v2.7
 tags:
   - trading-skill
   - analysis
   - technical
   - ai-agent-primary
-  - v2.6-required
+  - v2.7-required
 custom_fields:
   skill_category: analysis
   priority: primary
   development_status: active
-  version: "2.6"
-  min_version: "2.6"
+  version: "2.7"
+  min_version: "2.7"
   upstream_artifacts:
     - ticker-profile
     - scan
@@ -28,13 +28,20 @@ custom_fields:
   auto_invoke: true
 ---
 
-# Stock Analysis Skill v2.6
+# Stock Analysis Skill v2.7
 
-**ONLY v2.6 IS SUPPORTED. Older versions are deprecated.**
+**ONLY v2.7 IS SUPPORTED. Older versions are deprecated.**
 
 Use this skill for non-earnings trading opportunities: technical breakouts, value plays, momentum trades, post-earnings drift.
 
-## v2.6 Requirements
+## v2.7 Requirements
+
+**CRITICAL: ALWAYS save the YAML file regardless of gate result (PASS, MARGINAL, or FAIL).**
+- FAIL results are needed for trading bot guidance (close positions, avoid entry)
+- FAIL results are needed for statistics and learning calibration
+- The `recommendation` field captures the outcome (BUY, SELL, WATCH, NO_POSITION, AVOID)
+
+## v2.7 Schema Requirements
 
 | Section | Requirement |
 |---------|-------------|
@@ -222,12 +229,19 @@ Use `tradegent_knowledge/skills/stock-analysis/template.yaml` (v2.6).
 
 ### Step 10: Validate & Save
 
+**CRITICAL: ALWAYS save regardless of gate result (PASS, MARGINAL, or FAIL).**
+
 ```bash
 # REQUIRED: Validate before saving
 python scripts/validate_analysis.py <file.yaml>
 ```
 
 Save to: `tradegent_knowledge/knowledge/analysis/stock/{TICKER}_{YYYYMMDDTHHMM}.yaml`
+
+FAIL results are essential for:
+- Trading bot signals (close positions, avoid new entries)
+- Historical statistics and win rate calculation
+- Learning loop and model calibration
 
 ### Step 11: Index & Push
 

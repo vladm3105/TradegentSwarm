@@ -1,14 +1,17 @@
 ---
-title: Earnings Analysis
+title: Earnings Analysis v2.6
 tags:
   - trading-skill
   - analysis
   - earnings
   - ai-agent-primary
+  - v2.6-required
 custom_fields:
   skill_category: analysis
   priority: primary
   development_status: active
+  version: "2.6"
+  min_version: "2.6"
   upstream_artifacts:
     - ticker-profile
     - scan
@@ -23,9 +26,18 @@ custom_fields:
   auto_invoke: true
 ---
 
-# Earnings Analysis Skill
+# Earnings Analysis Skill v2.6
+
+**ONLY v2.6 IS SUPPORTED. Older versions are deprecated.**
 
 Use this skill when analyzing stocks 3-10 days before earnings announcements. Auto-invokes when user mentions earnings analysis, pre-earnings setup, or requests analysis before an earnings date.
+
+## v2.6 Requirements
+
+**CRITICAL: ALWAYS save the YAML file regardless of gate result (PASS, MARGINAL, or FAIL).**
+- FAIL results are needed for trading bot guidance (close positions, avoid entry)
+- FAIL results are needed for statistics and learning calibration
+- The `recommendation` field captures the outcome (BULLISH, BEARISH, NEUTRAL, WAIT, AVOID)
 
 ## When to Use
 
@@ -143,7 +155,14 @@ This JSON block is REQUIRED for the orchestrator to parse your analysis. Without
 
 ### Step 6: Save Analysis
 
+**CRITICAL: ALWAYS save regardless of gate result (PASS, MARGINAL, or FAIL).**
+
 Save to `tradegent_knowledge/knowledge/analysis/earnings/{TICKER}_{YYYYMMDDTHHMM}.yaml`
+
+FAIL results are essential for:
+- Trading bot signals (close positions, avoid new entries)
+- Historical statistics and win rate calculation
+- Learning loop and model calibration
 
 ### Step 7: Index in Knowledge Base (Post-Save Hooks)
 
