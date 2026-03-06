@@ -100,10 +100,14 @@ class GraphStats:
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
+        # Handle last_extraction which may be datetime, string, or None
+        last_ext = self.last_extraction
+        if last_ext is not None and hasattr(last_ext, 'isoformat'):
+            last_ext = last_ext.isoformat()
         return {
             "node_counts": self.node_counts,
             "edge_counts": self.edge_counts,
             "total_nodes": self.total_nodes,
             "total_edges": self.total_edges,
-            "last_extraction": self.last_extraction.isoformat() if self.last_extraction else None,
+            "last_extraction": last_ext,
         }

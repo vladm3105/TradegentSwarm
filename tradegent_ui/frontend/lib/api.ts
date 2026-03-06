@@ -11,6 +11,7 @@ import type {
   DashboardServiceHealth,
   DashboardWatchlistSummary,
 } from '@/types/api';
+import type { GraphStats, GraphContext, GraphData } from '@/types/graph';
 
 // Re-export types for consumers
 export type {
@@ -840,6 +841,31 @@ export async function deleteSession(sessionId: string): Promise<{ success: boole
   });
 }
 
+// ============================================================================
+// Graph API
+// ============================================================================
+
+export async function getGraphStats(): Promise<GraphStats> {
+  return fetchApi<GraphStats>('/api/graph/stats');
+}
+
+export async function getGraphContext(ticker: string): Promise<GraphContext> {
+  return fetchApi<GraphContext>(`/api/graph/context/${ticker.toUpperCase()}`);
+}
+
+export async function getGraphSearch(
+  ticker: string,
+  depth: number = 2
+): Promise<GraphData> {
+  const response = await fetchApi<{ ticker: string; nodes: any[]; links: any[]; depth: number }>(
+    `/api/graph/search/${ticker.toUpperCase()}?depth=${depth}`
+  );
+  return {
+    nodes: response.nodes,
+    links: response.links,
+  };
+}
+
 // API client singleton for hook usage
 export const api = {
   health: getHealth,
@@ -916,5 +942,10 @@ export const api = {
     saveMessages: saveSessionMessages,
     update: updateSession,
     delete: deleteSession,
+  },
+  graph: {
+    stats: getGraphStats,
+    context: getGraphContext,
+    search: getGraphSearch,
   },
 };

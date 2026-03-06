@@ -1,4 +1,6 @@
 """Analysis agent for stock/earnings analysis operations."""
+from typing import Any
+
 import structlog
 
 from .base_agent import BaseAgent, AgentResponse
@@ -20,6 +22,15 @@ class AnalysisAgent(BaseAgent):
 
     def __init__(self):
         super().__init__("analysis")
+
+    @staticmethod
+    def _collect_debug_metadata(tool_results: dict[str, Any]) -> dict[str, Any] | None:
+        for result in tool_results.values():
+            if isinstance(result, dict):
+                debug_metadata = result.get("debug_metadata")
+                if isinstance(debug_metadata, dict):
+                    return debug_metadata
+        return None
 
     async def process(
         self,
@@ -61,7 +72,12 @@ class AnalysisAgent(BaseAgent):
 
                 result = await self.execute_tool(
                     "run_analysis",
-                    {"ticker": ticker, "analysis_type": analysis_type},
+                    {
+                        "ticker": ticker,
+                        "analysis_type": analysis_type,
+                        "query": query,
+                        "session_id": context.session_id,
+                    },
                 )
 
                 if result.success:
@@ -172,11 +188,13 @@ class AnalysisAgent(BaseAgent):
 
         try:
             a2ui = await self.generate_response(query, tool_results, context)
+            debug_metadata = self._collect_debug_metadata(tool_results)
             return AgentResponse(
                 success=True,
                 text=a2ui.get("text", ""),
                 a2ui=a2ui,
                 tool_results=tool_results,
+                debug_metadata=debug_metadata,
             )
         except Exception as e:
             log.error("Failed to generate analysis response", error=str(e))

@@ -1570,6 +1570,186 @@ class NexusDB:
             """, [limit])
             return [dict(r) for r in cur.fetchall()]
 
+    # ─── ADK Run State Methods ─────────────────────────────────────────────
+
+    def create_run_state_run(
+        self,
+        run_id: str,
+        status: str = "requested",
+        *,
+        parent_run_id: str | None = None,
+        intent: str | None = None,
+        ticker: str | None = None,
+        analysis_type: str | None = None,
+        contract_version: str | None = None,
+        routing_policy_version: str | None = None,
+        effective_config_hash: str | None = None,
+    ) -> bool:
+        """Create a run-state header row. Returns True when inserted."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO nexus.run_state_runs (
+                    run_id,
+                    parent_run_id,
+                    intent,
+                    ticker,
+                    analysis_type,
+                    status,
+                    contract_version,
+                    routing_policy_version,
+                    effective_config_hash
+                )
+                VALUES (%s::uuid, %s::uuid, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (run_id) DO NOTHING
+                RETURNING run_id
+                """,
+                [
+                    run_id,
+                    parent_run_id,
+                    intent,
+                    ticker,
+                    analysis_type,
+                    status,
+                    contract_version,
+                    routing_policy_version,
+                    effective_config_hash,
+                ],
+            )
+            inserted = cur.fetchone() is not None
+        self.conn.commit()
+        return inserted
+
+    def append_run_state_event(
+        self,
+        run_id: str,
+        *,
+        from_state: str,
+        to_state: str,
+        phase: str,
+        event_type: str = "state_transition",
+        event_payload: dict[str, Any] | None = None,
+        policy_decisions: list[dict[str, Any]] | None = None,
+    ) -> int:
+        """Append transition event and update current run state. Returns event ID."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO nexus.run_state_events (
+                    run_id,
+                    from_state,
+                    to_state,
+                    phase,
+                    event_type,
+                    event_payload_json,
+                    policy_decisions_json
+                )
+                VALUES (%s::uuid, %s, %s, %s, %s, %s::jsonb, %s::jsonb)
+                RETURNING id
+                """,
+                [
+                    run_id,
+                    from_state,
+                    to_state,
+                    phase,
+                    event_type,
+                    json.dumps(event_payload) if event_payload is not None else None,
+                    json.dumps(policy_decisions) if policy_decisions is not None else None,
+                ],
+            )
+            event_id = cur.fetchone()["id"]
+            cur.execute(
+                """
+                UPDATE nexus.run_state_runs
+                SET status = %s,
+                    updated_at = now()
+                WHERE run_id = %s::uuid
+                """,
+                [to_state, run_id],
+            )
+        self.conn.commit()
+        return event_id
+
+    def get_run_state_status(self, run_id: str) -> str | None:
+        """Get latest status for a run ID."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT status FROM nexus.run_state_runs WHERE run_id = %s::uuid",
+                [run_id],
+            )
+            row = cur.fetchone()
+        return row["status"] if row else None
+
+    def get_run_dedup(self, dedup_key: str) -> dict[str, Any] | None:
+        """Get active dedup record for the key when not expired."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT dedup_key, run_id::text AS run_id, status, response_json
+                FROM nexus.run_request_dedup
+                WHERE dedup_key = %s AND expires_at > now()
+                """,
+                [dedup_key],
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def claim_run_dedup(self, dedup_key: str, run_id: str) -> bool:
+        """Attempt to claim a dedup key for a new run. Returns True on claim."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO nexus.run_request_dedup (dedup_key, run_id, status)
+                VALUES (%s, %s::uuid, 'in_progress')
+                ON CONFLICT (dedup_key) DO NOTHING
+                RETURNING dedup_key
+                """,
+                [dedup_key, run_id],
+            )
+            inserted = cur.fetchone() is not None
+        self.conn.commit()
+        return inserted
+
+    def finalize_run_dedup(
+        self,
+        dedup_key: str,
+        *,
+        status: str,
+        response: dict[str, Any] | None = None,
+    ) -> bool:
+        """Finalize dedup record with terminal status and response envelope."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE nexus.run_request_dedup
+                SET status = %s,
+                    response_json = %s::jsonb,
+                    updated_at = now()
+                WHERE dedup_key = %s
+                RETURNING dedup_key
+                """,
+                [status, json.dumps(response) if response is not None else None, dedup_key],
+            )
+            updated = cur.fetchone() is not None
+        self.conn.commit()
+        return updated
+
+    def claim_run_side_effect_marker(self, run_id: str, phase: str, marker_key: str) -> bool:
+        """Claim a side-effect marker. Returns True only once per marker tuple."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO nexus.run_side_effect_markers (run_id, phase, marker_key)
+                VALUES (%s::uuid, %s, %s)
+                ON CONFLICT (run_id, phase, marker_key) DO NOTHING
+                RETURNING run_id
+                """,
+                [run_id, phase, marker_key],
+            )
+            inserted = cur.fetchone() is not None
+        self.conn.commit()
+        return inserted
+
     # ─── Position Detection Methods (IPLAN-005) ─────────────────────────────────
 
     def add_trade_detected(self, trade: dict) -> int:

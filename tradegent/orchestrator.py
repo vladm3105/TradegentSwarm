@@ -35,12 +35,38 @@ from pathlib import Path
 from typing import Any, Optional
 
 import structlog
-from dotenv import load_dotenv
+
+try:
+    # Package import path (entrypoint: tradegent.orchestrator:main)
+    from tradegent.adk_runtime.env import load_runtime_env
+except ImportError:
+    # Script mode fallback (entrypoint: python orchestrator.py)
+    from adk_runtime.env import load_runtime_env
 
 # Load .env file before any database connections
-_env_path = Path(__file__).parent / ".env"
-if _env_path.exists():
-    load_dotenv(_env_path)
+_env_path = load_runtime_env(Path(__file__).parent / ".env")
+
+SUPPORTED_AGENT_ENGINES = {"legacy", "adk"}
+
+
+def validate_agent_engine() -> str:
+    """Validate runtime engine configuration and required dependencies."""
+    engine = os.getenv("AGENT_ENGINE", "legacy").strip().lower()
+    if engine not in SUPPORTED_AGENT_ENGINES:
+        raise RuntimeError(
+            f"Unsupported AGENT_ENGINE='{engine}'. Allowed: {sorted(SUPPORTED_AGENT_ENGINES)}"
+        )
+
+    if engine == "adk":
+        try:
+            import google.adk  # noqa: F401
+        except Exception as exc:
+            raise RuntimeError(
+                "AGENT_ENGINE=adk requires Google ADK. "
+                "Install with: pip install '.[adk]'"
+            ) from exc
+
+    return engine
 
 # Add shared module to path for observability
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -4168,6 +4194,8 @@ def _handle_rag_command(args):
 
 def main():
     import argparse
+
+    validate_agent_engine()
 
     parser = argparse.ArgumentParser(description="Nexus Light v2.2")
     sub = parser.add_subparsers(dest="cmd")

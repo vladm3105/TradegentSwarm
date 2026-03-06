@@ -10,6 +10,7 @@ import pytest
 @pytest.fixture(autouse=True)
 def mock_env(monkeypatch):
     """Set test environment variables."""
+    monkeypatch.setenv("AGENT_ENGINE", "legacy")
     monkeypatch.setenv("PG_HOST", "localhost")
     monkeypatch.setenv("PG_PORT", "5433")
     monkeypatch.setenv("PG_USER", "tradegent")

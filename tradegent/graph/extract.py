@@ -14,11 +14,14 @@ from ratelimit import limits, sleep_and_retry
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 try:
-    from trader.utils import is_real_document
+    from tradegent.utils import is_real_document
 except ImportError:
+    # Fallback for running as standalone script
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent.parent))
     from utils import is_real_document
 try:
-    from trader.validation import get_schema_for_path, validate_document
+    from tradegent.validation import get_schema_for_path, validate_document
 except ImportError:
     try:
         from validation import get_schema_for_path, validate_document

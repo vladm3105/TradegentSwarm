@@ -118,8 +118,12 @@ TradegentSwarm/
 ## Development
 
 ```bash
-# Install dependencies
-pip install -e ".[dev]"
+# Create/activate local virtualenv
+/opt/anaconda/bin/virtualenv .venv
+source .venv/bin/activate
+
+# Install pinned dependencies from snapshot
+pip install -c requirements/constraints-adk.txt -e ".[adk,dev]"
 
 # Setup pre-commit hooks
 pip install pre-commit
@@ -127,6 +131,22 @@ pre-commit install
 
 # Run tests
 pytest tradegent/
+```
+
+Re-generate constraints after dependency updates:
+
+```bash
+.venv/bin/pip freeze --exclude-editable | sort > requirements/constraints-adk.txt
+```
+
+LiteLLM route configuration (Track E) is sourced from `tradegent/.env`:
+
+```bash
+ADK_SUBAGENT_LLM_ENABLED=false
+LLM_MODEL=gpt-4o-mini
+LITELLM_ROUTE_REASONING_STANDARD=openrouter/openai/gpt-4o-mini,openai/gpt-4o-mini
+LITELLM_ROUTE_SUMMARIZER_FAST=openai/gpt-4o-mini
+LITELLM_FALLBACK_MODELS=
 ```
 
 ## Security

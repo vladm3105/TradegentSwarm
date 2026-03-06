@@ -20,7 +20,7 @@ Skills in `.claude/skills/` auto-invoke based on context. Each skill has:
 | **post-trade-review** | v2.1 | Learning |
 | **post-earnings-review** | v1.0 | Learning |
 | **report-validation** | v1.0 | Validation |
-| **scan** | v1.0 | Scanning |
+| **scan** (`market-scanning` template alias) | v1.0 | Scanning |
 | **detected-position** | v1.0 | Monitoring |
 | **options-management** | v1.0 | Options |
 | **fill-analysis** | v1.0 | Learning |

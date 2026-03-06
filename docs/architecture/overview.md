@@ -264,6 +264,15 @@ Layer 6: Rate limits
 
 ---
 
+## ADK Migration Architecture
+
+For the ADK + LiteLLM target architecture, configuration governance model, and workflow visualizations, see:
+
+- [`docs/architecture/adk-multi-provider-orchestration.md`](adk-multi-provider-orchestration.md)
+- [`docs/architecture/adk-multi-provider-orchestration.svg`](adk-multi-provider-orchestration.svg)
+
+---
+
 ## Related Documentation
 
 - [Skill-Database Mapping](skill-database-mapping.md) - Complete field mapping from skills to tables

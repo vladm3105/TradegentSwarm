@@ -4,13 +4,14 @@ import sys
 import time
 import structlog
 from pathlib import Path
-from openai import AsyncOpenAI
+from typing import Any, cast
 
 # Add shared module to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from server.config import get_settings
 from server.errors import LLMError, LLMTimeoutError
+from tradegent.llm_gateway import LiteLLMGatewayClient
 from shared.observability.metrics_ui import get_metrics
 from shared.observability.spans import LLMSpan, GenAISystem, FinishReason
 
@@ -103,12 +104,19 @@ class LLMClient:
 
     def __init__(self):
         settings = get_settings()
-        self.client = AsyncOpenAI(
-            api_key=settings.llm_api_key,
-            base_url=settings.llm_base_url,
+        self.gateway = LiteLLMGatewayClient.from_env(
             timeout=settings.llm_timeout,
         )
         self.model = settings.llm_model
+
+    @staticmethod
+    def _system_from_provider(provider: str) -> GenAISystem:
+        token = (provider or "").lower()
+        if token == "openrouter":
+            return GenAISystem.OPENROUTER
+        if token == "anthropic":
+            return GenAISystem.ANTHROPIC
+        return GenAISystem.OPENAI
 
     async def generate_a2ui(
         self,
@@ -170,14 +178,7 @@ class LLMClient:
 
         metrics = get_metrics()
 
-        # Determine GenAI system from base URL
-        settings = get_settings()
-        if "openrouter" in (settings.llm_base_url or ""):
-            system = GenAISystem.OPENROUTER
-        elif "anthropic" in (settings.llm_base_url or ""):
-            system = GenAISystem.ANTHROPIC
-        else:
-            system = GenAISystem.OPENAI
+        system = GenAISystem.OPENAI
 
         with LLMSpan(
             system=system,
@@ -186,34 +187,31 @@ class LLMClient:
             temperature=0.3,
         ) as llm_span:
             try:
-                response = await self.client.chat.completions.create(
-                    model=self.model,
+                llm_result = await self.gateway.chat_json(
+                    role_alias="summarizer_fast",
                     messages=messages,
-                    response_format={"type": "json_object"},
-                    temperature=0.3,  # Lower temperature for structured output
+                    temperature=0.3,
                 )
 
-                content = response.choices[0].message.content
-                result = json.loads(content)
+                content = llm_result.content
+                result = cast(dict[str, Any], json.loads(content))
+                system = self._system_from_provider(llm_result.provider)
 
                 # Record response in span
-                usage = response.usage
-                if usage:
-                    llm_span.set_response(
-                        response_id=response.id,
-                        input_tokens=usage.prompt_tokens,
-                        output_tokens=usage.completion_tokens,
-                        finish_reason=FinishReason.STOP,
-                        response_model=response.model,
-                    )
+                llm_span.set_response(
+                    response_id=llm_result.response_id,
+                    input_tokens=llm_result.input_tokens,
+                    output_tokens=llm_result.output_tokens,
+                    finish_reason=FinishReason.STOP,
+                    response_model=llm_result.model,
+                )
 
-                    # Also record metrics
-                    metrics.record_llm_call(
-                        duration_ms=llm_span.duration_ms,
-                        input_tokens=usage.prompt_tokens,
-                        output_tokens=usage.completion_tokens,
-                        model=self.model,
-                    )
+                metrics.record_llm_call(
+                    duration_ms=llm_span.duration_ms,
+                    input_tokens=llm_result.input_tokens,
+                    output_tokens=llm_result.output_tokens,
+                    model=llm_result.model,
+                )
 
                 # Ensure proper A2UI structure
                 if "type" not in result:
@@ -232,9 +230,11 @@ class LLMClient:
                 log.info(
                     "llm.a2ui.generated",
                     agent_type=agent_type,
-                    model=self.model,
-                    input_tokens=usage.prompt_tokens if usage else 0,
-                    output_tokens=usage.completion_tokens if usage else 0,
+                    model=llm_result.model,
+                    provider=llm_result.provider,
+                    model_alias=llm_result.model_alias,
+                    input_tokens=llm_result.input_tokens,
+                    output_tokens=llm_result.output_tokens,
                     component_count=len(result.get("components", [])),
                     component_types=component_types,
                     text_length=len(result.get("text", "")),
@@ -322,14 +322,7 @@ Respond in JSON format:
 
         metrics = get_metrics()
 
-        # Determine GenAI system from base URL
-        settings = get_settings()
-        if "openrouter" in (settings.llm_base_url or ""):
-            system = GenAISystem.OPENROUTER
-        elif "anthropic" in (settings.llm_base_url or ""):
-            system = GenAISystem.ANTHROPIC
-        else:
-            system = GenAISystem.OPENAI
+        system = GenAISystem.OPENAI
 
         with LLMSpan(
             system=system,
@@ -338,33 +331,30 @@ Respond in JSON format:
             temperature=0.1,
         ) as llm_span:
             try:
-                response = await self.client.chat.completions.create(
-                    model=self.model,
+                llm_result = await self.gateway.chat_json(
+                    role_alias="extraction_fast",
                     messages=messages,
-                    response_format={"type": "json_object"},
                     temperature=0.1,
                 )
+                system = self._system_from_provider(llm_result.provider)
 
                 # Record response in span
-                usage = response.usage
-                if usage:
-                    llm_span.set_response(
-                        response_id=response.id,
-                        input_tokens=usage.prompt_tokens,
-                        output_tokens=usage.completion_tokens,
-                        finish_reason=FinishReason.STOP,
-                        response_model=response.model,
-                    )
+                llm_span.set_response(
+                    response_id=llm_result.response_id,
+                    input_tokens=llm_result.input_tokens,
+                    output_tokens=llm_result.output_tokens,
+                    finish_reason=FinishReason.STOP,
+                    response_model=llm_result.model,
+                )
 
-                    # Also record metrics
-                    metrics.record_llm_call(
-                        duration_ms=llm_span.duration_ms,
-                        input_tokens=usage.prompt_tokens,
-                        output_tokens=usage.completion_tokens,
-                        model=self.model,
-                    )
+                metrics.record_llm_call(
+                    duration_ms=llm_span.duration_ms,
+                    input_tokens=llm_result.input_tokens,
+                    output_tokens=llm_result.output_tokens,
+                    model=llm_result.model,
+                )
 
-                result = json.loads(response.choices[0].message.content)
+                result = cast(dict[str, Any], json.loads(llm_result.content))
 
                 # Record intent classification
                 metrics.record_intent_classification(
@@ -384,8 +374,11 @@ Respond in JSON format:
                     intent=result.get("intent", "unknown"),
                     confidence=result.get("confidence", 0.0),
                     tickers=result.get("tickers", []),
-                    input_tokens=usage.prompt_tokens if usage else 0,
-                    output_tokens=usage.completion_tokens if usage else 0,
+                    model=llm_result.model,
+                    provider=llm_result.provider,
+                    model_alias=llm_result.model_alias,
+                    input_tokens=llm_result.input_tokens,
+                    output_tokens=llm_result.output_tokens,
                     duration_ms=round(duration_ms, 2),
                 )
 
@@ -421,14 +414,14 @@ Respond in JSON format:
         ]
 
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
+            llm_result = await self.gateway.chat_text(
+                role_alias="summarizer_fast",
                 messages=messages,
                 temperature=0.5,
                 max_tokens=100,
             )
 
-            return response.choices[0].message.content.strip()
+            return cast(str, llm_result.content).strip()
 
         except Exception:
             return "I'm not sure what you'd like me to do. Could you please clarify?"

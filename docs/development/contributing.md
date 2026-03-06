@@ -22,12 +22,22 @@ Guidelines for contributing to TradegentSwarm.
 git clone git@github.com:vladm3105/TradegentSwarm.git
 cd TradegentSwarm
 
-# Install development dependencies
-pip install -e ".[dev]"
+# Create/activate local virtualenv
+/opt/anaconda/bin/virtualenv .venv
+source .venv/bin/activate
+
+# Install pinned dependencies
+pip install -c requirements/constraints-adk.txt -e ".[adk,dev]"
 
 # Setup pre-commit hooks (required)
 pip install pre-commit
 pre-commit install
+```
+
+Re-generate constraints after dependency updates:
+
+```bash
+.venv/bin/pip freeze --exclude-editable | sort > requirements/constraints-adk.txt
 ```
 
 ### Start Infrastructure

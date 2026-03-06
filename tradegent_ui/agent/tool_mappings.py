@@ -31,7 +31,12 @@ ANALYSIS_TOOLS: dict[str, ToolMapping] = {
         server=MCPServer.SUBPROCESS,
         mcp_tool="tradegent_analyze",
         description="Run full stock/earnings analysis via Claude Code CLI",
-        params_map={"ticker": "ticker", "analysis_type": "type"},
+        params_map={
+            "ticker": "ticker",
+            "analysis_type": "type",
+            "query": "query",
+            "session_id": "session_id",
+        },
         requires_ticker=True,
     ),
     "get_analysis": ToolMapping(

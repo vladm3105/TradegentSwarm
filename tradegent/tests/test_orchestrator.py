@@ -59,6 +59,23 @@ class TestSettings:
             assert settings.max_daily_analyses == 25
 
 
+class TestAgentEngineValidation:
+    """Test AGENT_ENGINE validation behavior."""
+
+    def test_validate_agent_engine_legacy(self, monkeypatch):
+        from orchestrator import validate_agent_engine
+
+        monkeypatch.setenv("AGENT_ENGINE", "legacy")
+        assert validate_agent_engine() == "legacy"
+
+    def test_validate_agent_engine_invalid(self, monkeypatch):
+        from orchestrator import validate_agent_engine
+
+        monkeypatch.setenv("AGENT_ENGINE", "invalid")
+        with pytest.raises(RuntimeError, match="Unsupported AGENT_ENGINE"):
+            validate_agent_engine()
+
+
 class TestJsonParsing:
     """Test JSON block parsing."""
 

@@ -1,10 +1,25 @@
 """MCP client pool for all MCP servers."""
+import os
 import sys
 import time
 import httpx
 import structlog
 from dataclasses import dataclass
 from pathlib import Path
+
+# Load runtime env with tradegent/.env as default.
+try:
+    from tradegent.adk_runtime.env import load_runtime_env as _shared_load_runtime_env
+except ImportError:
+    from dotenv import load_dotenv
+
+    def _shared_load_runtime_env(env_path: Path | None = None) -> Path:
+        fallback_path = env_path or Path("/opt/data/tradegent_swarm/tradegent/.env")
+        if fallback_path.exists():
+            load_dotenv(fallback_path)
+        return fallback_path
+
+_shared_load_runtime_env()
 
 # Add shared module to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -84,7 +99,9 @@ class MCPClientPool:
             command=settings.graph_mcp_cmd,
             cwd=settings.mcp_cwd,
             env={
-                "NEO4J_URI": f"bolt://{settings.pg_host}:7688",
+                "NEO4J_URI": os.getenv("NEO4J_URI", f"bolt://{settings.pg_host}:7688"),
+                "NEO4J_USER": os.getenv("NEO4J_USER", "neo4j"),
+                "NEO4J_PASS": os.getenv("NEO4J_PASS", ""),
             },
         )
 

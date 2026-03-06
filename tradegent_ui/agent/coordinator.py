@@ -147,6 +147,9 @@ class Coordinator:
             component_count=component_count,
             component_types=component_types,
             text_length=len(response.text) if response.text else 0,
+            run_id=(response.debug_metadata or {}).get("run_id") if response.debug_metadata else None,
+            run_status=(response.debug_metadata or {}).get("status") if response.debug_metadata else None,
+            run_latency_ms=(response.debug_metadata or {}).get("latency_ms") if response.debug_metadata else None,
             duration_ms=round(total_ms, 2),
             has_error=response.error is not None,
         )

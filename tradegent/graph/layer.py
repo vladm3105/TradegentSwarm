@@ -296,6 +296,95 @@ class TradingGraph:
             result = session.run(query, symbol=symbol)
             return [{"labels": r["labels"], "props": r["props"]} for r in result]
 
+    def find_related_graph(self, symbol: str, depth: int = 2) -> dict:
+        """Find all nodes and relationships within N hops of a ticker.
+
+        Returns a graph structure with nodes and edges for visualization.
+        """
+        safe_depth = min(max(1, depth), 3)
+        # Query returns all relationships in paths, then we deduplicate
+        query = f"""
+        MATCH path = (t:Ticker {{symbol: $symbol}})-[*1..{safe_depth}]-(n)
+        UNWIND relationships(path) AS rel
+        WITH DISTINCT rel,
+             startNode(rel) AS src,
+             endNode(rel) AS tgt
+        RETURN
+            type(rel) AS rel_type,
+            labels(src)[0] AS src_label,
+            properties(src) AS src_props,
+            labels(tgt)[0] AS tgt_label,
+            properties(tgt) AS tgt_props
+        LIMIT 500
+        """
+        nodes = []
+        edges = []
+        seen_nodes = set()
+        seen_edges = set()
+
+        def get_node_id(label: str, props: dict) -> tuple[str, str]:
+            """Generate node ID and display label."""
+            if "symbol" in props:
+                return f"Ticker:{props['symbol']}", props["symbol"]
+            elif "name" in props:
+                name = props["name"]
+                if label == "Document" and "/" in name:
+                    name = name.split("/")[-1].replace(".yaml", "")
+                return f"{label}:{name}", name
+            elif "title" in props:
+                return f"{label}:{props['title']}", props["title"]
+            else:
+                for key, val in props.items():
+                    if val:
+                        return f"{label}:{val}", str(val)
+            return None, None
+
+        with self._driver.session(database=self.database) as session:
+            result = session.run(query, symbol=symbol)
+
+            for row in result:
+                # Source node
+                src_label = row["src_label"] or "Unknown"
+                src_props = dict(row["src_props"]) if row["src_props"] else {}
+                src_id, src_display = get_node_id(src_label, src_props)
+
+                if src_id and src_id not in seen_nodes:
+                    nodes.append({
+                        "id": src_id,
+                        "label": src_display,
+                        "type": src_label,
+                        "properties": src_props,
+                    })
+                    seen_nodes.add(src_id)
+
+                # Target node
+                tgt_label = row["tgt_label"] or "Unknown"
+                tgt_props = dict(row["tgt_props"]) if row["tgt_props"] else {}
+                tgt_id, tgt_display = get_node_id(tgt_label, tgt_props)
+
+                if tgt_id and tgt_id not in seen_nodes:
+                    nodes.append({
+                        "id": tgt_id,
+                        "label": tgt_display,
+                        "type": tgt_label,
+                        "properties": tgt_props,
+                    })
+                    seen_nodes.add(tgt_id)
+
+                # Edge
+                rel_type = row["rel_type"] or "RELATED_TO"
+                if src_id and tgt_id:
+                    edge_key = f"{src_id}|{rel_type}|{tgt_id}"
+                    if edge_key not in seen_edges:
+                        edges.append({
+                            "source": src_id,
+                            "target": tgt_id,
+                            "type": rel_type,
+                        })
+                        seen_edges.add(edge_key)
+
+        return {"nodes": nodes, "edges": edges}
+
     def get_sector_peers(self, symbol: str) -> list[dict]:
         """Get tickers in the same sector."""
         query = """

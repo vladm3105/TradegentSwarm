@@ -16,6 +16,8 @@ from .analytics import router as analytics_router
 # Order and schedule routes
 from .orders import router as orders_router
 from .schedules import router as schedules_router
+# Graph visualization routes
+from .graph import router as graph_router
 
 __all__ = [
     "auth_router",
@@ -35,4 +37,6 @@ __all__ = [
     # Orders and schedules
     "orders_router",
     "schedules_router",
+    # Graph
+    "graph_router",
 ]

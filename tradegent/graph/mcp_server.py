@@ -79,6 +79,18 @@ TOOLS = [
         },
     ),
     Tool(
+        name="graph_search_full",
+        description="Find all nodes AND relationships within N hops (for visualization)",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "ticker": {"type": "string", "description": "Ticker symbol"},
+                "depth": {"type": "integer", "default": 2, "description": "Max hops (1-3)"},
+            },
+            "required": ["ticker"],
+        },
+    ),
+    Tool(
         name="graph_peers",
         description="Get sector peers and competitors for a ticker",
         inputSchema={
@@ -189,6 +201,10 @@ async def _execute_tool(name: str, args: dict) -> dict:
         with TradingGraph() as graph:
             results = graph.find_related(args["ticker"].upper(), depth=args.get("depth", 2))
             return {"results": results}
+
+    elif name == "graph_search_full":
+        with TradingGraph() as graph:
+            return graph.find_related_graph(args["ticker"].upper(), depth=args.get("depth", 2))
 
     elif name == "graph_peers":
         with TradingGraph() as graph:

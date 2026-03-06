@@ -1,4 +1,5 @@
 """Base agent class with MCP integration."""
+import os
 import time
 import structlog
 from abc import ABC, abstractmethod
@@ -27,6 +28,7 @@ class AgentResponse:
     a2ui: dict | None = None
     text: str = ""
     tool_results: dict[str, Any] = field(default_factory=dict)
+    debug_metadata: dict[str, Any] | None = None
     error: str | None = None
 
 
@@ -168,9 +170,40 @@ class BaseAgent(ABC):
         if mapping.mcp_tool == "tradegent_analyze":
             ticker = params.get("ticker", "").upper()
             analysis_type = params.get("type", "stock")
+            query = str(params.get("query", ""))
+            session_id = str(params.get("session_id", ""))
 
             if not ticker:
                 return MCPResponse(success=False, error="Ticker is required")
+
+            # ADK-first orchestration path: use canonical Coordinator envelope.
+            if os.getenv("AGENT_ENGINE", "legacy").strip().lower() == "adk":
+                from .adk_bridge import run_adk_analysis_from_ui
+
+                try:
+                    adk_started = time.perf_counter()
+                    adk_result = run_adk_analysis_from_ui(
+                        session_id=session_id,
+                        query=query,
+                        ticker=ticker,
+                        analysis_type=analysis_type,
+                    )
+                    adk_duration_ms = (time.perf_counter() - adk_started) * 1000
+                    adk_result["ui_bridge_latency_ms"] = round(adk_duration_ms, 2)
+                    status = str(adk_result.get("status", "failed"))
+                    ok = status in {"completed", "blocked"}
+                    log.info(
+                        "adk_bridge.completed",
+                        ticker=ticker,
+                        analysis_type=analysis_type,
+                        run_id=adk_result.get("run_id"),
+                        status=status,
+                        duration_ms=round(adk_duration_ms, 2),
+                    )
+                    return MCPResponse(success=ok, result=adk_result, error=None if ok else status)
+                except Exception as exc:
+                    log.error("adk_bridge.failed", ticker=ticker, error=str(exc))
+                    return MCPResponse(success=False, error=f"ADK analysis failed: {exc}")
 
             # Run tradegent CLI
             tradegent_dir = Path("/opt/data/tradegent_swarm/tradegent")
@@ -251,7 +284,6 @@ class BaseAgent(ABC):
                         files = sorted(glob_module.glob(pattern), key=lambda x: Path(x).stat().st_mtime, reverse=True)
                         if files:
                             # Check if file was created in the last 15 minutes
-                            import time
                             if time.time() - Path(files[0]).stat().st_mtime < 900:
                                 file_path = files[0]
                                 log.info("subprocess.file_found_by_search", file_path=file_path, ticker=ticker)

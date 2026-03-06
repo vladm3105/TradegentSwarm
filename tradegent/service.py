@@ -780,6 +780,10 @@ def show_health(db: NexusDB):
 def main():
     command = sys.argv[1] if len(sys.argv) > 1 else "run"
 
+    # Validate runtime engine configuration before starting orchestration flows.
+    if command in ("run", "daemon", "start", "once", "init"):
+        orchestrator.validate_agent_engine()
+
     if command in ("run", "daemon", "start"):
         service = NexusService()
         service.start()

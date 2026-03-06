@@ -49,6 +49,9 @@ dev = [
     "bandit>=1.7",
     "safety>=3.0",
 ]
+adk = [
+    "google-adk>=0.1.0",
+]
 advanced = [
     "sentence-transformers>=2.3.1",
     "redis>=5.0.1",

@@ -10,6 +10,7 @@ import {
   LineChart,
   Target,
   BookOpen,
+  Network,
   Settings,
   MessageSquare,
   ChevronLeft,
@@ -33,6 +34,7 @@ const navItems: NavItem[] = [
   { title: 'Charts', href: '/charts', icon: LineChart },
   { title: 'Scanner', href: '/scanner', icon: Target },
   { title: 'Knowledge', href: '/knowledge', icon: BookOpen },
+  { title: 'Graph', href: '/graph', icon: Network },
   { title: 'Settings', href: '/settings', icon: Settings },
 ];
 

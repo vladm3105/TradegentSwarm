@@ -35,6 +35,7 @@ from .routes import (
     analytics_router,
     orders_router,
     schedules_router,
+    graph_router,
 )
 from .analyses import router as analyses_router
 from shared.observability import (
@@ -64,6 +65,7 @@ class ChatResponse(BaseModel):
     session_id: str
     text: str | None = None
     a2ui: dict | None = None
+    debug_metadata: dict | None = None
     task_id: str | None = None  # For async mode
     error: str | None = None
 
@@ -151,6 +153,7 @@ app.include_router(notifications_router)
 app.include_router(analytics_router)
 app.include_router(orders_router)
 app.include_router(schedules_router)
+app.include_router(graph_router)
 
 
 # Public endpoints that don't require authentication
@@ -348,12 +351,28 @@ async def chat(request: ChatRequest, req: Request):
     try:
         coordinator = await get_coordinator()
         response = await coordinator.process(session_id, request.message)
+        debug_metadata = response.debug_metadata if isinstance(response.debug_metadata, dict) else None
+        correlation_id = get_correlation_id()
+        if debug_metadata is not None and correlation_id and "correlation_id" not in debug_metadata:
+            debug_metadata["correlation_id"] = correlation_id
+
+        log.info(
+            "api.chat.completed",
+            session_id=session_id,
+            run_id=(debug_metadata or {}).get("run_id"),
+            correlation_id=correlation_id,
+            status=(debug_metadata or {}).get("status"),
+            latency_ms=(debug_metadata or {}).get("latency_ms"),
+            input_tokens=(debug_metadata or {}).get("input_tokens"),
+            output_tokens=(debug_metadata or {}).get("output_tokens"),
+        )
 
         return ChatResponse(
             success=response.success,
             session_id=session_id,
             text=response.text,
             a2ui=response.a2ui,
+            debug_metadata=debug_metadata,
             error=response.error,
         )
 
@@ -604,6 +623,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             "success": response.success,
                             "text": response.text,
                             "a2ui": response.a2ui,
+                            "debug_metadata": response.debug_metadata,
                             "error": response.error,
                         })
 
