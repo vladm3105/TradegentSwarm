@@ -65,7 +65,7 @@ def _collect_payload_overrides(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _number_or_default(value: Any, default: float) -> float:
-    if isinstance(value, Number):
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
         return float(value)
     return default
 
@@ -76,11 +76,26 @@ def _string_or_default(value: Any, default: str) -> str:
     return default
 
 
+def _as_dict(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
 def _analysis_dir_for_type(analysis_type: str) -> Path:
     normalized = (analysis_type or "stock").strip().lower()
     if normalized == "earnings":
         return _KNOWLEDGE_ROOT / "analysis" / "earnings"
     return _KNOWLEDGE_ROOT / "analysis" / "stock"
+
+
+def _output_dir_for_skill(*, skill_name: str | None, analysis_type: str) -> Path:
+    skill = (skill_name or "").strip().lower()
+    if skill == "watchlist":
+        return _KNOWLEDGE_ROOT / "watchlist"
+    if skill == "scan":
+        return _KNOWLEDGE_ROOT / "scanners" / "runs"
+    return _analysis_dir_for_type(analysis_type)
 
 
 def _doc_type_for_analysis(analysis_type: str) -> str:
@@ -123,9 +138,9 @@ def _build_stock_analysis_document(
     ]
 
     overrides = _collect_payload_overrides(payload)
-    recommendation = overrides.get("recommendation") if isinstance(overrides.get("recommendation"), dict) else {}
-    summary_override = overrides.get("summary") if isinstance(overrides.get("summary"), dict) else {}
-    gate_override = overrides.get("do_nothing_gate") if isinstance(overrides.get("do_nothing_gate"), dict) else {}
+    recommendation = _as_dict(overrides.get("recommendation"))
+    summary_override = _as_dict(overrides.get("summary"))
+    gate_override = _as_dict(overrides.get("do_nothing_gate"))
     current_price = _number_or_default(overrides.get("current_price"), 0.0)
     summary_text = _string_or_default(summary_override.get("narrative"), summary_narrative)
     rec_action = _string_or_default(recommendation.get("action"), "WATCH")
@@ -378,22 +393,18 @@ def _build_earnings_analysis_document(
     current_price = _number_or_default(overrides.get("current_price"), 0.0)
     earnings_time = _string_or_default(overrides.get("earnings_time"), "AMC")
     days_to_earnings = int(_number_or_default(overrides.get("days_to_earnings"), 0))
-    decision_override = overrides.get("decision") if isinstance(overrides.get("decision"), dict) else {}
-    gate_override = overrides.get("do_nothing_gate") if isinstance(overrides.get("do_nothing_gate"), dict) else {}
-    scoring_override = overrides.get("scoring") if isinstance(overrides.get("scoring"), dict) else {}
-    summary_override = overrides.get("summary") if isinstance(overrides.get("summary"), dict) else {}
-    scenarios_override = overrides.get("scenarios") if isinstance(overrides.get("scenarios"), dict) else {}
-    probability_override = overrides.get("probability") if isinstance(overrides.get("probability"), dict) else {}
-    alerts_override = overrides.get("alert_levels") if isinstance(overrides.get("alert_levels"), dict) else {}
-    bull_override = (
-        overrides.get("bull_case_analysis") if isinstance(overrides.get("bull_case_analysis"), dict) else {}
-    )
-    base_override = (
-        overrides.get("base_case_analysis") if isinstance(overrides.get("base_case_analysis"), dict) else {}
-    )
-    bear_override = (
-        overrides.get("bear_case_analysis") if isinstance(overrides.get("bear_case_analysis"), dict) else {}
-    )
+    decision_override = _as_dict(overrides.get("decision"))
+    gate_override = _as_dict(overrides.get("do_nothing_gate"))
+    scoring_override = _as_dict(overrides.get("scoring"))
+    summary_override = _as_dict(overrides.get("summary"))
+    scenarios_override = _as_dict(overrides.get("scenarios"))
+    probability_override = _as_dict(overrides.get("probability"))
+    alerts_override = _as_dict(overrides.get("alert_levels"))
+    bull_override = _as_dict(overrides.get("bull_case_analysis"))
+    base_override = _as_dict(overrides.get("base_case_analysis"))
+    bear_override = _as_dict(overrides.get("bear_case_analysis"))
+    probability_adjustments = _as_dict(probability_override.get("adjustments"))
+    final_probability = _as_dict(probability_override.get("final_probability"))
     summary_text = _string_or_default(summary_override.get("narrative"), summary_narrative)
 
     def _scenario_payload(name: str, default_probability: float, default_move: float) -> dict[str, Any]:
@@ -574,59 +585,41 @@ def _build_earnings_analysis_document(
             "base_rate": _number_or_default(probability_override.get("base_rate"), 0.5),
             "adjustments": {
                 "customer_demand": _number_or_default(
-                    probability_override.get("adjustments", {}).get("customer_demand")
-                    if isinstance(probability_override.get("adjustments"), dict)
-                    else None,
+                    probability_adjustments.get("customer_demand"),
                     0.0,
                 ),
                 "estimate_revisions": _number_or_default(
-                    probability_override.get("adjustments", {}).get("estimate_revisions")
-                    if isinstance(probability_override.get("adjustments"), dict)
-                    else None,
+                    probability_adjustments.get("estimate_revisions"),
                     0.0,
                 ),
                 "sentiment_contrarian": _number_or_default(
-                    probability_override.get("adjustments", {}).get("sentiment_contrarian")
-                    if isinstance(probability_override.get("adjustments"), dict)
-                    else None,
+                    probability_adjustments.get("sentiment_contrarian"),
                     0.0,
                 ),
                 "technical": _number_or_default(
-                    probability_override.get("adjustments", {}).get("technical")
-                    if isinstance(probability_override.get("adjustments"), dict)
-                    else None,
+                    probability_adjustments.get("technical"),
                     0.0,
                 ),
                 "expectations": _number_or_default(
-                    probability_override.get("adjustments", {}).get("expectations")
-                    if isinstance(probability_override.get("adjustments"), dict)
-                    else None,
+                    probability_adjustments.get("expectations"),
                     0.0,
                 ),
             },
             "final_probability": {
                 "p_beat": _number_or_default(
-                    probability_override.get("final_probability", {}).get("p_beat")
-                    if isinstance(probability_override.get("final_probability"), dict)
-                    else None,
+                    final_probability.get("p_beat"),
                     0.5,
                 ),
                 "p_miss": _number_or_default(
-                    probability_override.get("final_probability", {}).get("p_miss")
-                    if isinstance(probability_override.get("final_probability"), dict)
-                    else None,
+                    final_probability.get("p_miss"),
                     0.5,
                 ),
                 "p_significant_beat": _number_or_default(
-                    probability_override.get("final_probability", {}).get("p_significant_beat")
-                    if isinstance(probability_override.get("final_probability"), dict)
-                    else None,
+                    final_probability.get("p_significant_beat"),
                     0.2,
                 ),
                 "p_significant_miss": _number_or_default(
-                    probability_override.get("final_probability", {}).get("p_significant_miss")
-                    if isinstance(probability_override.get("final_probability"), dict)
-                    else None,
+                    final_probability.get("p_significant_miss"),
                     0.2,
                 ),
             },
@@ -861,6 +854,229 @@ def _build_earnings_analysis_document(
     }
 
 
+def _build_watchlist_document(
+    *,
+    run_id: str,
+    ticker: str,
+    skill_name: str | None,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    now = datetime.now()
+    date_token = now.strftime("%Y-%m-%d")
+    ts = now.strftime("%Y%m%dT%H%M")
+    overrides = _collect_payload_overrides(payload)
+
+    source_override = _as_dict(overrides.get("source"))
+    trigger_override = _as_dict(overrides.get("entry_trigger"))
+    invalidation_override = _as_dict(overrides.get("invalidation"))
+    key_levels_override = _as_dict(overrides.get("key_levels"))
+    conviction_override = _as_dict(overrides.get("conviction"))
+    thesis_override = _as_dict(overrides.get("thesis"))
+
+    return {
+        "_meta": {
+            "id": f"{ticker.upper()}_{ts}",
+            "type": "watchlist",
+            "version": 2.1,
+            "created": now.isoformat(),
+            "expires": date_token,
+            "status": _string_or_default(overrides.get("status"), "active"),
+            "run_id": run_id,
+            "source": "adk_runtime",
+            "skill": skill_name or "watchlist",
+        },
+        "ticker": ticker.upper(),
+        "priority": _string_or_default(overrides.get("priority"), "medium"),
+        "current_price": _number_or_default(overrides.get("current_price"), 0.0),
+        "source": {
+            "type": _string_or_default(source_override.get("type"), "analysis"),
+            "file": _string_or_default(source_override.get("file"), ""),
+            "original_score": _number_or_default(source_override.get("original_score"), 0.0),
+            "analysis_date": _string_or_default(source_override.get("analysis_date"), date_token),
+        },
+        "thesis": {
+            "summary": _string_or_default(thesis_override.get("summary"), "Watchlist setup placeholder"),
+            "reasoning": _string_or_default(
+                thesis_override.get("reasoning"),
+                "Placeholder watchlist thesis reasoning while ADK migration execution path is stabilized.",
+            ),
+            "key_catalyst": _string_or_default(thesis_override.get("key_catalyst"), ""),
+            "catalyst_timing": _string_or_default(thesis_override.get("catalyst_timing"), "near_term"),
+            "why_not_entering_now": _string_or_default(
+                thesis_override.get("why_not_entering_now"),
+                "Entry trigger not confirmed in placeholder mode.",
+            ),
+        },
+        "conviction": {
+            "level": _string_or_default(conviction_override.get("level"), "medium"),
+            "score": int(_number_or_default(conviction_override.get("score"), 5)),
+            "rationale": _string_or_default(conviction_override.get("rationale"), "Placeholder conviction."),
+            "conditions_to_increase": conviction_override.get("conditions_to_increase", [""]),
+            "conditions_to_decrease": conviction_override.get("conditions_to_decrease", [""]),
+        },
+        "analysis_quality": {
+            "do_nothing_gate_passed": bool(overrides.get("do_nothing_gate_passed", False)),
+            "bear_case_considered": bool(overrides.get("bear_case_considered", True)),
+            "bias_check_completed": bool(overrides.get("bias_check_completed", True)),
+            "r_r_ratio": _number_or_default(overrides.get("r_r_ratio"), 0.0),
+            "ev_estimate": _number_or_default(overrides.get("ev_estimate"), 0.0),
+        },
+        "entry_trigger": {
+            "type": _string_or_default(trigger_override.get("type"), "price"),
+            "description": _string_or_default(trigger_override.get("description"), "Placeholder trigger"),
+            "price_trigger": {
+                "condition": _string_or_default(
+                    trigger_override.get("price_trigger", {}).get("condition")
+                    if isinstance(trigger_override.get("price_trigger"), dict)
+                    else None,
+                    "above",
+                ),
+                "price": _number_or_default(
+                    trigger_override.get("price_trigger", {}).get("price")
+                    if isinstance(trigger_override.get("price_trigger"), dict)
+                    else None,
+                    0.0,
+                ),
+            },
+            "additional_conditions": trigger_override.get("additional_conditions", [""]),
+        },
+        "alternative_entries": overrides.get(
+            "alternative_entries",
+            [
+                {"trigger": "", "price": 0.0, "rationale": ""},
+                {"trigger": "", "price": 0.0, "rationale": ""},
+            ],
+        ),
+        "invalidation": {
+            "type": _string_or_default(invalidation_override.get("type"), "time"),
+            "description": _string_or_default(invalidation_override.get("description"), "Placeholder invalidation"),
+            "price_level": _number_or_default(invalidation_override.get("price_level"), 0.0),
+            "time_limit_days": int(_number_or_default(invalidation_override.get("time_limit_days"), 30)),
+            "thesis_broken_if": invalidation_override.get("thesis_broken_if", [""]),
+        },
+        "key_levels": {
+            "support": key_levels_override.get("support", [0.0]),
+            "resistance": key_levels_override.get("resistance", [0.0]),
+            "entry_zone": _number_or_default(key_levels_override.get("entry_zone"), 0.0),
+            "stop_zone": _number_or_default(key_levels_override.get("stop_zone"), 0.0),
+        },
+        "events": overrides.get(
+            "events",
+            [{"event": "", "date": date_token, "impact": "medium"}],
+        ),
+        "monitoring_log": overrides.get(
+            "monitoring_log",
+            [{"date": date_token, "price": 0.0, "note": "", "action": "none", "conviction_change": "none"}],
+        ),
+        "resolution": overrides.get(
+            "resolution",
+            {
+                "date": date_token,
+                "outcome": "expired",
+                "final_action": "",
+                "lesson_learned": "",
+            },
+        ),
+        "_links": overrides.get("_links", {"analysis": "", "trade_journal": ""}),
+        "adk_runtime": {"payload": payload},
+    }
+
+
+def _build_scanner_run_document(
+    *,
+    run_id: str,
+    ticker: str,
+    skill_name: str | None,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    now = datetime.now()
+    iso_ts = now.isoformat()
+    ts = now.strftime("%Y%m%dT%H%M")
+    overrides = _collect_payload_overrides(payload)
+
+    scanner_override = _as_dict(overrides.get("scanner"))
+    context_override = _as_dict(overrides.get("market_context"))
+    summary_override = _as_dict(overrides.get("scan_summary"))
+    execution_override = _as_dict(overrides.get("execution"))
+    scanner_name = _string_or_default(
+        scanner_override.get("name") if scanner_override else overrides.get("scanner_name"),
+        "adk-scan",
+    )
+    normalized_id = scanner_name.upper().replace(" ", "-")
+
+    return {
+        "_meta": {
+            "id": f"{normalized_id}_{ts}",
+            "type": "scanner_run",
+            "version": 1,
+            "created": iso_ts,
+            "run_id": run_id,
+            "source": "adk_runtime",
+            "skill": skill_name or "scan",
+        },
+        "scanner": {
+            "name": scanner_name,
+            "config_file": _string_or_default(
+                scanner_override.get("config_file"),
+                "knowledge/scanners/daily/adk-scan.yaml",
+            ),
+            "schedule_time": _string_or_default(
+                scanner_override.get("schedule_time"),
+                now.strftime("%H:%M"),
+            ),
+            "schedule_type": _string_or_default(
+                scanner_override.get("schedule_type"),
+                "daily",
+            ),
+        },
+        "market_context": {
+            "regime": _string_or_default(context_override.get("regime"), "neutral"),
+            "vix_level": _number_or_default(context_override.get("vix_level"), 0.0),
+            "spy_change_pct": _number_or_default(context_override.get("spy_change_pct"), 0.0),
+            "market_phase": _string_or_default(context_override.get("market_phase"), "open"),
+        },
+        "scan_summary": {
+            "universe_size": int(_number_or_default(summary_override.get("universe_size"), 0)),
+            "passed_quality_filters": int(_number_or_default(summary_override.get("passed_quality_filters"), 0)),
+            "passed_liquidity_filters": int(_number_or_default(summary_override.get("passed_liquidity_filters"), 0)),
+            "scored_candidates": int(_number_or_default(summary_override.get("scored_candidates"), 1)),
+            "high_score_count": int(_number_or_default(summary_override.get("high_score_count"), 0)),
+            "watchlist_count": int(_number_or_default(summary_override.get("watchlist_count"), 1)),
+            "skipped_count": int(_number_or_default(summary_override.get("skipped_count"), 0)),
+        },
+        "candidates": overrides.get(
+            "candidates",
+            [
+                {
+                    "ticker": ticker.upper(),
+                    "score": 6.5,
+                    "action": "WATCHLIST",
+                    "analysis_type": "stock",
+                    "scoring": [{"criterion": "placeholder", "score": 6.5, "weight": 1.0, "weighted": 6.5}],
+                    "key_data": {"price": 0.0, "volume_vs_avg": 0.0, "gap_pct": 0.0, "catalyst": ""},
+                    "rationale": "Placeholder candidate from ADK scan migration path.",
+                }
+            ],
+        ),
+        "actions_taken": overrides.get(
+            "actions_taken",
+            {
+                "full_analyses_triggered": [],
+                "watchlist_entries_created": [{"ticker": ticker.upper(), "priority": "medium"}],
+                "skipped": [],
+            },
+        ),
+        "execution": {
+            "duration_seconds": int(_number_or_default(execution_override.get("duration_seconds"), 0)),
+            "data_sources_used": execution_override.get("data_sources_used", []),
+            "errors": execution_override.get("errors", []),
+            "warnings": execution_override.get("warnings", []),
+        },
+        "next_steps": overrides.get("next_steps", ["Review watchlist candidates"]),
+        "adk_runtime": {"payload": payload},
+    }
+
+
 def write_analysis_yaml(
     *,
     run_id: str,
@@ -874,26 +1090,44 @@ def write_analysis_yaml(
         return {"success": False, "error": "Missing ticker for YAML write"}
 
     ts = datetime.now().strftime("%Y%m%dT%H%M")
-    out_dir = _analysis_dir_for_type(analysis_type)
+    out_dir = _output_dir_for_skill(skill_name=skill_name, analysis_type=analysis_type)
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"{ticker.upper()}_{ts}.yaml"
-
-    if _doc_type_for_analysis(analysis_type) == "stock-analysis":
-        doc = _build_stock_analysis_document(
+    if (skill_name or "").strip().lower() == "scan":
+        doc = _build_scanner_run_document(
             run_id=run_id,
             ticker=ticker,
-            analysis_type=analysis_type,
             skill_name=skill_name,
             payload=payload,
         )
+        scanner_id = str(doc.get("_meta", {}).get("id", f"SCAN_{ts}"))
+        out_path = out_dir / f"{scanner_id}.yaml"
+    elif (skill_name or "").strip().lower() == "watchlist":
+        doc = _build_watchlist_document(
+            run_id=run_id,
+            ticker=ticker,
+            skill_name=skill_name,
+            payload=payload,
+        )
+        out_path = out_dir / f"{ticker.upper()}_{ts}.yaml"
     else:
-        doc = _build_earnings_analysis_document(
-            run_id=run_id,
-            ticker=ticker,
-            analysis_type=analysis_type,
-            skill_name=skill_name,
-            payload=payload,
-        )
+        out_path = out_dir / f"{ticker.upper()}_{ts}.yaml"
+
+        if _doc_type_for_analysis(analysis_type) == "stock-analysis":
+            doc = _build_stock_analysis_document(
+                run_id=run_id,
+                ticker=ticker,
+                analysis_type=analysis_type,
+                skill_name=skill_name,
+                payload=payload,
+            )
+        else:
+            doc = _build_earnings_analysis_document(
+                run_id=run_id,
+                ticker=ticker,
+                analysis_type=analysis_type,
+                skill_name=skill_name,
+                payload=payload,
+            )
 
     out_path.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
     return {"success": True, "file_path": str(out_path), "relative_path": str(out_path.relative_to(_REPO_ROOT))}

@@ -79,6 +79,25 @@ class TradingGraph:
         except Exception:
             return False
 
+    @staticmethod
+    def _first_record(result):
+        """Return first record without single()-warning semantics when multiple exist.
+
+        Prefers fetch(1) for modern neo4j.Result, with a fallback to single() for
+        mocked/test result objects that do not expose fetch().
+        """
+        fetch = getattr(result, "fetch", None)
+        if callable(fetch):
+            rows = fetch(1)
+            if isinstance(rows, list):
+                return rows[0] if rows else None
+
+        single = getattr(result, "single", None)
+        if callable(single):
+            return single()
+
+        return None
+
     def is_populated(self) -> bool:
         """
         Check if the graph has any data.
@@ -90,7 +109,7 @@ class TradingGraph:
             with self._driver.session(database=self.database) as session:
                 # Simple count of all nodes - doesn't trigger label warnings
                 result = session.run("MATCH (n) RETURN count(n) AS cnt LIMIT 1")
-                record = result.single()
+                record = self._first_record(result)
                 return record and record["cnt"] > 0
         except Exception:
             return False
@@ -122,11 +141,11 @@ class TradingGraph:
             with self._driver.session(database=self.database) as session:
                 # Get total counts
                 result = session.run("MATCH (n) RETURN count(n) AS nodes")
-                record = result.single()
+                record = self._first_record(result)
                 status["node_count"] = record["nodes"] if record else 0
 
                 result = session.run("MATCH ()-[r]->() RETURN count(r) AS edges")
-                record = result.single()
+                record = self._first_record(result)
                 status["edge_count"] = record["edges"] if record else 0
 
             status["populated"] = status["node_count"] > 0
@@ -228,7 +247,7 @@ class TradingGraph:
 
         with self._driver.session(database=self.database) as session:
             result = session.run(query, key_value=key_value, props=props)
-            record = result.single()
+            record = self._first_record(result)
             return record["id"] if record else None
 
     def get_node(self, label: str, key_prop: str, key_value: Any) -> dict | None:
@@ -236,10 +255,11 @@ class TradingGraph:
         query = f"""
         MATCH (n:{label} {{{key_prop}: $key_value}})
         RETURN n
+        LIMIT 1
         """
         with self._driver.session(database=self.database) as session:
             result = session.run(query, key_value=key_value)
-            record = result.single()
+            record = self._first_record(result)
             return dict(record["n"]) if record else None
 
     # --- Relationship Operations ---
@@ -420,17 +440,27 @@ class TradingGraph:
                 "RETURN count(r) AS cnt LIMIT 1",
                 symbol=symbol,
             )
-            record = check.single()
+            record = self._first_record(check)
             if not record or record["cnt"] == 0:
                 return []
 
             # Only query if relationships exist
             query = """
             MATCH (r:Risk)-[:THREATENS]->(t:Ticker {symbol: $symbol})
-            RETURN r.name AS risk, r.description AS description
+            WITH r.name AS risk, properties(r) AS props
+            RETURN risk, props
             """
             result = session.run(query, symbol=symbol)
-            return [dict(r) for r in result]
+            rows: list[dict] = []
+            for rec in result:
+                props = rec.get("props") or {}
+                rows.append(
+                    {
+                        "risk": rec.get("risk"),
+                        "description": props.get("description") or "",
+                    }
+                )
+            return rows
 
     def get_bias_history(self, bias_name: str | None = None) -> list[dict]:
         """Get bias occurrences across trades.
@@ -440,7 +470,7 @@ class TradingGraph:
         # Check if Trade nodes exist to avoid warning spam
         with self._driver.session(database=self.database) as session:
             check = session.run("MATCH (t:Trade) RETURN count(t) AS cnt LIMIT 1")
-            record = check.single()
+            record = self._first_record(check)
             if not record or record["cnt"] == 0:
                 return []
 
@@ -472,7 +502,7 @@ class TradingGraph:
             check = session.run(
                 "MATCH ()-[r:WORKS_FOR]->() RETURN count(r) AS cnt LIMIT 1"
             )
-            record = check.single()
+            record = self._first_record(check)
             if not record or record["cnt"] == 0:
                 return []
 
@@ -503,7 +533,7 @@ class TradingGraph:
         # Check if Trade nodes exist to avoid warning spam
         with self._driver.session(database=self.database) as session:
             check = session.run("MATCH (t:Trade) RETURN count(t) AS cnt LIMIT 1")
-            record = check.single()
+            record = self._first_record(check)
             if not record or record["cnt"] == 0:
                 return []
 
@@ -527,17 +557,27 @@ class TradingGraph:
                 "RETURN count(r) AS cnt LIMIT 1",
                 symbol=symbol,
             )
-            record = check.single()
+            record = self._first_record(check)
             if not record or record["cnt"] == 0:
                 return []
 
             # Query patterns (bidirectional to handle both directions)
             query = """
             MATCH (p:Pattern)-[:OBSERVED_IN]-(t:Ticker {symbol: $symbol})
-            RETURN p.name AS name, p.description AS description
+            WITH p.name AS name, properties(p) AS props
+            RETURN name, props
             """
             result = session.run(query, symbol=symbol)
-            return [dict(r) for r in result]
+            rows: list[dict] = []
+            for rec in result:
+                props = rec.get("props") or {}
+                rows.append(
+                    {
+                        "name": rec.get("name"),
+                        "description": props.get("description") or "",
+                    }
+                )
+            return rows
 
     def get_signals(self, symbol: str) -> list[dict]:
         """Get signals indicating conditions for this ticker.
@@ -551,17 +591,27 @@ class TradingGraph:
                 "RETURN count(r) AS cnt LIMIT 1",
                 symbol=symbol,
             )
-            record = check.single()
+            record = self._first_record(check)
             if not record or record["cnt"] == 0:
                 return []
 
             # Query signals (bidirectional to handle both directions)
             query = """
             MATCH (s:Signal)-[:INDICATES]-(t:Ticker {symbol: $symbol})
-            RETURN s.name AS name, s.description AS description
+            WITH s.name AS name, properties(s) AS props
+            RETURN name, props
             """
             result = session.run(query, symbol=symbol)
-            return [dict(r) for r in result]
+            rows: list[dict] = []
+            for rec in result:
+                props = rec.get("props") or {}
+                rows.append(
+                    {
+                        "name": rec.get("name"),
+                        "description": props.get("description") or "",
+                    }
+                )
+            return rows
 
     def get_catalysts(self, symbol: str) -> list[dict]:
         """Get catalysts affecting this ticker.
@@ -575,17 +625,27 @@ class TradingGraph:
                 "RETURN count(r) AS cnt LIMIT 1",
                 symbol=symbol,
             )
-            record = check.single()
+            record = self._first_record(check)
             if not record or record["cnt"] == 0:
                 return []
 
             # Query catalysts (bidirectional to handle both directions)
             query = """
             MATCH (t:Ticker {symbol: $symbol})-[:AFFECTED_BY]-(c:Catalyst)
-            RETURN c.name AS name, c.description AS description
+            WITH c.name AS name, properties(c) AS props
+            RETURN name, props
             """
             result = session.run(query, symbol=symbol)
-            return [dict(r) for r in result]
+            rows: list[dict] = []
+            for rec in result:
+                props = rec.get("props") or {}
+                rows.append(
+                    {
+                        "name": rec.get("name"),
+                        "description": props.get("description") or "",
+                    }
+                )
+            return rows
 
     def get_ticker_biases(self, symbol: str) -> list[dict]:
         """Get biases detected in trades for this ticker.
@@ -595,7 +655,7 @@ class TradingGraph:
         # Check if Trade nodes exist to avoid warning spam
         with self._driver.session(database=self.database) as session:
             check = session.run("MATCH (t:Trade) RETURN count(t) AS cnt LIMIT 1")
-            record = check.single()
+            record = self._first_record(check)
             if not record or record["cnt"] == 0:
                 return []
 
@@ -607,7 +667,7 @@ class TradingGraph:
                 """,
                 symbol=symbol,
             )
-            record2 = check2.single()
+            record2 = self._first_record(check2)
             if not record2 or record2["cnt"] == 0:
                 return []
 
@@ -627,7 +687,7 @@ class TradingGraph:
         # Check if Company nodes exist to avoid warning spam on sparse graphs
         with self._driver.session(database=self.database) as session:
             check = session.run("MATCH (c:Company) RETURN count(c) AS cnt LIMIT 1")
-            record = check.single()
+            record = self._first_record(check)
             if not record or record["cnt"] == 0:
                 return {"suppliers": [], "customers": []}
 
@@ -636,10 +696,11 @@ class TradingGraph:
         query = """
         MATCH (c1:Company)-[:ISSUED]->(t:Ticker {symbol: $symbol})
         RETURN c1.name AS company
+        LIMIT 1
         """
         with self._driver.session(database=self.database) as session:
             result = session.run(query, symbol=symbol)
-            record = result.single()
+            record = self._first_record(result)
             # If no company found, return empty
             if not record:
                 return {"suppliers": [], "customers": []}
@@ -816,7 +877,7 @@ class TradingGraph:
             edge_counts = {r["relationship"]: r["count"] for r in edge_result if r["relationship"]}
 
             extract_result = session.run(last_extract_query)
-            record = extract_result.single()
+            record = self._first_record(extract_result)
             last_extraction = record["last_extraction"] if record else None
 
         return GraphStats(
@@ -838,7 +899,7 @@ class TradingGraph:
         """
         with self._driver.session(database=self.database) as session:
             result = session.run(query, days=days)
-            record = result.single()
+            record = self._first_record(result)
             return record["archived"] if record else 0
 
     def dedupe_entities(self) -> int:
@@ -858,7 +919,7 @@ class TradingGraph:
         """
         with self._driver.session(database=self.database) as session:
             result = session.run(orphan_query)
-            record = result.single()
+            record = self._first_record(result)
             if record and record["orphaned"] > 0:
                 issues.append(
                     f"Found {record['orphaned']} Analysis nodes without ANALYZES relationship"

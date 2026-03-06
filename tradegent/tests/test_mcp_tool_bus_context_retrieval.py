@@ -59,3 +59,28 @@ def test_context_retrieval_handles_no_prior_document(tmp_path: Path) -> None:
     context = payload["context"]
     assert context["latest_document"] is None
     assert "no_prior_document" in context["warnings"]
+
+
+def test_context_retrieval_second_call_hits_cache(tmp_path: Path) -> None:
+    knowledge_root = tmp_path / "knowledge"
+    stock_dir = knowledge_root / "analysis" / "stock"
+
+    _write_yaml(
+        stock_dir / "NVDA_20260305T1200.yaml",
+        """
+_meta:
+  type: stock-analysis
+  ticker: NVDA
+summary:
+  note: latest
+""".strip(),
+    )
+
+    bus = MCPToolBus(knowledge_root=knowledge_root)
+    first = bus.call("context_retrieval", {"request": {"ticker": "NVDA", "analysis_type": "stock"}})
+    second = bus.call("context_retrieval", {"request": {"ticker": "NVDA", "analysis_type": "stock"}})
+
+    assert first["status"] == "ok"
+    assert second["status"] == "ok"
+    assert first["payload"]["context"]["cache_hit"] is False
+    assert second["payload"]["context"]["cache_hit"] is True

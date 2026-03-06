@@ -20,6 +20,11 @@ from adk_runtime.validators import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _disable_benchmark_metrics_persistence(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ADK_BENCHMARK_METRICS_ENABLED", "false")
+
+
 class TrackingToolBus(MCPToolBus):
     """Track tool invocations for side-effect assertions."""
 
@@ -451,6 +456,8 @@ def test_coordinator_includes_aggregated_telemetry_in_response() -> None:
     assert isinstance(llm, dict)
     assert llm.get("input_tokens_total") == 11
     assert llm.get("output_tokens_total") == 7
+    assert isinstance(llm.get("estimated_cost_usd"), float)
+    assert float(llm["estimated_cost_usd"]) > 0
     assert telemetry.get("providers") == ["openai"]
     models = telemetry.get("models")
     assert isinstance(models, list)

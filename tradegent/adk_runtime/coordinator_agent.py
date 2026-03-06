@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
+import os
 import uuid
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -20,6 +23,16 @@ from .validators import validate_request_envelope, validate_response_envelope
 from .versioning import ensure_compatible_contract_version
 
 CURRENT_CONTRACT_VERSION = "1.0.0"
+
+# USD per 1M tokens for known benchmark models (input, output).
+_TOKEN_PRICING_PER_M: dict[str, tuple[float, float]] = {
+    "openai/gpt-4o-mini": (0.15, 0.60),
+    "openai/gpt-4.1-mini": (0.40, 1.60),
+    "openai/gpt-4o": (5.00, 15.00),
+    "openrouter/openai/gpt-4o-mini": (0.15, 0.60),
+    "openrouter/openai/gpt-4.1-mini": (0.40, 1.60),
+    "openrouter/openai/gpt-4o": (5.00, 15.00),
+}
 
 
 class CoordinatorAgent:
@@ -136,8 +149,66 @@ class CoordinatorAgent:
             "policy_decisions": [decision],
         }
         validate_response_envelope(response)
+        self._append_benchmark_telemetry_record(
+            run_id=run_id,
+            request=request,
+            response=response,
+        )
         self.state_store.finalize_dedup(dedup_key, final_state, dict(response))
         return response
+
+    @staticmethod
+    def _append_benchmark_telemetry_record(
+        *,
+        run_id: str,
+        request: RequestEnvelope,
+        response: ResponseEnvelope,
+    ) -> None:
+        """Append one benchmark-consumable telemetry row per run (best effort)."""
+        if os.getenv("ADK_BENCHMARK_METRICS_ENABLED", "true").lower() in {
+            "0",
+            "false",
+            "no",
+        }:
+            return
+
+        default_path = Path(__file__).resolve().parents[1] / "logs" / "adk_benchmark_metrics.jsonl"
+        configured_path = os.getenv("ADK_BENCHMARK_METRICS_PATH", "").strip()
+        target = Path(configured_path) if configured_path else default_path
+
+        telemetry = response.get("telemetry")
+        llm = telemetry.get("llm") if isinstance(telemetry, dict) else {}
+        if not isinstance(llm, dict):
+            llm = {}
+
+        record = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "run_id": run_id,
+            "status": response.get("status"),
+            "intent": request.get("intent"),
+            "ticker": request.get("ticker"),
+            "analysis_type": request.get("analysis_type"),
+            "duration_ms": telemetry.get("duration_ms") if isinstance(telemetry, dict) else None,
+            "context_latency_ms": (
+                telemetry.get("context_latency_ms") if isinstance(telemetry, dict) else None
+            ),
+            "side_effect_latency_ms": (
+                telemetry.get("side_effect_latency_ms") if isinstance(telemetry, dict) else None
+            ),
+            "providers": telemetry.get("providers") if isinstance(telemetry, dict) else [],
+            "models": telemetry.get("models") if isinstance(telemetry, dict) else [],
+            "input_tokens_total": llm.get("input_tokens_total"),
+            "output_tokens_total": llm.get("output_tokens_total"),
+            "estimated_cost_usd": llm.get("estimated_cost_usd"),
+        }
+
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with target.open("a", encoding="utf-8") as fp:
+                fp.write(json.dumps(record, sort_keys=True) + "\n")
+        except Exception:
+            # Telemetry persistence failures must not affect user-facing orchestration.
+            return
 
     def _run_mutable_side_effects(
         self,
@@ -256,6 +327,7 @@ class CoordinatorAgent:
                         "output_tokens": int(llm.get("output_tokens", 0) or 0),
                     }
                 )
+                item["estimated_cost_usd"] = CoordinatorAgent._estimate_phase_cost_usd(item)
                 input_tokens_total += item["input_tokens"]
                 output_tokens_total += item["output_tokens"]
                 if isinstance(provider, str) and provider:
@@ -283,6 +355,8 @@ class CoordinatorAgent:
 
             phase_telemetry.append(item)
 
+        estimated_cost_usd = CoordinatorAgent._estimate_total_cost_usd(phase_telemetry)
+
         context_latency_ms = 0
         if isinstance(context_result, dict):
             context_latency_ms = int(context_result.get("latency_ms", 0) or 0)
@@ -300,9 +374,37 @@ class CoordinatorAgent:
             "llm": {
                 "input_tokens_total": input_tokens_total,
                 "output_tokens_total": output_tokens_total,
-                "estimated_cost_usd": None,
+                "estimated_cost_usd": estimated_cost_usd,
             },
             "providers": sorted(providers),
             "models": sorted(models),
             "phases": phase_telemetry,
         }
+
+    @staticmethod
+    def _estimate_phase_cost_usd(phase: dict[str, Any]) -> float | None:
+        model = str(phase.get("model") or "").strip()
+        if not model:
+            return None
+
+        pricing = _TOKEN_PRICING_PER_M.get(model)
+        if pricing is None:
+            return None
+
+        input_tokens = int(phase.get("input_tokens", 0) or 0)
+        output_tokens = int(phase.get("output_tokens", 0) or 0)
+        input_rate_per_m, output_rate_per_m = pricing
+        return (input_tokens * input_rate_per_m / 1_000_000.0) + (
+            output_tokens * output_rate_per_m / 1_000_000.0
+        )
+
+    @staticmethod
+    def _estimate_total_cost_usd(phases: list[dict[str, Any]]) -> float | None:
+        costs: list[float] = []
+        for phase in phases:
+            cost = phase.get("estimated_cost_usd")
+            if isinstance(cost, (int, float)):
+                costs.append(float(cost))
+        if not costs:
+            return None
+        return sum(costs)

@@ -47,6 +47,10 @@ class MCPToolBus:
             "/opt/data/tradegent_swarm/tradegent_knowledge/knowledge"
         )
         self._workflow_handlers: dict[str, Any] = dict(workflow_handlers or {})
+        self._context_cache_ttl_sec = float(
+            os.getenv("MCP_TOOLBUS_CONTEXT_CACHE_TTL_SEC", "30") or 30
+        )
+        self._context_cache: dict[str, dict[str, Any]] = {}
 
     def register_handler(self, tool_name: str, handler: Any) -> None:
         """Register/replace runtime handler for a tool workflow."""
@@ -152,6 +156,9 @@ class MCPToolBus:
         else:
             search_dir = self._knowledge_root / "analysis" / "stock"
 
+        cache_key = f"{analysis_type}:{ticker}"
+        now = float(self._time())
+
         if not ticker:
             return {
                 "success": True,
@@ -160,11 +167,38 @@ class MCPToolBus:
                     "source": None,
                     "latest_document": None,
                     "warnings": ["ticker_missing"],
+                    "cache_hit": False,
                 },
             }
 
+        cached = self._context_cache.get(cache_key)
+        if cached is not None:
+            cached_until = float(cached.get("expires_at", 0.0) or 0.0)
+            source_path = cached.get("source")
+            source_mtime_ns = cached.get("source_mtime_ns")
+            if (
+                cached_until >= now
+                and isinstance(source_path, str)
+                and source_path
+                and isinstance(source_mtime_ns, int)
+            ):
+                source_file = Path(source_path)
+                if source_file.exists():
+                    current_mtime_ns = source_file.stat().st_mtime_ns
+                    if current_mtime_ns == source_mtime_ns:
+                        return {
+                            "success": True,
+                            "context": {
+                                "request": request,
+                                "source": source_path,
+                                "latest_document": cached.get("latest_document"),
+                                "warnings": [],
+                                "cache_hit": True,
+                            },
+                        }
+
         pattern = f"{ticker}_*.yaml"
-        candidates = sorted(search_dir.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
+        candidates = [p for p in search_dir.glob(pattern) if p.is_file()]
         if not candidates:
             return {
                 "success": True,
@@ -173,10 +207,12 @@ class MCPToolBus:
                     "source": None,
                     "latest_document": None,
                     "warnings": ["no_prior_document"],
+                    "cache_hit": False,
                 },
             }
 
-        latest = candidates[0]
+        # Filenames follow TICKER_YYYYMMDDTHHMM.yaml, so lexical max is newest.
+        latest = max(candidates, key=lambda p: p.name)
         try:
             latest_doc = yaml.safe_load(latest.read_text(encoding="utf-8"))
         except Exception as exc:
@@ -185,6 +221,13 @@ class MCPToolBus:
                 "error": f"Failed to parse context file {latest}: {exc}",
             }
 
+        self._context_cache[cache_key] = {
+            "source": str(latest),
+            "source_mtime_ns": latest.stat().st_mtime_ns,
+            "latest_document": latest_doc,
+            "expires_at": now + max(self._context_cache_ttl_sec, 0.0),
+        }
+
         return {
             "success": True,
             "context": {
@@ -192,5 +235,6 @@ class MCPToolBus:
                 "source": str(latest),
                 "latest_document": latest_doc,
                 "warnings": [],
+                "cache_hit": False,
             },
         }

@@ -79,6 +79,30 @@ class TestMergeNode:
 
         assert node_id == "4:abc:123"
 
+
+class TestFirstRecordHelper:
+    """Tests for result first-record extraction helper."""
+
+    def test_first_record_prefers_fetch_when_available(self):
+        graph = TradingGraph()
+        mock_result = MagicMock()
+        mock_result.fetch.return_value = [{"id": "a"}]
+
+        record = graph._first_record(mock_result)
+
+        assert record == {"id": "a"}
+
+    def test_first_record_falls_back_to_single(self):
+        graph = TradingGraph()
+
+        class _SingleOnly:
+            def single(self):
+                return {"id": "b"}
+
+        record = graph._first_record(_SingleOnly())
+
+        assert record == {"id": "b"}
+
     @patch("graph.layer.GraphDatabase")
     def test_merge_node_missing_key_returns_none(self, mock_db):
         mock_driver = MagicMock()
@@ -199,6 +223,31 @@ class TestQueries:
 
         assert len(risks) == 1
         assert risks[0]["risk"] == "Export controls"
+
+    @patch("graph.layer.GraphDatabase")
+    def test_get_risks_normalizes_missing_description_to_empty_string(self, mock_db):
+        mock_driver = MagicMock()
+        mock_session = MagicMock()
+
+        check_result = MagicMock()
+        check_result.fetch.return_value = [{"cnt": 1}]
+
+        data_result = MagicMock()
+        data_result.__iter__ = lambda self: iter(
+            [
+                {"risk": "Export controls", "props": {}},
+            ]
+        )
+
+        mock_session.run.side_effect = [check_result, data_result]
+        mock_driver.session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_driver.session.return_value.__exit__ = MagicMock(return_value=False)
+        mock_db.driver.return_value = mock_driver
+
+        with TradingGraph() as graph:
+            risks = graph.get_risks("NVDA")
+
+        assert risks[0]["description"] == ""
 
 
 class TestStats:

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from adk_runtime.contracts import RequestEnvelope
 from adk_runtime.coordinator_agent import CoordinatorAgent
 from adk_runtime.mcp_tool_bus import MCPToolBus
@@ -12,6 +14,11 @@ from adk_runtime.run_state_store import RunStateStore
 from adk_runtime.skill_router import SkillRouter
 from adk_runtime.subagent_invoker import SubagentInvoker
 from llm_gateway.client import LiteLLMGatewayClient
+
+
+@pytest.fixture(autouse=True)
+def _disable_benchmark_metrics_persistence(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ADK_BENCHMARK_METRICS_ENABLED", "false")
 
 
 class _FakeMessage:
