@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import structlog
+import yaml  # type: ignore[import-untyped]
 
 try:
     # Package import path (entrypoint: tradegent.orchestrator:main)
@@ -52,10 +53,19 @@ SUPPORTED_AGENT_ENGINES = {"legacy", "adk"}
 def validate_agent_engine() -> str:
     """Validate runtime engine configuration and required dependencies."""
     engine = os.getenv("AGENT_ENGINE", "legacy").strip().lower()
+    adk_required = os.getenv("ADK_REQUIRED", "false").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
     if engine not in SUPPORTED_AGENT_ENGINES:
         raise RuntimeError(
             f"Unsupported AGENT_ENGINE='{engine}'. Allowed: {sorted(SUPPORTED_AGENT_ENGINES)}"
         )
+
+    if adk_required and engine != "adk":
+        raise RuntimeError("ADK_REQUIRED=true requires AGENT_ENGINE=adk")
 
     if engine == "adk":
         try:
@@ -67,6 +77,197 @@ def validate_agent_engine() -> str:
             ) from exc
 
     return engine
+
+
+def _create_adk_coordinator(db: "NexusDB"):
+    """Create ADK runtime coordinator with orchestrator-managed dependencies."""
+    try:
+        from tradegent.adk_runtime.coordinator_agent import CoordinatorAgent
+        from tradegent.adk_runtime.mcp_tool_bus import MCPToolBus
+        from tradegent.adk_runtime.policy_gate import PolicyGate
+        from tradegent.adk_runtime.run_state_store import RunStateStore
+        from tradegent.adk_runtime.skill_router import SkillRouter
+        from tradegent.adk_runtime.subagent_invoker import SubagentInvoker
+    except ImportError:
+        from adk_runtime.coordinator_agent import CoordinatorAgent
+        from adk_runtime.mcp_tool_bus import MCPToolBus
+        from adk_runtime.policy_gate import PolicyGate
+        from adk_runtime.run_state_store import RunStateStore
+        from adk_runtime.skill_router import SkillRouter
+        from adk_runtime.subagent_invoker import SubagentInvoker
+
+    return CoordinatorAgent(
+        router=SkillRouter(),
+        tool_bus=MCPToolBus(),
+        subagents=SubagentInvoker(),
+        policy_gate=PolicyGate(),
+        state_store=RunStateStore(db=db, use_db=True),
+    )
+
+
+def _extract_adk_yaml_path(response: dict[str, Any]) -> str | None:
+    """Extract YAML artifact path from ADK response envelope."""
+    artifacts = response.get("artifacts")
+    if not isinstance(artifacts, dict):
+        return None
+
+    yaml_write = artifacts.get("yaml_write")
+    if not isinstance(yaml_write, dict):
+        return None
+
+    payload = yaml_write.get("payload")
+    if not isinstance(payload, dict):
+        return None
+
+    file_path = payload.get("file_path")
+    return file_path if isinstance(file_path, str) and file_path.strip() else None
+
+
+def _extract_legacy_analysis_json(yaml_doc: dict[str, Any]) -> dict[str, Any]:
+    """Map ADK YAML artifact fields to legacy JSON summary keys used by orchestrator."""
+    gate = yaml_doc.get("do_nothing_gate") if isinstance(yaml_doc.get("do_nothing_gate"), dict) else {}
+    recommendation = (
+        yaml_doc.get("recommendation") if isinstance(yaml_doc.get("recommendation"), dict) else {}
+    )
+
+    gate_result = str(gate.get("gate_result", "FAIL")).strip().upper()
+    confidence_value = recommendation.get("confidence", 0)
+    if not isinstance(confidence_value, int):
+        confidence_value = int(confidence_value) if isinstance(confidence_value, float) else 0
+
+    expected_value = gate.get("expected_value_actual", 0.0)
+    if not isinstance(expected_value, (int, float)):
+        expected_value = 0.0
+
+    recommendation_action = recommendation.get("action", "UNKNOWN")
+    if not isinstance(recommendation_action, str):
+        recommendation_action = "UNKNOWN"
+
+    return {
+        "gate_passed": gate_result == "PASS",
+        "gate_result": gate_result,
+        "recommendation": recommendation_action,
+        "confidence": confidence_value,
+        "expected_value_pct": float(expected_value),
+    }
+
+
+def _run_adk_analysis_generation(
+    db: "NexusDB",
+    ticker: str,
+    analysis_type: "AnalysisType",
+    entrypoint: str,
+    *,
+    prompt: str,
+    allowed_tools: str,
+) -> str:
+    """Run analysis via ADK coordinator and emit legacy-compatible markdown payload."""
+    if analysis_type not in {AnalysisType.STOCK, AnalysisType.EARNINGS}:
+        log.info(
+            "[%s] ADK engine active but analysis_type=%s is not supported; falling back to legacy CLI",
+            entrypoint,
+            analysis_type.value,
+        )
+        return call_claude_code(prompt, allowed_tools, entrypoint)
+
+    try:
+        try:
+            from tradegent.adk_runtime.validators import validate_response_envelope
+        except ImportError:
+            from adk_runtime.validators import validate_response_envelope
+
+        coordinator = _create_adk_coordinator(db)
+        request: dict[str, Any] = {
+            "contract_version": "1.0.0",
+            "intent": "analysis",
+            "ticker": ticker,
+            "analysis_type": analysis_type.value,
+            "constraints": {
+                "entrypoint": entrypoint,
+                "prompt_chars": len(prompt),
+                "allowed_tools": allowed_tools,
+            },
+            "client_request_id": f"{entrypoint.lower()}-{ticker.lower()}-{int(time.time())}",
+            "idempotency_key": f"{ticker}:{analysis_type.value}:{datetime.now().strftime('%Y%m%dT%H%M%S')}",
+        }
+        response = coordinator.handle(request)
+        validate_response_envelope(response)
+
+        run_id = str(response.get("run_id", "unknown"))
+        contract_version = str(response.get("contract_version", "unknown"))
+        status = str(response.get("status", "failed"))
+
+        log.info(
+            "[%s] Engine boundary selected_engine=adk entrypoint=CoordinatorAgent run_id=%s contract_version=%s status=%s",
+            entrypoint,
+            run_id,
+            contract_version,
+            status,
+        )
+
+        if status != "completed":
+            log.error("[%s] ADK analysis did not complete (status=%s)", entrypoint, status)
+            return ""
+
+        yaml_path = _extract_adk_yaml_path(response)
+        if not yaml_path:
+            log.error("[%s] ADK response missing yaml artifact path", entrypoint)
+            return ""
+
+        document = yaml.safe_load(Path(yaml_path).read_text(encoding="utf-8"))
+        if not isinstance(document, dict):
+            log.error("[%s] ADK YAML artifact is not a mapping: %s", entrypoint, yaml_path)
+            return ""
+
+        summary = _extract_legacy_analysis_json(document)
+        summary["ticker"] = ticker
+        summary["adk_run_id"] = run_id
+        summary["adk_yaml_path"] = yaml_path
+
+        return (
+            f"ADK analysis completed for {ticker} ({analysis_type.value}).\\n"
+            f"Source artifact: {yaml_path}\\n\\n"
+            "```json\\n"
+            f"{json.dumps(summary, indent=2)}\\n"
+            "```\\n"
+        )
+    except Exception as exc:
+        log.error("[%s] ADK analysis generation failed: %s", entrypoint, exc)
+        return ""
+
+
+def _generate_analysis_output(
+    db: "NexusDB",
+    ticker: str,
+    analysis_type: "AnalysisType",
+    prompt: str,
+    allowed_tools: str,
+    label: str,
+    timeout: int | None = None,
+    phase: int | None = None,
+    phase_name: str | None = None,
+) -> str:
+    """Dispatch analysis generation to selected engine while preserving legacy output contract."""
+    engine = validate_agent_engine()
+    if engine == "adk":
+        return _run_adk_analysis_generation(
+            db,
+            ticker,
+            analysis_type,
+            label,
+            prompt=prompt,
+            allowed_tools=allowed_tools,
+        )
+
+    return call_claude_code(
+        prompt,
+        allowed_tools,
+        label,
+        timeout=timeout,
+        phase=phase,
+        phase_name=phase_name,
+        analysis_type=analysis_type.value,
+    )
 
 # Add shared module to path for observability
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -204,6 +405,24 @@ class Settings:
             None,
             "mcp__ib-mcp__*,WebSearch,mcp__brave-search__*,mcp__trading-rag__*,mcp__trading-graph__*",
         )
+
+    @property
+    def allowed_tools_phase1_analysis(self) -> str:
+        """Tool allowlist specifically for Phase 1 fresh analysis.
+
+        Defaults to a narrower set than full analysis to reduce tool-routing overhead
+        and avoid unnecessary knowledge tools in unbiased fresh-analysis phase.
+        """
+        return self._get(
+            "allowed_tools_phase1_analysis",
+            None,
+            "mcp__ib-mcp__*",
+        )
+
+    @property
+    def phase1_timeout(self) -> int:
+        """Timeout for Phase 1 (fresh analysis) Claude call in seconds."""
+        return int(self._get("phase1_timeout_seconds", "PHASE1_TIMEOUT", 480))
 
     @property
     def allowed_tools_execution(self) -> str:
@@ -413,7 +632,11 @@ class ExecutionResult:
 
 
 def build_analysis_prompt(
-    ticker: str, analysis_type: AnalysisType, stock: Stock | None = None, kb_enabled: bool = True
+    ticker: str,
+    analysis_type: AnalysisType,
+    stock: Stock | None = None,
+    kb_enabled: bool = True,
+    phase_mode: str = "full",
 ) -> str:
     """Build Stage 1 prompt, enriched with stock metadata from DB and KB context."""
 
@@ -489,17 +712,36 @@ FAIL results are needed for trading bots, statistics, and learning.
 {json_block}"""
 
     elif analysis_type == AnalysisType.STOCK:
+        if phase_mode == "phase1":
+            data_gathering_block = f"""DATA GATHERING (use tools):
+1. Via IB MCP: Get {ticker} current price, volume, key technicals
+2. Via IB MCP: Get {ticker} options chain for implied volatility assessment
+3. Via IB MCP: Get recent historical bars needed for momentum/support-resistance context
+
+PHASE 1 CONSTRAINTS:
+- Do not use Web Search in this phase.
+- Use only IB MCP tools and avoid retries for unavailable tools.
+"""
+        else:
+            data_gathering_block = f"""DATA GATHERING (use tools):
+1. Via IB MCP: Get {ticker} current price, volume, key technicals
+2. Via IB MCP: Get {ticker} options chain for implied volatility assessment
+3. Via Web Search: Get {ticker} recent news, analyst ratings, price targets
+4. Via Web Search: Get {ticker} sector and competitor performance
+"""
+
         return f"""You are a systematic trading analyst. Follow the stock-analysis skill framework EXACTLY.
 
 SKILL INSTRUCTIONS: Read and follow /mnt/skills/user/stock-analysis/SKILL.md
 Also read: /mnt/skills/user/stock-analysis/comprehensive_framework.md
 {stock_ctx}
 {kb_ctx}
-DATA GATHERING (use tools):
-1. Via IB MCP: Get {ticker} current price, volume, key technicals
-2. Via IB MCP: Get {ticker} options chain for implied volatility assessment
-3. Via Web Search: Get {ticker} recent news, analyst ratings, price targets
-4. Via Web Search: Get {ticker} sector and competitor performance
+{data_gathering_block}
+
+EXECUTION BUDGET:
+- Prefer high-signal retrieval only; avoid redundant calls.
+- Use at most 4 total tool calls unless a critical data gap blocks gate decision.
+- Do not repeat the same tool call with equivalent parameters.
 
 ANALYSIS: Run the complete stock analysis framework.
 
@@ -764,6 +1006,19 @@ def call_claude_code(
         return _call_claude_code_untraced(prompt, allowed_tools, label, timeout)
 
 
+def _extract_tool_usage_counts(text: str) -> dict[str, int]:
+    """Best-effort extraction of tool name mentions from Claude output."""
+    counts: dict[str, int] = {}
+    patterns = [
+        r"mcp__[a-zA-Z0-9_\-]+__[a-zA-Z0-9_\-]+",
+        r"\bWebSearch\b",
+    ]
+    for pattern in patterns:
+        for match in re.findall(pattern, text):
+            counts[match] = counts.get(match, 0) + 1
+    return counts
+
+
 def _call_claude_code_traced(
     prompt: str,
     allowed_tools: str,
@@ -786,6 +1041,7 @@ def _call_claude_code_traced(
         allowed_tools=allowed_tools,
     ) as span:
         log.info(f"[{label}] Calling Claude Code...")
+        started = time.perf_counter()
 
         cmd = [
             cfg.claude_cmd,
@@ -806,6 +1062,7 @@ def _call_claude_code_traced(
                 timeout=timeout,
                 cwd=str(BASE_DIR),
             )
+            duration_ms = (time.perf_counter() - started) * 1000.0
 
             if result.returncode != 0:
                 log.error(f"[{label}] Error (rc={result.returncode}): {result.stderr[:500]}")
@@ -815,6 +1072,7 @@ def _call_claude_code_traced(
             # Record metrics
             span.set_output_length(len(result.stdout))
             span.set_finish_reason(FinishReason.STOP)
+            tool_counts = _extract_tool_usage_counts(result.stdout)
 
             # Record to Prometheus metrics
             if _otel_metrics and phase is not None:
@@ -828,10 +1086,25 @@ def _call_claude_code_traced(
                 )
 
             log.info(f"[{label}] Completed ({len(result.stdout)} chars)")
+            log.info(
+                "[%s] Telemetry duration_ms=%.1f output_chars=%d tool_mentions=%s",
+                label,
+                duration_ms,
+                len(result.stdout),
+                tool_counts,
+            )
             return result.stdout
 
         except subprocess.TimeoutExpired:
+            duration_ms = (time.perf_counter() - started) * 1000.0
             log.error(f"[{label}] Timed out after {timeout}s")
+            log.error(
+                "[%s] Timeout telemetry duration_ms=%.1f timeout_s=%d prompt_chars=%d",
+                label,
+                duration_ms,
+                timeout,
+                len(prompt),
+            )
             span.set_finish_reason(FinishReason.ERROR)
             return ""
 
@@ -846,6 +1119,7 @@ def _call_claude_code_untraced(
 ) -> str:
     """Execute Claude Code call without tracing (fallback)."""
     log.info(f"[{label}] Calling Claude Code...")
+    started = time.perf_counter()
     try:
         result = subprocess.run(
             [
@@ -862,13 +1136,30 @@ def _call_claude_code_untraced(
             timeout=timeout,
             cwd=str(BASE_DIR),
         )
+        duration_ms = (time.perf_counter() - started) * 1000.0
         if result.returncode != 0:
             log.error(f"[{label}] Error (rc={result.returncode}): {result.stderr[:500]}")
             return ""
+        tool_counts = _extract_tool_usage_counts(result.stdout)
         log.info(f"[{label}] Completed ({len(result.stdout)} chars)")
+        log.info(
+            "[%s] Telemetry duration_ms=%.1f output_chars=%d tool_mentions=%s",
+            label,
+            duration_ms,
+            len(result.stdout),
+            tool_counts,
+        )
         return result.stdout
     except subprocess.TimeoutExpired:
+        duration_ms = (time.perf_counter() - started) * 1000.0
         log.error(f"[{label}] Timed out after {timeout}s")
+        log.error(
+            "[%s] Timeout telemetry duration_ms=%.1f timeout_s=%d prompt_chars=%d",
+            label,
+            duration_ms,
+            timeout,
+            len(prompt),
+        )
         return ""
     except FileNotFoundError:
         log.error(f"[{label}] 'claude' CLI not found in PATH")
@@ -1002,17 +1293,24 @@ def _run_with_timeout(func, timeout: int, phase_name: str, *args, **kwargs):
     """
     from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(func, *args, **kwargs)
-        try:
-            result = future.result(timeout=timeout)
-            return result, None
-        except FuturesTimeoutError:
-            log.error(f"[{phase_name}] Timed out after {timeout}s")
-            return None, f"Timeout after {timeout}s"
-        except Exception as e:
-            log.error(f"[{phase_name}] Failed: {e}")
-            return None, str(e)
+    executor = ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(func, *args, **kwargs)
+    try:
+        result = future.result(timeout=timeout)
+        return result, None
+    except FuturesTimeoutError:
+        # IMPORTANT: Avoid waiting for worker completion on timeout.
+        # Using the executor as a context manager would call shutdown(wait=True),
+        # which can block until the timed-out task finishes and defeat timeout bounds.
+        future.cancel()
+        log.error(f"[{phase_name}] Timed out after {timeout}s")
+        return None, f"Timeout after {timeout}s"
+    except Exception as e:
+        log.error(f"[{phase_name}] Failed: {e}")
+        return None, str(e)
+    finally:
+        # Do not wait for timed-out work; cancel futures where possible.
+        executor.shutdown(wait=False, cancel_futures=True)
 
 
 def _phase1_fresh_analysis(
@@ -1033,14 +1331,23 @@ def _phase1_fresh_analysis(
     log.info(f"[P1] Fresh analysis for {ticker} (kb_enabled=False)")
 
     # KEY CHANGE: kb_enabled=False for unbiased analysis
-    prompt = build_analysis_prompt(ticker, analysis_type, stock, kb_enabled=False)
-    output = call_claude_code(
+    prompt = build_analysis_prompt(
+        ticker,
+        analysis_type,
+        stock,
+        kb_enabled=False,
+        phase_mode="phase1",
+    )
+    output = _generate_analysis_output(
+        db,
+        ticker,
+        analysis_type,
         prompt,
-        cfg.allowed_tools_analysis,
+        cfg.allowed_tools_phase1_analysis,
         f"ANALYZE-{ticker}",
+        timeout=cfg.phase1_timeout,
         phase=1,
         phase_name="Fresh_analysis",
-        analysis_type=analysis_type.value,
     )
 
     if not output:
@@ -2370,7 +2677,14 @@ def _legacy_run_analysis(
     log.info(f"═══ STAGE 1: ANALYSIS (legacy) ═══ {ticker} ({analysis_type.value})")
 
     prompt = build_analysis_prompt(ticker, analysis_type, stock, kb_enabled=cfg.kb_query_enabled)
-    output = call_claude_code(prompt, cfg.allowed_tools_analysis, f"ANALYZE-{ticker}")
+    output = _generate_analysis_output(
+        db,
+        ticker,
+        analysis_type,
+        prompt,
+        cfg.allowed_tools_analysis,
+        f"ANALYZE-{ticker}",
+    )
 
     if not output:
         if run_id and schedule_id:

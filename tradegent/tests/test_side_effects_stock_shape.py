@@ -64,6 +64,11 @@ def test_write_stock_analysis_yaml_has_validator_critical_structure() -> None:
     assert alerts and isinstance(alerts[0].get("derivation"), dict)
     assert len(str(alerts[0].get("significance", ""))) >= 100
 
+    runtime = data.get("adk_runtime")
+    assert isinstance(runtime, dict)
+    assert "payload" not in runtime
+    assert "payload_keys" in runtime
+
     # Cleanup test artifact.
     file_path.unlink(missing_ok=True)
 

@@ -115,6 +115,12 @@ class TestNormalizeEntity:
         assert result["type"] == "Company"
         assert result.get("resolved_ticker") == "NVDA"
 
+    def test_non_string_value_is_coerced(self):
+        entity = {"type": "signal", "value": 123.45, "confidence": 0.7}
+        result = normalize_entity(entity)
+        assert result["type"] == "Signal"
+        assert result["value"] == "123.45"
+
 
 class TestDedupeEntities:
     """Tests for entity deduplication."""
@@ -136,3 +142,12 @@ class TestDedupeEntities:
         result = dedupe_entities(entities)
         assert len(result) == 1
         assert result[0]["confidence"] == 0.9
+
+    def test_dedupe_handles_non_string_values(self):
+        entities = [
+            {"type": "Signal", "value": 1.5, "confidence": 0.4},
+            {"type": "Signal", "value": "1.5", "confidence": 0.8},
+        ]
+        result = dedupe_entities(entities)
+        assert len(result) == 1
+        assert result[0]["confidence"] == 0.8

@@ -3,6 +3,7 @@
 import logging
 import re
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -41,7 +42,7 @@ def normalize_entity(entity: dict, context: str | None = None) -> dict:
     result["type"] = normalize_type(result.get("type", ""))
 
     # Step 2: Get the raw value
-    value = result.get("value", "")
+    value = _to_text(result.get("value", ""))
 
     # Step 3: Apply type-specific normalization
     entity_type = result["type"]
@@ -129,12 +130,14 @@ def resolve_ticker(company_name: str) -> str | None:
 
     # Try exact match
     if company_name in companies:
-        return companies[company_name].get("ticker")
+        ticker = companies[company_name].get("ticker")
+        return str(ticker) if ticker is not None else None
 
     # Try case-insensitive match
     for name, data in companies.items():
         if name.lower() == company_name.lower():
-            return data.get("ticker")
+            ticker = data.get("ticker")
+            return str(ticker) if ticker is not None else None
 
     return None
 
@@ -144,17 +147,25 @@ def standardize_separators(value: str) -> str:
     return value.replace("_", "-").replace(" ", "-").lower()
 
 
-def normalize_type(entity_type: str) -> str:
+def _to_text(value: Any) -> str:
+    """Coerce scalar extraction values to text for normalization safety."""
+    if value is None:
+        return ""
+    return str(value)
+
+
+def normalize_type(entity_type: Any) -> str:
     """Normalize entity type to PascalCase."""
+    entity_type = _to_text(entity_type)
     # Remove spaces and underscores, capitalize each word
     parts = re.split(r"[\s_-]+", entity_type)
     return "".join(part.capitalize() for part in parts)
 
 
-def normalize_ticker(value: str) -> str:
+def normalize_ticker(value: Any) -> str:
     """Normalize ticker symbol."""
     # Uppercase, strip whitespace
-    ticker = value.strip().upper()
+    ticker = _to_text(value).strip().upper()
 
     # Check for aliases
     ticker_aliases = _aliases.get("tickers", {})
@@ -164,10 +175,10 @@ def normalize_ticker(value: str) -> str:
     return ticker
 
 
-def normalize_company(value: str) -> str:
+def normalize_company(value: Any) -> str:
     """Normalize company name."""
     # Title case, strip common suffixes
-    name = value.strip()
+    name = _to_text(value).strip()
 
     # Remove common suffixes for matching
     suffixes = [" Inc", " Inc.", " Corp", " Corp.", " Corporation", " Ltd", " Ltd."]
@@ -180,49 +191,49 @@ def normalize_company(value: str) -> str:
     return name
 
 
-def normalize_pattern(value: str) -> str:
+def normalize_pattern(value: Any) -> str:
     """Normalize trading pattern name."""
-    raw_value = value.strip()
+    raw_value = _to_text(value).strip()
     lower_value = raw_value.lower()
 
     # Check for aliases (try both original and lowercase keys)
     pattern_aliases = _aliases.get("patterns", {})
     if raw_value in pattern_aliases:
-        return pattern_aliases[raw_value]
+        return str(pattern_aliases[raw_value])
     if lower_value in pattern_aliases:
-        return pattern_aliases[lower_value]
+        return str(pattern_aliases[lower_value])
 
     # Default: hyphenated lowercase
     return standardize_separators(lower_value)
 
 
-def normalize_bias(value: str) -> str:
+def normalize_bias(value: Any) -> str:
     """Normalize cognitive bias name."""
-    raw_value = value.strip()
+    raw_value = _to_text(value).strip()
     lower_value = raw_value.lower()
 
     # Check for aliases (try both original and lowercase keys)
     bias_aliases = _aliases.get("biases", {})
     if raw_value in bias_aliases:
-        return bias_aliases[raw_value]
+        return str(bias_aliases[raw_value])
     if lower_value in bias_aliases:
-        return bias_aliases[lower_value]
+        return str(bias_aliases[lower_value])
 
     # Default: hyphenated lowercase
     return standardize_separators(lower_value)
 
 
-def normalize_strategy(value: str) -> str:
+def normalize_strategy(value: Any) -> str:
     """Normalize strategy name."""
-    raw_value = value.strip()
+    raw_value = _to_text(value).strip()
     lower_value = raw_value.lower()
 
     # Check for aliases (try both original and lowercase keys)
     strategy_aliases = _aliases.get("strategies", {})
     if raw_value in strategy_aliases:
-        return strategy_aliases[raw_value]
+        return str(strategy_aliases[raw_value])
     if lower_value in strategy_aliases:
-        return strategy_aliases[lower_value]
+        return str(strategy_aliases[lower_value])
 
     # Default: hyphenated lowercase
     return standardize_separators(lower_value)
@@ -245,10 +256,10 @@ def normalize_case(entity_type: str, value: str) -> tuple[str, str]:
 
 def dedupe_entities(entities: list[dict]) -> list[dict]:
     """Remove duplicate entities, keeping highest confidence."""
-    seen = {}  # (type, normalized_value) -> entity
+    seen: dict[tuple[str, str], dict] = {}
 
     for entity in entities:
-        key = (entity["type"], entity["value"].lower())
+        key = (entity["type"], _to_text(entity.get("value", "")).lower())
         if key not in seen or entity.get("confidence", 0) > seen[key].get("confidence", 0):
             seen[key] = entity
 

@@ -64,6 +64,46 @@ def _collect_payload_overrides(payload: dict[str, Any]) -> dict[str, Any]:
     return merged
 
 
+def _build_runtime_metadata(payload: dict[str, Any]) -> dict[str, Any]:
+    """Store compact runtime metadata instead of raw nested payloads.
+
+    Persisting full phase payloads can recursively embed prior documents and produce
+    very large YAML artifacts. Keep only bounded observability fields needed for
+    troubleshooting and replay tracing.
+    """
+    if not isinstance(payload, dict):
+        return {
+            "payload_keys": [],
+            "phase_status": {},
+            "llm_content_chars": {},
+        }
+
+    payload_keys = sorted(str(key) for key in payload.keys())
+    phase_status: dict[str, str] = {}
+    llm_content_chars: dict[str, int] = {}
+
+    for phase_name, phase_obj in payload.items():
+        phase_key = str(phase_name)
+        if not isinstance(phase_obj, dict):
+            continue
+
+        status = phase_obj.get("status")
+        if isinstance(status, str) and status:
+            phase_status[phase_key] = status
+
+        llm = phase_obj.get("llm")
+        if isinstance(llm, dict):
+            content = llm.get("content")
+            if isinstance(content, str):
+                llm_content_chars[phase_key] = len(content)
+
+    return {
+        "payload_keys": payload_keys,
+        "phase_status": phase_status,
+        "llm_content_chars": llm_content_chars,
+    }
+
+
 def _number_or_default(value: Any, default: float) -> float:
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         return float(value)
@@ -300,7 +340,7 @@ def _build_stock_analysis_document(
             ]
         },
         "meta_learning": {"data_source_effectiveness": []},
-        "adk_runtime": {"payload": payload},
+        "adk_runtime": _build_runtime_metadata(payload),
     }
 
 
@@ -850,7 +890,7 @@ def _build_earnings_analysis_document(
             "post_analysis_review_date": date_token,
         },
         "_links": {"trade_journal": "", "post_review": "", "ticker_profile": "", "prior_analysis": ""},
-        "adk_runtime": {"payload": payload},
+        "adk_runtime": _build_runtime_metadata(payload),
     }
 
 
@@ -978,7 +1018,7 @@ def _build_watchlist_document(
             },
         ),
         "_links": overrides.get("_links", {"analysis": "", "trade_journal": ""}),
-        "adk_runtime": {"payload": payload},
+        "adk_runtime": _build_runtime_metadata(payload),
     }
 
 
@@ -1073,7 +1113,7 @@ def _build_scanner_run_document(
             "warnings": execution_override.get("warnings", []),
         },
         "next_steps": overrides.get("next_steps", ["Review watchlist candidates"]),
-        "adk_runtime": {"payload": payload},
+        "adk_runtime": _build_runtime_metadata(payload),
     }
 
 
