@@ -39,8 +39,10 @@ class Settings(BaseSettings):
     llm_timeout: float = 120.0
     task_timeout: float = 600.0  # 10 min for long-running analyses
 
-    # Feature flags
+    # Runtime environment and feature flags
+    app_env: str = "development"  # development | test | production
     debug: bool = False
+    allow_demo_tokens: bool = False
 
     # ==========================================================================
     # ADMIN USER (Superuser) - REQUIRED
@@ -52,8 +54,8 @@ class Settings(BaseSettings):
     admin_name: str = "System Administrator"
 
     # Demo Account (optional, for testing)
-    demo_email: str = "demo@tradegent.local"
-    demo_password: str = "demo123"
+    demo_email: str = ""
+    demo_password: str = ""
 
     # JWT settings for local auth (when Auth0 is not configured)
     jwt_secret: str = ""  # Generate with: openssl rand -base64 32
@@ -93,6 +95,25 @@ class Settings(BaseSettings):
             errors.append("ADMIN_PASSWORD is required in .env")
         if not self.jwt_secret:
             errors.append("JWT_SECRET is required in .env (generate with: openssl rand -base64 32)")
+
+        # Basic secret quality checks
+        if self.admin_password and len(self.admin_password) < 12:
+            errors.append("ADMIN_PASSWORD must be at least 12 characters")
+        if self.jwt_secret and len(self.jwt_secret) < 32:
+            errors.append("JWT_SECRET appears too short (expected >= 32 chars)")
+
+        env_value = (self.app_env or "development").strip().lower()
+        if env_value not in {"development", "test", "production"}:
+            errors.append("APP_ENV must be one of: development, test, production")
+
+        # Never allow demo-token bypass outside dev/test.
+        if self.allow_demo_tokens and env_value not in {"development", "test"}:
+            errors.append("ALLOW_DEMO_TOKENS may only be enabled in development or test")
+
+        # Production should never run with DEBUG enabled.
+        if self.debug and env_value == "production":
+            errors.append("DEBUG=true is not allowed when APP_ENV=production")
+
         if errors:
             raise ValueError(
                 "Missing required configuration:\n" +

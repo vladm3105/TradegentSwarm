@@ -38,6 +38,7 @@ from .routes import (
     graph_router,
 )
 from .analyses import router as analyses_router
+from .auth import validate_websocket_token
 from shared.observability import (
     set_correlation_id,
     extract_from_headers,
@@ -164,7 +165,6 @@ PUBLIC_ENDPOINTS = [
     "/docs",
     "/openapi.json",
     "/redoc",
-    "/api/auth/sync-user",  # Called during login flow
 ]
 
 
@@ -451,8 +451,8 @@ class ConnectionManager:
     def __init__(self):
         self.active_connections: dict[str, WebSocket] = {}
 
-    async def connect(self, websocket: WebSocket, session_id: str):
-        await websocket.accept()
+    async def connect(self, websocket: WebSocket, session_id: str, subprotocol: str | None = None):
+        await websocket.accept(subprotocol=subprotocol)
         self.active_connections[session_id] = websocket
         log.info("WebSocket connected", session_id=session_id)
 
@@ -469,29 +469,6 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
-async def validate_websocket_token(websocket: WebSocket):
-    """Validate WebSocket connection token.
-
-    Token can be passed via:
-    - Query parameter: ?token=xxx
-    - Protocol header (subprotocol)
-    """
-    from .auth import validate_token, UserClaims
-
-    # Try query parameter first
-    token = websocket.query_params.get("token")
-
-    if not token:
-        return None
-
-    try:
-        user = await validate_token(token)
-        return user
-    except Exception as e:
-        log.warning("WebSocket auth failed", error=str(e))
-        return None
-
-
 @app.websocket("/ws/agent")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for agent communication.
@@ -503,13 +480,13 @@ async def websocket_endpoint(websocket: WebSocket):
     - Server sends: {"type": "progress", "task_id": "...", ...}
 
     Authentication:
-    - Pass token via query parameter: ws://host/ws/agent?token=xxx
+    - Pass token via websocket subprotocol: ["bearer", "<token>"]
     - Authentication is ALWAYS required.
     """
     import time
 
     # Validate token - authentication is always required
-    user = await validate_websocket_token(websocket)
+    user, selected_subprotocol = await validate_websocket_token(websocket)
 
     if not user:
         log.warning("ws.auth.failed", reason="no_valid_token")
@@ -517,7 +494,7 @@ async def websocket_endpoint(websocket: WebSocket):
         return
 
     session_id = user.sub
-    await manager.connect(websocket, session_id)
+    await manager.connect(websocket, session_id, subprotocol=selected_subprotocol)
 
     log.info(
         "ws.connected",
@@ -551,7 +528,6 @@ async def websocket_endpoint(websocket: WebSocket):
                     session_id=session_id,
                     async_mode=async_mode,
                     content_length=len(content),
-                    content_preview=content[:50] if content else "",
                 )
 
                 if async_mode:
@@ -708,7 +684,7 @@ async def websocket_stream_endpoint(websocket: WebSocket):
     - Server sends: {"type": "orders_update", "added": [...], "updated": [...], "removed": [...]}
 
     Authentication:
-    - Pass token via query parameter: ws://host/ws/stream?token=xxx
+    - Pass token via websocket subprotocol: ["bearer", "<token>"]
     """
     from .websocket import (
         get_price_stream_manager,
@@ -717,13 +693,13 @@ async def websocket_stream_endpoint(websocket: WebSocket):
     )
 
     # Validate token
-    user = await validate_websocket_token(websocket)
+    user, selected_subprotocol = await validate_websocket_token(websocket)
     if not user:
         log.warning("ws.stream.auth.failed", reason="no_valid_token")
         await websocket.close(code=4001, reason="Unauthorized")
         return
 
-    await websocket.accept()
+    await websocket.accept(subprotocol=selected_subprotocol)
     session_id = user.sub
 
     log.info("ws.stream.connected", session_id=session_id)

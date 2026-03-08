@@ -56,6 +56,7 @@ Running the platform in production.
 | [Monitoring](operations/monitoring.md) | Health checks, metrics, alerts |
 | [Troubleshooting](operations/troubleshooting.md) | Common issues and solutions |
 | [Runbooks](operations/runbooks.md) | Operational procedures |
+| [Security Remediation Runbook (2026-03-08)](operations/security-remediation-runbook-20260308.md) | Secret rotation, token/API key revocation, log hygiene |
 | [Risk Management](operations/risk-management.md) | Position sizing, stops, gates |
 
 ### Development

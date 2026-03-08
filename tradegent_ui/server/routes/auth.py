@@ -34,12 +34,11 @@ class UserProfile(BaseModel):
 
 class SyncUserRequest(BaseModel):
     """Request to sync user from Auth0."""
-    sub: str
-    email: str
+    sub: Optional[str] = None
+    email: Optional[str] = None
     name: Optional[str] = None
     picture: Optional[str] = None
-    email_verified: bool = True
-    roles: list[str] = []
+    email_verified: Optional[bool] = None
 
 
 @router.get("/me", response_model=UserProfile)
@@ -96,20 +95,26 @@ async def get_current_user_profile(
 async def sync_user(
     request: SyncUserRequest,
     req: Request,
+    user: UserClaims = Depends(get_current_user),
 ) -> dict:
     """Sync user from Auth0 callback.
 
     Called during login flow to ensure user exists in database.
-    Semi-public endpoint - should be called from frontend during auth callback.
+    Requires authenticated identity and only syncs profile fields.
     """
     try:
+        if request.sub and request.sub != user.sub:
+            raise HTTPException(status_code=403, detail="Cannot sync a different user")
+
+        if request.email and request.email.lower() != user.email.lower():
+            raise HTTPException(status_code=403, detail="Cannot override authenticated email")
+
         claims = UserClaims(
-            sub=request.sub,
-            email=request.email,
-            name=request.name,
-            picture=request.picture,
-            email_verified=request.email_verified,
-            roles=request.roles,
+            sub=user.sub,
+            email=user.email,
+            name=user.name,
+            picture=user.picture,
+            email_verified=user.email_verified,
         )
 
         user_id = await sync_user_from_auth0(claims)
@@ -120,6 +125,8 @@ async def sync_user(
 
         return {"success": True, "user_id": user_id}
 
+    except HTTPException:
+        raise
     except Exception as e:
         log.error("Failed to sync user", sub=request.sub, error=str(e))
         raise HTTPException(status_code=500, detail="Failed to sync user")

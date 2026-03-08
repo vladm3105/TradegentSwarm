@@ -148,7 +148,6 @@ async def update_auth0_config(
         _update_env_file(frontend_env_path, {
             "NEXT_PUBLIC_AUTH0_CONFIGURED": "true",
             "AUTH0_CLIENT_ID": request.auth0_client_id,
-            "AUTH0_CLIENT_SECRET": request.auth0_client_secret,
             "AUTH0_ISSUER_BASE_URL": f"https://{request.auth0_domain}",
             "AUTH0_AUDIENCE": request.auth0_audience or "https://tradegent-api.local",
             "NEXT_PUBLIC_AUTH0_ISSUER": f"https://{request.auth0_domain}",

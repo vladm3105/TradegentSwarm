@@ -9,13 +9,11 @@ Provides:
 """
 import hashlib
 import hmac
-import os
 import structlog
 from datetime import datetime, timedelta
 from typing import Optional, Callable
 from functools import wraps
 
-import bcrypt
 import httpx
 from jose import jwt, JWTError, ExpiredSignatureError
 from fastapi import HTTPException, Depends, Request, WebSocket
@@ -97,13 +95,11 @@ async def validate_token(token: str) -> UserClaims:
     """
     settings = get_settings()
 
-    # Check for demo token - ONLY allowed in development/debug mode
-    # SECURITY: Demo tokens bypass authentication, never allow in production
+    # SECURITY: Demo tokens bypass normal auth and are only for dev/test.
     if token.startswith("demo-token-"):
-        is_debug = os.getenv("DEBUG", "false").lower() in ("true", "1", "yes")
-        if not is_debug:
-            log.warning("Demo token rejected in production mode", token_prefix=token[:15])
-            raise HTTPException(status_code=401, detail="Demo tokens not allowed in production")
+        if not _demo_tokens_enabled(settings):
+            log.warning("Demo token rejected", token_prefix=token[:15])
+            raise HTTPException(status_code=401, detail="Demo tokens are disabled")
         return _create_demo_claims(token)
 
     # If Auth0 is not configured, validate as built-in JWT
@@ -197,6 +193,8 @@ def create_builtin_token(user_id: str, email: str, name: str,
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against a bcrypt hash."""
     try:
+        import bcrypt
+
         return bcrypt.checkpw(
             plain_password.encode('utf-8'),
             hashed_password.encode('utf-8')
@@ -207,6 +205,8 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def hash_password(password: str) -> str:
     """Hash a password using bcrypt."""
+    import bcrypt
+
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 
@@ -303,6 +303,12 @@ def _create_demo_claims(token: str) -> UserClaims:
         )
 
     raise HTTPException(status_code=401, detail="Invalid demo token")
+
+
+def _demo_tokens_enabled(settings) -> bool:
+    """Return True only for explicit dev/test demo-token mode."""
+    env_value = (settings.app_env or "development").strip().lower()
+    return bool(settings.allow_demo_tokens and env_value in {"development", "test"})
 
 
 async def validate_api_key(key: str) -> UserClaims:
@@ -434,22 +440,48 @@ async def _check_user_active(auth0_sub: str) -> None:
         log.warn("Could not check user active status", sub=auth0_sub, error=str(e))
 
 
-async def validate_websocket_token(websocket: WebSocket) -> Optional[UserClaims]:
-    """Validate token from WebSocket query parameter.
+def _extract_websocket_token_from_subprotocol(
+    websocket: WebSocket,
+) -> tuple[Optional[str], Optional[str]]:
+    """Extract bearer token from websocket subprotocol list.
 
-    Authentication is ALWAYS required for WebSocket connections.
+    Supported client formats:
+    - subprotocols=["bearer", "<token>"]
+    - subprotocols=["bearer.<token>"]
     """
-    # Get token from query param
-    token = websocket.query_params.get("token")
+    subprotocols = websocket.scope.get("subprotocols") or []
+    if not subprotocols:
+        return None, None
+
+    if len(subprotocols) >= 2 and subprotocols[0].lower() == "bearer":
+        token = subprotocols[1].strip()
+        return (token if token else None), "bearer"
+
+    first = subprotocols[0].strip()
+    if first.lower().startswith("bearer."):
+        token = first.split(".", 1)[1].strip()
+        return (token if token else None), "bearer"
+
+    return None, None
+
+
+async def validate_websocket_token(
+    websocket: WebSocket,
+) -> tuple[Optional[UserClaims], Optional[str]]:
+    """Validate websocket token from subprotocol only.
+
+    Query-string token transport is intentionally not supported.
+    """
+    token, selected_subprotocol = _extract_websocket_token_from_subprotocol(websocket)
     if not token:
-        return None
+        return None, None
 
     try:
         if token.startswith("tg_"):
-            return await validate_api_key(token)
-        return await validate_token(token)
+            return await validate_api_key(token), selected_subprotocol
+        return await validate_token(token), selected_subprotocol
     except HTTPException:
-        return None
+        return None, None
 
 
 def require_permission(permission: str) -> Callable:
@@ -505,8 +537,12 @@ async def get_db_user_id(auth0_sub: str) -> Optional[int]:
         return None
 
 
-async def sync_user_from_auth0(claims: UserClaims) -> int:
-    """Sync user from Auth0 claims to database, return user ID."""
+async def sync_user_from_auth0(claims: UserClaims, *, sync_roles: bool = False) -> int:
+    """Sync user from validated claims to database, return user ID.
+
+    Role writes are disabled by default and should only be enabled
+    from explicit admin-only management flows.
+    """
     from .database import get_db_connection
 
     with get_db_connection() as conn:
@@ -527,8 +563,8 @@ async def sync_user_from_auth0(claims: UserClaims) -> int:
 
             user_id = cur.fetchone()["id"]
 
-            # Sync roles if provided by Auth0
-            if claims.roles:
+            # Sync roles only in explicit admin-approved flows.
+            if sync_roles and claims.roles:
                 # Get role IDs
                 cur.execute(
                     "SELECT id, name FROM nexus.roles WHERE name = ANY(%s)",

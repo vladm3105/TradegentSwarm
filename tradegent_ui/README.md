@@ -120,14 +120,17 @@ Similar to PostgreSQL's `postgres` user, the admin user is a superuser that alwa
 
 ```bash
 # server/.env (REQUIRED)
+APP_ENV=development  # use production in deployed environments
+DEBUG=false
+ALLOW_DEMO_TOKENS=false
 ADMIN_EMAIL=admin@tradegent.local
 ADMIN_PASSWORD=<YOUR_SECURE_PASSWORD>  # CHANGE THIS!
 ADMIN_NAME=System Administrator
 JWT_SECRET=<generate-with-openssl-rand-base64-32>  # CHANGE THIS!
 
 # Optional demo account
-DEMO_EMAIL=demo@tradegent.local
-DEMO_PASSWORD=<YOUR_DEMO_PASSWORD>  # CHANGE THIS!
+DEMO_EMAIL=
+DEMO_PASSWORD=
 ```
 
 **Generate JWT Secret:**

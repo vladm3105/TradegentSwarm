@@ -4,6 +4,10 @@ Step-by-step procedures for common operational tasks.
 
 ---
 
+## Security Operations
+
+- [Security Remediation Runbook (2026-03-08)](security-remediation-runbook-20260308.md)
+
 ## Daily Operations
 
 ### Morning Startup
