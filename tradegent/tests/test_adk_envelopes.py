@@ -50,6 +50,22 @@ class MarkerBlockingRunStateStore(RunStateStore):
         return super().claim_side_effect_marker(run_id, phase, marker_key)
 
 
+class OrderedCallRunStateStore(RunStateStore):
+    """Capture init/dedup method order for coordinator call-sequencing tests."""
+
+    def __init__(self) -> None:
+        super().__init__(use_db=False)
+        self.calls: list[str] = []
+
+    def init_run(self, run_id: str, **kwargs: object) -> None:
+        self.calls.append("init_run")
+        super().init_run(run_id, **kwargs)
+
+    def claim_or_get_dedup(self, dedup_key: str, run_id: str) -> tuple[bool, dict[str, object] | None]:
+        self.calls.append("claim_or_get_dedup")
+        return super().claim_or_get_dedup(dedup_key, run_id)
+
+
 def _valid_request() -> RequestEnvelope:
     return {
         "contract_version": "1.0.0",
@@ -145,6 +161,21 @@ def test_coordinator_returns_dedup_hit_for_duplicate_request() -> None:
 
     assert second.get("dedup_hit") is True
     assert second.get("run_id") == first.get("run_id")
+
+
+def test_coordinator_initializes_run_before_dedup_claim() -> None:
+    state_store = OrderedCallRunStateStore()
+    coordinator = CoordinatorAgent(
+        router=SkillRouter(),
+        tool_bus=MCPToolBus(),
+        subagents=SubagentInvoker(),
+        policy_gate=PolicyGate(),
+        state_store=state_store,
+    )
+
+    coordinator.handle(_valid_request())
+
+    assert state_store.calls.index("init_run") < state_store.calls.index("claim_or_get_dedup")
 
 
 def test_coordinator_executes_mutable_side_effects_once_per_completed_run() -> None:

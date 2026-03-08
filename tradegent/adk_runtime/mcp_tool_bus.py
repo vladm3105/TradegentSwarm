@@ -74,6 +74,7 @@ class MCPToolBus:
 
         attempts = self.max_retries + 1
         last_error: str | None = None
+        last_failure_payload: dict[str, Any] | None = None
         for _attempt in range(1, attempts + 1):
             try:
                 result = self._dispatch_tool(tool_name, input_payload, timeout)
@@ -87,19 +88,25 @@ class MCPToolBus:
                         "latency_ms": int((time.time() - started) * 1000),
                     }
 
+                if isinstance(result, dict):
+                    last_failure_payload = result
                 last_error = str(result.get("error", "tool_error"))
                 raise RuntimeError(last_error)
             except Exception as exc:
                 last_error = str(exc)
                 self._record_failure(tool_name)
 
+        error_payload: dict[str, Any] = {
+            "tool_name": tool_name,
+            "error": last_error,
+            "attempts": attempts,
+        }
+        if isinstance(last_failure_payload, dict):
+            error_payload["failure_payload"] = last_failure_payload
+
         return {
             "status": "error",
-            "payload": {
-                "tool_name": tool_name,
-                "error": last_error,
-                "attempts": attempts,
-            },
+            "payload": error_payload,
             "error": last_error,
             "latency_ms": int((time.time() - started) * 1000),
         }
@@ -127,6 +134,7 @@ class MCPToolBus:
                     if input_payload.get("skill_name") is not None
                     else None
                 ),
+                enforce_stock_quality_gate=bool(input_payload.get("enforce_stock_quality_gate", False)),
                 payload=input_payload.get("payload", {}) if isinstance(input_payload.get("payload"), dict) else {},
             )
 

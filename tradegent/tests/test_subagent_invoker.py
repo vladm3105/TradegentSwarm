@@ -75,7 +75,13 @@ def test_subagent_invoker_calls_gateway_when_litellm_enabled() -> None:
 
 def test_subagent_invoker_invalid_routing_output_raises() -> None:
     class BadInvoker(SubagentInvoker):
-        def _run_phase(self, phase: str, payload: dict[str, object]) -> dict[str, object]:
+        def _run_phase(
+            self,
+            plan: SkillExecutionPlan,
+            phase: str,
+            payload: dict[str, object],
+        ) -> dict[str, object]:
+            _ = plan
             _ = phase
             return {
                 "status": "ok",
@@ -95,7 +101,13 @@ def test_subagent_invoker_invalid_routing_output_raises() -> None:
 
 def test_subagent_invoker_invalid_llm_output_raises() -> None:
     class BadInvoker(SubagentInvoker):
-        def _run_phase(self, phase: str, payload: dict[str, object]) -> dict[str, object]:
+        def _run_phase(
+            self,
+            plan: SkillExecutionPlan,
+            phase: str,
+            payload: dict[str, object],
+        ) -> dict[str, object]:
+            _ = plan
             _ = phase
             return {
                 "status": "ok",
@@ -114,3 +126,71 @@ def test_subagent_invoker_invalid_llm_output_raises() -> None:
 
     with pytest.raises(SubagentOutputValidationError):
         invoker.run(_plan(), {"ticker": "AAPL"})
+
+
+def test_subagent_invoker_promotes_llm_json_to_payload() -> None:
+    class StructuredGateway(FakeGateway):
+        async def chat_json(
+            self,
+            *,
+            role_alias: str,
+            messages: list[dict[str, str]],
+            temperature: float = 0.1,
+        ):
+            _ = messages
+            _ = temperature
+            self.calls.append(role_alias)
+
+            class _Resp:
+                content = (
+                    '{"current_price": 123.45, "summary": {"thesis": "Long-form thesis text with concrete setup details and no placeholders."}}'
+                )
+                model_alias = role_alias
+                model = "openai/gpt-4o-mini"
+                provider = "openai"
+                input_tokens = 20
+                output_tokens = 12
+
+            return _Resp()
+
+    gateway = StructuredGateway()
+    invoker = SubagentInvoker(gateway=gateway, enable_litellm=True)  # type: ignore[arg-type]
+
+    outputs = invoker.run(_plan(), {"ticker": "AAPL", "analysis_type": "stock"})
+
+    assert outputs["draft"]["payload"]["current_price"] == 123.45
+    assert "thesis" in outputs["draft"]["payload"]["summary"]
+
+
+def test_subagent_invoker_extracts_nested_analysis_payload() -> None:
+    class WrappedGateway(FakeGateway):
+        async def chat_json(
+            self,
+            *,
+            role_alias: str,
+            messages: list[dict[str, str]],
+            temperature: float = 0.1,
+        ):
+            _ = messages
+            _ = temperature
+            self.calls.append(role_alias)
+
+            class _Resp:
+                content = (
+                    '{"task": "ignored", "analysis": {"current_price": 222.0, "summary": {"thesis": "Concrete thesis with enough detail to avoid placeholders and provide trading context."}, "alert_levels": {"price_alerts": [{"price": 221.0, "condition": "below", "significance": "Detailed significant alert description that exceeds minimum length and provides actionable monitoring context."}]}}}'
+                )
+                model_alias = role_alias
+                model = "openai/gpt-4o-mini"
+                provider = "openai"
+                input_tokens = 22
+                output_tokens = 13
+
+            return _Resp()
+
+    gateway = WrappedGateway()
+    invoker = SubagentInvoker(gateway=gateway, enable_litellm=True)  # type: ignore[arg-type]
+
+    outputs = invoker.run(_plan(), {"ticker": "AAPL", "analysis_type": "stock"})
+
+    assert outputs["draft"]["payload"]["current_price"] == 222.0
+    assert "analysis" not in outputs["draft"]["payload"]

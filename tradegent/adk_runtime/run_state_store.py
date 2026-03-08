@@ -172,6 +172,9 @@ class RunStateStore:
             if db_existing is not None:
                 return False, db_existing
 
+            # Ensure FK target exists before dedup claim insert.
+            self._db.create_run_state_run(run_id, status="requested")
+
             claimed = self._db.claim_run_dedup(dedup_key, run_id)
             if claimed:
                 return True, None

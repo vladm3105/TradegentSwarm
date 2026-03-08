@@ -353,3 +353,286 @@ def test_write_earnings_analysis_yaml_case_analysis_arguments_keep_minimum_three
     assert len(data["bull_case_analysis"]["arguments"]) >= 3
 
     file_path.unlink(missing_ok=True)
+
+
+def test_write_stock_analysis_yaml_rejects_placeholder_output_when_llm_present() -> None:
+    result = write_analysis_yaml(
+        run_id="run-stock-quality-gate-fail-1",
+        ticker="NVDA",
+        analysis_type="stock",
+        skill_name="stock-analysis",
+        payload={
+            "draft": {
+                "status": "ok",
+                "llm": {"content": '{"summary": {"narrative": "placeholder narrative"}}'},
+            }
+        },
+    )
+
+    assert result["success"] is False
+    assert "quality gate" in str(result.get("error", "")).lower()
+    issues = result.get("quality_issues")
+    assert isinstance(issues, list)
+    assert any("current_price" in issue for issue in issues)
+
+
+def test_write_stock_analysis_yaml_allows_non_placeholder_output_when_llm_present() -> None:
+    result = write_analysis_yaml(
+        run_id="run-stock-quality-gate-pass-1",
+        ticker="AAPL",
+        analysis_type="stock",
+        skill_name="stock-analysis",
+        payload={
+            "current_price": 201.5,
+            "recommendation": {"action": "BUY", "confidence": 74},
+            "summary": {
+                "narrative": "Constructive setup with defined invalidation and clear execution plan.",
+                "key_levels": {
+                    "entry": 200.0,
+                    "stop": 194.0,
+                    "target_1": 214.0,
+                },
+            },
+            "alert_levels": {
+                "price_alerts": [
+                    {
+                        "price": 199.5,
+                        "tag": "20-day MA",
+                        "significance": (
+                            "Price reclaim above the 20-day moving average supports trend continuation "
+                            "with improving breadth and acceptable downside containment under current volatility."
+                        ),
+                        "derivation": {
+                            "methodology": "moving_average",
+                            "source_field": "technical.moving_averages.ma_20d",
+                            "source_value": 199.5,
+                            "calculation": "direct",
+                        },
+                    }
+                ]
+            },
+            "draft": {
+                "status": "ok",
+                "llm": {"content": '{"thesis": "live generation"}'},
+            },
+        },
+    )
+
+    assert result["success"] is True
+    file_path = Path(result["file_path"])
+    data = yaml.safe_load(file_path.read_text(encoding="utf-8"))
+
+    assert data["current_price"] == 201.5
+    assert data["summary"]["key_levels"]["entry"] == 200.0
+    assert data["alert_levels"]["price_alerts"][0]["price"] == 199.5
+
+    file_path.unlink(missing_ok=True)
+
+
+def test_write_stock_analysis_yaml_uses_thesis_when_narrative_missing() -> None:
+    thesis = (
+        "Constructive setup with durable demand profile, defined downside invalidation, and "
+        "clear upside objective supported by current trend structure and participation breadth."
+    )
+    result = write_analysis_yaml(
+        run_id="run-stock-thesis-fallback-1",
+        ticker="AAPL",
+        analysis_type="stock",
+        skill_name="stock-analysis",
+        payload={
+            "current_price": 201.5,
+            "recommendation": {"action": "BUY", "confidence": 74},
+            "summary": {
+                "thesis": thesis,
+                "key_levels": {
+                    "entry": 200.0,
+                    "stop": 194.0,
+                    "target_1": 214.0,
+                },
+            },
+            "alert_levels": {
+                "price_alerts": [
+                    {
+                        "price": 199.5,
+                        "tag": "20-day MA",
+                        "significance": (
+                            "Price reclaim above the 20-day moving average supports trend continuation "
+                            "with improving breadth and acceptable downside containment under current volatility."
+                        ),
+                        "derivation": {
+                            "methodology": "moving_average",
+                            "source_field": "technical.moving_averages.ma_20d",
+                            "source_value": 199.5,
+                            "calculation": "direct",
+                        },
+                    }
+                ]
+            },
+            "draft": {
+                "status": "ok",
+                "llm": {"content": '{"thesis": "live generation"}'},
+            },
+        },
+    )
+
+    assert result["success"] is True
+    file_path = Path(result["file_path"])
+    data = yaml.safe_load(file_path.read_text(encoding="utf-8"))
+
+    assert data["summary"]["narrative"] == thesis
+
+    file_path.unlink(missing_ok=True)
+
+
+def test_write_stock_analysis_yaml_accepts_fenced_json_llm_overrides() -> None:
+        llm_content = """Analysis summary\n```json
+{
+    "current_price": 301.25,
+    "recommendation": {"action": "WATCH", "confidence": 66},
+    "summary": {
+        "narrative": "Structured narrative from fenced JSON with explicit invalidation and execution conditions.",
+        "key_levels": {"entry": 300.0, "stop": 292.0, "target_1": 318.0}
+    },
+    "alert_levels": {
+        "price_alerts": [
+            {
+                "price": 299.5,
+                "tag": "20-day MA",
+                "significance": "Fenced JSON alert significance remains detailed enough to satisfy validation and support actionable monitoring conditions in production workflows.",
+                "derivation": {
+                    "methodology": "moving_average",
+                    "source_field": "technical.moving_averages.ma_20d",
+                    "source_value": 299.5,
+                    "calculation": "direct"
+                }
+            }
+        ]
+    }
+}
+```\n"""
+
+        result = write_analysis_yaml(
+                run_id="run-stock-fenced-json-1",
+                ticker="MSFT",
+                analysis_type="stock",
+                skill_name="stock-analysis",
+                enforce_stock_quality_gate=True,
+                payload={
+                        "draft": {
+                                "status": "ok",
+                                "llm": {"content": llm_content},
+                        }
+                },
+        )
+
+        assert result["success"] is True
+        file_path = Path(result["file_path"])
+        data = yaml.safe_load(file_path.read_text(encoding="utf-8"))
+
+        assert data["current_price"] == 301.25
+        assert data["summary"]["key_levels"]["entry"] == 300.0
+        assert data["alert_levels"]["price_alerts"][0]["price"] == 299.5
+
+        file_path.unlink(missing_ok=True)
+
+
+def test_write_stock_analysis_yaml_uses_context_latest_document_when_llm_missing_fields() -> None:
+    result = write_analysis_yaml(
+        run_id="run-stock-context-fallback-1",
+        ticker="AAPL",
+        analysis_type="stock",
+        skill_name="stock-analysis",
+        enforce_stock_quality_gate=True,
+        payload={
+            "draft": {
+                "status": "ok",
+                "payload": {
+                    "context": {
+                        "status": "ok",
+                        "payload": {
+                            "context": {
+                                "latest_document": {
+                                    "current_price": 187.42,
+                                    "recommendation": {"action": "BUY", "confidence": 72},
+                                    "summary": {
+                                        "narrative": "Latest context narrative with concrete setup language.",
+                                        "key_levels": {
+                                            "entry": 186.0,
+                                            "stop": 179.0,
+                                            "target_1": 199.0,
+                                        },
+                                    },
+                                    "alert_levels": {
+                                        "price_alerts": [
+                                            {
+                                                "price": 185.5,
+                                                "tag": "Context Level",
+                                                "significance": (
+                                                    "Context alert significance with sufficient detail for"
+                                                    " gating and monitoring in production workflows."
+                                                ),
+                                            }
+                                        ]
+                                    },
+                                }
+                            }
+                        },
+                    }
+                },
+                "llm": {"content": "No structured json in this response"},
+            }
+        },
+    )
+
+    assert result["success"] is True
+    file_path = Path(result["file_path"])
+    data = yaml.safe_load(file_path.read_text(encoding="utf-8"))
+
+    assert data["current_price"] == 187.42
+    assert data["summary"]["key_levels"]["entry"] == 186.0
+    assert data["summary"]["key_levels"]["stop"] == 179.0
+    assert data["summary"]["key_levels"]["target_1"] == 199.0
+    assert data["alert_levels"]["price_alerts"][0]["price"] == 185.5
+
+    file_path.unlink(missing_ok=True)
+
+
+def test_write_stock_analysis_yaml_derives_levels_from_price_when_missing() -> None:
+    result = write_analysis_yaml(
+        run_id="run-stock-derived-levels-1",
+        ticker="MSFT",
+        analysis_type="stock",
+        skill_name="stock-analysis",
+        enforce_stock_quality_gate=True,
+        payload={
+            "draft": {
+                "status": "ok",
+                "payload": {
+                    "context": {
+                        "status": "ok",
+                        "payload": {
+                            "context": {
+                                "latest_document": {
+                                    "current_price": 250.0,
+                                    "summary": {"narrative": "Context-only price fallback."},
+                                }
+                            }
+                        },
+                    }
+                },
+                "llm": {"content": "still no structured payload"},
+            }
+        },
+    )
+
+    assert result["success"] is True
+    file_path = Path(result["file_path"])
+    data = yaml.safe_load(file_path.read_text(encoding="utf-8"))
+
+    assert data["current_price"] == 250.0
+    assert data["summary"]["key_levels"]["entry"] == 250.0
+    assert data["summary"]["key_levels"]["stop"] == 240.0
+    assert data["summary"]["key_levels"]["target_1"] == 270.0
+    assert data["alert_levels"]["price_alerts"][0]["price"] == 248.75
+
+    file_path.unlink(missing_ok=True)

@@ -33,6 +33,31 @@ class FailingRunStateDB:
         raise RuntimeError("db unavailable")
 
 
+class DedupOrderRunStateDB:
+    """Fake DB adapter that records dedup-claim call order."""
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def create_run_state_run(self, run_id: str, status: str = "requested", **kwargs) -> bool:
+        _ = run_id
+        _ = status
+        _ = kwargs
+        self.calls.append("create_run_state_run")
+        return True
+
+    def get_run_dedup(self, dedup_key: str) -> dict | None:
+        _ = dedup_key
+        self.calls.append("get_run_dedup")
+        return None
+
+    def claim_run_dedup(self, dedup_key: str, run_id: str) -> bool:
+        _ = dedup_key
+        _ = run_id
+        self.calls.append("claim_run_dedup")
+        return True
+
+
 def test_run_state_store_persists_run_and_events_when_db_available() -> None:
     fake_db = FakeRunStateDB()
     store = RunStateStore(db=fake_db, use_db=True)
@@ -117,3 +142,23 @@ def test_run_state_store_side_effect_marker_is_idempotent() -> None:
 
     assert first is True
     assert second is False
+
+
+def test_run_state_store_ensures_run_exists_before_dedup_claim_db_mode() -> None:
+    fake_db = DedupOrderRunStateDB()
+    store = RunStateStore(db=fake_db, use_db=True)
+    run_id = str(uuid.uuid4())
+    dedup_key = store.build_dedup_key(
+        {
+            "intent": "analysis",
+            "ticker": "NVDA",
+            "analysis_type": "stock",
+            "idempotency_key": "req-ord-1",
+        }
+    )
+
+    claimed, existing = store.claim_or_get_dedup(dedup_key, run_id)
+
+    assert claimed is True
+    assert existing is None
+    assert fake_db.calls.index("create_run_state_run") < fake_db.calls.index("claim_run_dedup")

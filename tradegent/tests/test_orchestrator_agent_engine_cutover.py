@@ -117,6 +117,50 @@ def test_run_adk_analysis_generation_rejects_invalid_envelope(monkeypatch: pytes
     assert output == ""
 
 
+def test_extract_adk_yaml_write_error_parses_quality_gate_payload() -> None:
+    module = _load_orchestrator_module()
+
+    response = {
+        "artifacts": {
+            "yaml_write": {
+                "status": "error",
+                "payload": {
+                    "error": "Stock analysis quality gate failed",
+                    "quality_issues": ["current_price must be > 0"],
+                },
+            }
+        }
+    }
+
+    message = module._extract_adk_yaml_write_error(response)
+    assert isinstance(message, str)
+    assert "quality gate" in message.lower()
+    assert "current_price" in message
+
+
+def test_extract_adk_yaml_write_error_parses_nested_failure_payload() -> None:
+    module = _load_orchestrator_module()
+
+    response = {
+        "artifacts": {
+            "yaml_write": {
+                "status": "error",
+                "payload": {
+                    "error": "Stock analysis quality gate failed",
+                    "failure_payload": {
+                        "error": "Stock analysis quality gate failed",
+                        "quality_issues": ["summary.key_levels.entry must be > 0"],
+                    },
+                },
+            }
+        }
+    }
+
+    message = module._extract_adk_yaml_write_error(response)
+    assert isinstance(message, str)
+    assert "summary.key_levels.entry" in message
+
+
 def test_run_adk_analysis_generation_returns_legacy_json_block(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -179,3 +223,74 @@ def test_run_adk_analysis_generation_returns_legacy_json_block(
     assert parsed["recommendation"] == "BUY"
     assert parsed["confidence"] == 74
     assert parsed["expected_value_pct"] == 9.5
+
+
+def test_update_analysis_confidence_rolls_back_on_db_error() -> None:
+    module = _load_orchestrator_module()
+
+    class _FailingCursor:
+        rowcount = 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, *_args, **_kwargs):
+            raise RuntimeError("update failed")
+
+    conn = MagicMock()
+    conn.cursor.return_value = _FailingCursor()
+
+    db = types.SimpleNamespace(conn=conn)
+    ok = module._update_analysis_confidence(db, run_id=1, adjusted_confidence=65, modifiers={"a": 1})
+
+    assert ok is False
+    conn.rollback.assert_called_once()
+
+
+def test_safe_db_rollback_swallow_errors() -> None:
+    module = _load_orchestrator_module()
+
+    conn = MagicMock()
+    conn.rollback.side_effect = RuntimeError("rollback failed")
+    db = types.SimpleNamespace(conn=conn)
+
+    # Should not raise even if rollback itself fails.
+    module._safe_db_rollback(db, "test_context")
+
+
+def test_enrich_past_analyses_rolls_back_on_query_error() -> None:
+    module = _load_orchestrator_module()
+
+    class _Result:
+        def __init__(self) -> None:
+            self.doc_id = "MSFT_stock_20260306T1200"
+            self.ticker = "MSFT"
+
+        def to_dict(self) -> dict:
+            return {"doc_id": self.doc_id, "ticker": self.ticker}
+
+    class _FailingCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, *_args, **_kwargs):
+            raise RuntimeError("db query failed")
+
+        def fetchone(self):
+            return None
+
+    conn = MagicMock()
+    conn.cursor.return_value = _FailingCursor()
+    db = types.SimpleNamespace(conn=conn)
+
+    out = module._enrich_past_analyses([_Result()], db)
+    assert len(out) == 1
+    assert out[0]["recommendation"] == "N/A"
+    assert out[0]["confidence"] == "N/A"
+    conn.rollback.assert_called_once()

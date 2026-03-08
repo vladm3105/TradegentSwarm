@@ -63,3 +63,27 @@ def test_mcp_tool_bus_write_yaml_and_ingest_missing_file() -> None:
 
     # Cleanup test artifact.
     path.unlink(missing_ok=True)
+
+
+def test_mcp_tool_bus_write_yaml_enforced_stock_quality_gate_blocks_placeholder() -> None:
+    bus = MCPToolBus()
+
+    write_result = bus.call(
+        "write_yaml",
+        {
+            "run_id": "run-test-quality-gate-1",
+            "ticker": "NVDA",
+            "analysis_type": "stock",
+            "skill_name": "stock-analysis",
+            "enforce_stock_quality_gate": True,
+            "payload": {"draft": {"status": "ok", "payload": {}}},
+        },
+    )
+
+    assert write_result["status"] == "error"
+    payload = write_result.get("payload", {})
+    assert isinstance(payload, dict)
+    assert "Stock analysis quality gate failed" in str(payload.get("error", ""))
+    failure_payload = payload.get("failure_payload")
+    assert isinstance(failure_payload, dict)
+    assert isinstance(failure_payload.get("quality_issues"), list)

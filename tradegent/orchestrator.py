@@ -123,6 +123,44 @@ def _extract_adk_yaml_path(response: dict[str, Any]) -> str | None:
     return file_path if isinstance(file_path, str) and file_path.strip() else None
 
 
+def _extract_adk_yaml_write_error(response: dict[str, Any]) -> str | None:
+    """Best-effort extraction of write_yaml failure details from ADK response."""
+    artifacts = response.get("artifacts")
+    if not isinstance(artifacts, dict):
+        return None
+
+    yaml_write = artifacts.get("yaml_write")
+    if not isinstance(yaml_write, dict):
+        return None
+
+    status = yaml_write.get("status")
+    if not isinstance(status, str) or status.lower() != "error":
+        return None
+
+    payload = yaml_write.get("payload")
+    if not isinstance(payload, dict):
+        return "write_yaml returned error without payload"
+
+    error = payload.get("error")
+    quality_issues = payload.get("quality_issues")
+
+    # mcp_tool_bus wraps tool failures under payload.failure_payload on retries/exhaustion.
+    nested_failure = payload.get("failure_payload")
+    if isinstance(nested_failure, dict):
+        nested_error = nested_failure.get("error")
+        if isinstance(nested_error, str) and nested_error.strip():
+            error = nested_error
+        nested_issues = nested_failure.get("quality_issues")
+        if isinstance(nested_issues, list) and nested_issues:
+            quality_issues = nested_issues
+
+    if isinstance(quality_issues, list) and quality_issues:
+        return f"{error}; quality_issues={quality_issues}" if error else f"quality_issues={quality_issues}"
+    if isinstance(error, str) and error.strip():
+        return error
+    return "write_yaml returned error"
+
+
 def _extract_legacy_analysis_json(yaml_doc: dict[str, Any]) -> dict[str, Any]:
     """Map ADK YAML artifact fields to legacy JSON summary keys used by orchestrator."""
     gate = yaml_doc.get("do_nothing_gate") if isinstance(yaml_doc.get("do_nothing_gate"), dict) else {}
@@ -211,6 +249,9 @@ def _run_adk_analysis_generation(
 
         yaml_path = _extract_adk_yaml_path(response)
         if not yaml_path:
+            yaml_error = _extract_adk_yaml_write_error(response)
+            if yaml_error:
+                log.error("[%s] ADK yaml_write failed: %s", entrypoint, yaml_error)
             log.error("[%s] ADK response missing yaml artifact path", entrypoint)
             return ""
 
@@ -234,6 +275,20 @@ def _run_adk_analysis_generation(
     except Exception as exc:
         log.error("[%s] ADK analysis generation failed: %s", entrypoint, exc)
         return ""
+
+
+def _safe_db_rollback(db: "NexusDB", context: str) -> None:
+    """Best-effort rollback for recoverable DB errors.
+
+    Some non-fatal DB write failures leave psycopg connections in an aborted
+    transaction state. Clearing the transaction prevents follow-on operations in
+    the same run from cascading with `InFailedSqlTransaction`.
+    """
+    try:
+        db.conn.rollback()
+        log.debug("DB rollback completed after %s", context)
+    except Exception as rollback_err:
+        log.warning("DB rollback failed after %s: %s", context, rollback_err)
 
 
 def _generate_analysis_output(
@@ -1624,6 +1679,7 @@ def _enrich_past_analyses(vector_results: list, db: "NexusDB") -> list[dict]:
                     base["recommendation"] = "N/A"
                     base["confidence"] = "N/A"
         except Exception:
+            _safe_db_rollback(db, "phase3_enrich_past_analyses")
             base["recommendation"] = "N/A"
             base["confidence"] = "N/A"
 
@@ -2022,6 +2078,7 @@ def _phase4_synthesize(
             _update_analysis_confidence(db, run_id, adjusted_confidence, modifiers_applied)
         except Exception as e:
             log.warning(f"[P4] Failed to update DB with adjusted confidence: {e}")
+            _safe_db_rollback(db, "phase4_update_analysis_confidence")
 
     log.info(
         f"[P4] Synthesis complete: {result.ticker} confidence {original_confidence}% → {adjusted_confidence}% "
@@ -2062,6 +2119,7 @@ def _update_analysis_confidence(
         return cur.rowcount > 0
     except Exception as e:
         log.warning(f"Failed to update analysis confidence: {e}")
+        _safe_db_rollback(db, "update_analysis_confidence")
         return False
 
 
@@ -2512,6 +2570,7 @@ def _run_analysis_4phase_traced(
                     db.save_analysis_result(run_id, ticker, analysis_type.value, result.parsed_json)
                 except Exception as e:
                     log.warning(f"Save analysis result failed: {e}")
+                    _safe_db_rollback(db, "save_analysis_result_traced")
 
             # Increment service counters
             try:
@@ -2525,6 +2584,7 @@ def _run_analysis_4phase_traced(
                 _post_analysis_workflow(db, ticker, result.filepath, result)
             except Exception as e:
                 log.warning(f"[{trace_id}] Post-analysis workflow failed: {e}")
+                _safe_db_rollback(db, "post_analysis_workflow_traced")
 
             log.info(
                 f"╚═══ 4-PHASE COMPLETE ═══ {ticker} | Gate: {'PASS' if result.gate_passed else 'FAIL'} | "
@@ -2630,6 +2690,7 @@ def _run_analysis_4phase_untraced(
                 db.save_analysis_result(run_id, ticker, analysis_type.value, result.parsed_json)
             except Exception as e:
                 log.warning(f"Save analysis result failed: {e}")
+                _safe_db_rollback(db, "save_analysis_result_untraced")
 
         # Increment service counters
         try:
@@ -2643,6 +2704,7 @@ def _run_analysis_4phase_untraced(
             _post_analysis_workflow(db, ticker, result.filepath, result)
         except Exception as e:
             log.warning(f"[{trace_id}] Post-analysis workflow failed: {e}")
+            _safe_db_rollback(db, "post_analysis_workflow_untraced")
 
         log.info(
             f"╚═══ 4-PHASE COMPLETE ═══ {ticker} | Gate: {'PASS' if result.gate_passed else 'FAIL'} | "
@@ -2726,6 +2788,7 @@ def _legacy_run_analysis(
             db.save_analysis_result(run_id, ticker, analysis_type.value, parsed)
         except Exception as e:
             log.warning(f"Save analysis result failed: {e}")
+            _safe_db_rollback(db, "save_analysis_result_legacy")
 
     kb_ingest_analysis(
         filepath,
@@ -2749,6 +2812,7 @@ def _legacy_run_analysis(
         _post_analysis_workflow(db, ticker, filepath, result)
     except Exception as e:
         log.warning(f"Post-analysis workflow failed: {e}")
+        _safe_db_rollback(db, "post_analysis_workflow_legacy")
 
     log.info(
         f"Analysis: {ticker} | Gate: {'PASS' if result.gate_passed else 'FAIL'} | "

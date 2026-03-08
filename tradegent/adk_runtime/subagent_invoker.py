@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from typing import Any
 
@@ -19,6 +20,28 @@ _PHASE_ROLE_ALIAS = {
     "repair": "reasoning_standard",
     "risk_gate": "reasoning_premium",
     "summarize": "summarizer_fast",
+}
+
+_STOCK_TOP_LEVEL_KEYS = {
+    "ticker",
+    "current_price",
+    "market_environment",
+    "summary",
+    "bull_case_analysis",
+    "bear_case_analysis",
+    "recommendation",
+    "alert_levels",
+    "liquidity_analysis",
+    "sentiment",
+}
+
+_EARNINGS_TOP_LEVEL_KEYS = {
+    "ticker",
+    "summary",
+    "scoring",
+    "do_nothing_gate",
+    "scenarios",
+    "preparation",
 }
 
 
@@ -44,12 +67,12 @@ class SubagentInvoker:
         outputs: dict[str, Any] = {}
         for phase in plan.phases:
             if phase in {"draft", "critique", "repair", "risk_gate", "summarize"}:
-                phase_output = self._run_phase(phase, payload)
+                phase_output = self._run_phase(plan, phase, payload)
                 self._validate_phase_output(phase, phase_output)
                 outputs[phase] = phase_output
         return outputs
 
-    def _run_phase(self, phase: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def _run_phase(self, plan: SkillExecutionPlan, phase: str, payload: dict[str, Any]) -> dict[str, Any]:
         role_alias = _PHASE_ROLE_ALIAS.get(phase, "summarizer_fast")
         candidates = self.gateway.get_route_candidates(role_alias)
         routed_model = candidates[0] if candidates else "unknown"
@@ -66,10 +89,12 @@ class SubagentInvoker:
                 },
             }
 
-        llm_result = self._invoke_llm_phase(role_alias, phase, payload)
+        llm_result = self._invoke_llm_phase(role_alias, plan, phase, payload)
+        parsed_payload = self._parse_json_payload(llm_result.get("content"))
+        phase_payload = self._normalize_phase_payload(plan, parsed_payload) or payload
         return {
             "status": "ok",
-            "payload": payload,
+            "payload": phase_payload,
             "llm": {
                 "content": llm_result.get("content", ""),
                 "model_alias": llm_result.get("model_alias", role_alias),
@@ -80,16 +105,25 @@ class SubagentInvoker:
             },
         }
 
-    def _invoke_llm_phase(self, role_alias: str, phase: str, payload: dict[str, Any]) -> dict[str, Any]:
-        # Keep prompt minimal and deterministic for migration phase.
+    def _invoke_llm_phase(
+        self,
+        role_alias: str,
+        plan: SkillExecutionPlan,
+        phase: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        prompt_payload = self._build_prompt_payload(plan, phase, payload)
         messages = [
             {
                 "role": "system",
-                "content": "You are a structured sub-agent. Return concise JSON.",
+                "content": (
+                    "You are a structured sub-agent. Return exactly one JSON object only. "
+                    "No markdown, no explanations."
+                ),
             },
             {
                 "role": "user",
-                "content": f"phase={phase}; payload_keys={sorted(payload.keys())}",
+                "content": json.dumps(prompt_payload, sort_keys=True),
             },
         ]
 
@@ -119,6 +153,157 @@ class SubagentInvoker:
                 "input_tokens": 0,
                 "output_tokens": 0,
             }
+
+    @staticmethod
+    def _parse_json_payload(raw: Any) -> dict[str, Any] | None:
+        if not isinstance(raw, str) or not raw.strip():
+            return None
+
+        text = raw.strip()
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            parsed = None
+        if isinstance(parsed, dict):
+            return parsed
+
+        if "```" in text:
+            for block in text.split("```"):
+                candidate = block.strip()
+                if not candidate:
+                    continue
+                if candidate.lower().startswith("json"):
+                    candidate = candidate[4:].strip()
+                try:
+                    parsed = json.loads(candidate)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(parsed, dict):
+                    return parsed
+
+        decoder = json.JSONDecoder()
+        for idx, ch in enumerate(text):
+            if ch != "{":
+                continue
+            try:
+                parsed, _ = decoder.raw_decode(text[idx:])
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, dict):
+                return parsed
+        return None
+
+    @staticmethod
+    def _normalize_phase_payload(
+        plan: SkillExecutionPlan,
+        payload: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        if not isinstance(payload, dict):
+            return None
+
+        skill_name = str(getattr(plan, "skill_name", "") or "")
+        allowed_keys = _STOCK_TOP_LEVEL_KEYS if skill_name == "stock-analysis" else _EARNINGS_TOP_LEVEL_KEYS
+
+        def _extract(candidate: Any) -> dict[str, Any] | None:
+            if not isinstance(candidate, dict):
+                return None
+            if any(key in candidate for key in allowed_keys):
+                return candidate
+            return None
+
+        direct = _extract(payload)
+        if direct is not None:
+            return direct
+
+        for key in ("analysis", "result", "output", "data"):
+            nested = _extract(payload.get(key))
+            if nested is not None:
+                return nested
+
+        return None
+
+    @staticmethod
+    def _build_prompt_payload(plan: SkillExecutionPlan, phase: str, payload: dict[str, Any]) -> dict[str, Any]:
+        context = payload.get("context")
+        latest_document: dict[str, Any] | None = None
+        request_context: dict[str, Any] | None = None
+        if isinstance(context, dict):
+            nested_payload = context.get("payload")
+            if isinstance(nested_payload, dict):
+                nested_context = nested_payload.get("context")
+                if isinstance(nested_context, dict):
+                    request_context = nested_context.get("request") if isinstance(nested_context.get("request"), dict) else None
+                    latest_document = (
+                        nested_context.get("latest_document")
+                        if isinstance(nested_context.get("latest_document"), dict)
+                        else None
+                    )
+
+        schema_hint: dict[str, Any]
+        output_contract: dict[str, Any]
+        if str(getattr(plan, "skill_name", "")) == "stock-analysis":
+            schema_hint = {
+                "current_price": "number (> 0)",
+                "summary.thesis": "string (>= 120 chars, no placeholders)",
+                "summary.key_levels.entry": "number (> 0)",
+                "summary.key_levels.stop": "number (> 0)",
+                "summary.key_levels.target_1": "number (> 0)",
+                "alert_levels.price_alerts[0].price": "number (> 0)",
+                "alert_levels.price_alerts[0].significance": "string (>= 120 chars)",
+            }
+            output_contract = {
+                "top_level_required": sorted(_STOCK_TOP_LEVEL_KEYS),
+                "forbidden_top_level": ["task", "phase", "schema_hint", "source_context"],
+                "rules": [
+                    "Return a single JSON object representing final stock analysis only.",
+                    "Do not include the prompt envelope or schema metadata in the output.",
+                    "Do not use placeholder wording like 'runtime generated draft analysis'.",
+                    "All numeric trading levels must be > 0.",
+                ],
+            }
+        elif str(getattr(plan, "skill_name", "")) == "earnings-analysis":
+            schema_hint = {
+                "summary": {
+                    "thesis": "string",
+                    "confidence": "number 0-100",
+                },
+                "scoring": "object",
+                "do_nothing_gate": "object",
+            }
+            output_contract = {
+                "top_level_required": sorted(_EARNINGS_TOP_LEVEL_KEYS),
+                "forbidden_top_level": ["task", "phase", "schema_hint", "source_context"],
+                "rules": [
+                    "Return a single JSON object representing final earnings analysis only.",
+                    "Do not include the prompt envelope or schema metadata in the output.",
+                ],
+            }
+        else:
+            schema_hint = {"result": "object"}
+            output_contract = {
+                "top_level_required": ["result"],
+                "rules": ["Return a single JSON object only."],
+            }
+
+        reference_context: dict[str, Any] | None = latest_document
+        if isinstance(reference_context, dict) and "summary" in reference_context:
+            summary = reference_context.get("summary")
+            if isinstance(summary, dict):
+                thesis = str(summary.get("thesis", "")).lower()
+                if "runtime generated draft analysis" in thesis or "placeholder" in thesis:
+                    reference_context = None
+
+        return {
+            "task": "Generate structured analysis JSON for downstream YAML rendering.",
+            "phase": phase,
+            "skill_name": getattr(plan, "skill_name", None),
+            "ticker": payload.get("ticker") or (request_context or {}).get("ticker"),
+            "analysis_type": payload.get("analysis_type") or (request_context or {}).get("analysis_type"),
+            "intent": payload.get("intent") or (request_context or {}).get("intent"),
+            "schema_hint": schema_hint,
+            "output_contract": output_contract,
+            "source_context": reference_context,
+        }
 
     @staticmethod
     def _provider_from_model(model: str) -> str:

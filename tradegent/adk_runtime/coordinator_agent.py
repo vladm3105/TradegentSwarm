@@ -59,6 +59,15 @@ class CoordinatorAgent:
         ensure_compatible_contract_version(request_contract_version, CURRENT_CONTRACT_VERSION)
 
         run_id = str(uuid.uuid4())
+        self.state_store.init_run(
+            run_id,
+            intent=request.get("intent"),
+            ticker=request.get("ticker"),
+            analysis_type=request.get("analysis_type"),
+            contract_version=request_contract_version,
+            routing_policy_version="1.0.0",
+        )
+
         dedup_key = self.state_store.build_dedup_key(dict(request), routing_policy_version="1.0.0")
         claimed, existing = self.state_store.claim_or_get_dedup(dedup_key, run_id)
         if not claimed and existing is not None:
@@ -87,14 +96,6 @@ class CoordinatorAgent:
             validate_response_envelope(in_progress_response)
             return in_progress_response
 
-        self.state_store.init_run(
-            run_id,
-            intent=request.get("intent"),
-            ticker=request.get("ticker"),
-            analysis_type=request.get("analysis_type"),
-            contract_version=request_contract_version,
-            routing_policy_version="1.0.0",
-        )
         self.state_store.transition(run_id, "planned", phase="plan")
 
         plan = self.router.resolve(request)
@@ -104,7 +105,16 @@ class CoordinatorAgent:
         if not self.state_store.claim_side_effect_marker(run_id, "draft", "subagent_invocation"):
             subagent_outputs = {}
         else:
-            subagent_outputs = self.subagents.run(plan, {"context": context})
+            subagent_outputs = self.subagents.run(
+                plan,
+                {
+                    "context": context,
+                    "ticker": request.get("ticker"),
+                    "analysis_type": request.get("analysis_type"),
+                    "intent": request.get("intent"),
+                    "skill_name": getattr(plan, "skill_name", None),
+                },
+            )
 
         self.state_store.transition(run_id, "draft_done", phase="draft")
         if "critique" in plan.phases:
@@ -230,6 +240,8 @@ class CoordinatorAgent:
                     "ticker": request.get("ticker"),
                     "analysis_type": request.get("analysis_type"),
                     "skill_name": getattr(plan, "skill_name", None),
+                    "enforce_stock_quality_gate": str(request.get("analysis_type", "")).lower()
+                    == "stock",
                     "payload": subagent_outputs,
                 },
             )
