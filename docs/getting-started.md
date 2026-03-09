@@ -175,15 +175,22 @@ This will:
 1. Query RAG for historical MSFT context
 2. Fetch real-time data from IB Gateway
 3. Run the stock-analysis skill
-4. Save the analysis to `analyses/`
-5. Index the analysis in RAG and Graph
+4. Save the artifact to `tradegent_knowledge/knowledge/analysis/stock/` or `tradegent_knowledge/knowledge/analysis/declined/` (if quality-gated)
+5. Index accepted analyses in PostgreSQL, RAG, and Graph
 
 ### 3. View the Analysis
 
 ```bash
-ls -la analyses/
-cat analyses/MSFT_stock_*.md
+# Accepted analysis artifacts
+ls -la tradegent_knowledge/knowledge/analysis/stock/ | grep MSFT
+
+# Declined artifacts (quality/market-data gated)
+ls -la tradegent_knowledge/knowledge/analysis/declined/ | grep MSFT
 ```
+
+Quality-gated runs return an error in CLI output and persist a YAML artifact under
+`tradegent_knowledge/knowledge/analysis/declined/` with a `decline` section that
+includes reason codes and quality issues.
 
 ---
 
@@ -246,12 +253,12 @@ TradegentSwarm/
 │   ├── service.py             # Long-running daemon
 │   ├── rag/                   # RAG module
 │   ├── graph/                 # Graph module
-│   ├── analyses/              # Generated analyses
+│   ├── tmp/                   # Temporary runtime outputs and scratch artifacts
 │   └── docker-compose.yml     # Infrastructure
 │
 ├── tradegent_knowledge/       # Knowledge base
 │   ├── skills/                # Skill definitions
-│   └── knowledge/             # Trading data
+│   └── knowledge/             # Trading data and analysis YAML artifacts
 │
 ├── docs/                      # Documentation
 │

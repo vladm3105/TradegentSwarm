@@ -37,6 +37,35 @@ sudo systemctl status tradegent tradegent-ib-mcp
 
 ## Connection Issues
 
+### Production Guard Blocks Analysis (Non-ADK Settings)
+
+**Symptoms:**
+- Analysis exits immediately with a production-mode guard error
+- Message indicates `AGENT_ENGINE=adk` and `skill_use_claude_code=false` are required
+
+**Cause:**
+- `dry_run_mode=false` with incompatible runtime settings
+
+**Solutions:**
+
+1. Verify current settings:
+   ```bash
+   python orchestrator.py settings get dry_run_mode
+   python orchestrator.py settings get skill_use_claude_code
+   echo "$AGENT_ENGINE"
+   ```
+
+2. Apply required production values:
+   ```bash
+   export AGENT_ENGINE=adk
+   python orchestrator.py settings set skill_use_claude_code false
+   ```
+
+3. Re-run analysis:
+   ```bash
+   python orchestrator.py analyze NVDA --type stock
+   ```
+
 ### Metabase Fails to Start (Port 3001 In Use)
 
 **Symptoms:**
@@ -178,6 +207,42 @@ sudo systemctl status tradegent tradegent-ib-mcp
 ---
 
 ## RAG Issues
+
+### Analysis Blocked by Stock Quality Gate
+
+**Symptoms:**
+- CLI shows `ADK yaml_write failed: Stock analysis quality gate failed`
+- Error includes `stock analysis too sparse for RAG ingestion`
+
+**Expected system behavior:**
+- Run exits as failed for that ticker
+- Declined artifact is persisted under
+   `tradegent_knowledge/knowledge/analysis/declined/`
+
+**Validation steps:**
+
+1. Locate declined artifact:
+    ```bash
+    ls -lt tradegent_knowledge/knowledge/analysis/declined/ | head
+    ```
+
+2. Inspect decline metadata:
+    ```bash
+    yq '.decline' tradegent_knowledge/knowledge/analysis/declined/<FILE>.yaml
+    ```
+
+3. Confirm runtime metadata was captured:
+    ```bash
+    yq '.adk_runtime' tradegent_knowledge/knowledge/analysis/declined/<FILE>.yaml
+    ```
+
+**Notes:**
+- Sparse-content gate thresholds are controlled by:
+   - `ADK_STOCK_MIN_RAG_SECTION_TOKENS`
+   - `ADK_STOCK_MIN_RAG_TOTAL_TOKENS`
+- Market-data gate behavior is controlled by:
+   - `ADK_MARKET_DATA_GATES_ENABLED`
+   - `ADK_MARKET_DATA_GATES_BLOCKING`
 
 ### Dimension Mismatch Error
 

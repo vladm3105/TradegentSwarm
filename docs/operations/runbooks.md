@@ -124,15 +124,30 @@ cd tradegent && python preflight.py
 # 2. Ensure dry run is off
 python orchestrator.py settings set dry_run_mode false
 
+# 2a. Ensure production runtime guard requirements are met
+# Required for production analyses when dry_run_mode=false:
+#   AGENT_ENGINE=adk
+#   skill_use_claude_code=false
+python orchestrator.py settings get skill_use_claude_code
+echo "$AGENT_ENGINE"
+
 # 3. Run analysis
 python orchestrator.py analyze NVDA --type earnings
 
 # 4. Verify output
+# Accepted artifacts
 ls -la tradegent_knowledge/knowledge/analysis/earnings/ | grep NVDA
+
+# Declined artifacts (quality/market-data gate)
+ls -la tradegent_knowledge/knowledge/analysis/declined/ | grep NVDA
 
 # 5. Check indexing
 python orchestrator.py status
 ```
+
+If an analysis is blocked by quality gates, the run exits with an error and a
+declined YAML is still written to
+`tradegent_knowledge/knowledge/analysis/declined/` for audit and troubleshooting.
 
 ---
 
