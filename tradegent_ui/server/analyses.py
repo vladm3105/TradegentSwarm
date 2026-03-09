@@ -5,7 +5,7 @@ Serves stock analysis data from the knowledge base.
 
 import logging
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 import zlib
 
@@ -160,6 +160,23 @@ def _row_to_summary(row: dict) -> "AnalysisSummary":
     )
 
 
+def _row_sort_epoch(row: dict) -> float:
+    """Return sortable epoch seconds from row analysis datetime fields."""
+    candidate = row.get("analysis_date")
+    if isinstance(candidate, str) and candidate.strip():
+        try:
+            candidate = datetime.fromisoformat(candidate.replace("Z", "+00:00"))
+        except ValueError:
+            candidate = None
+    if not isinstance(candidate, datetime):
+        candidate = row.get("analysis_dt")
+    if not isinstance(candidate, datetime):
+        return 0.0
+    if candidate.tzinfo is None:
+        candidate = candidate.replace(tzinfo=timezone.utc)
+    return candidate.timestamp()
+
+
 def _row_to_detail(row: dict) -> "AnalysisDetailResponse":
     analysis_date = row.get("analysis_date")
     if isinstance(analysis_date, datetime):
@@ -245,8 +262,8 @@ async def list_analyses(
                 where_clause = "WHERE " + " AND ".join(conditions)
 
                 include_declined_admin = include_declined and "admin" in user.roles
-                db_limit = (limit + offset) if include_declined_admin else limit
-                db_offset = 0 if include_declined_admin else offset
+                db_limit = limit + offset
+                db_offset = 0
 
                 total = 0
                 combined_rows: list[dict] = []
@@ -324,18 +341,9 @@ async def list_analyses(
                     declined_rows = _collect_declined_rows(status_filter=status)
                     combined_rows.extend(declined_rows)
 
-                combined_rows.sort(
-                    key=lambda row: (
-                        row.get("analysis_date")
-                        if isinstance(row.get("analysis_date"), datetime)
-                        else row.get("analysis_dt")
-                        if isinstance(row.get("analysis_dt"), datetime)
-                        else datetime.min
-                    ),
-                    reverse=True,
-                )
+                combined_rows.sort(key=_row_sort_epoch, reverse=True)
 
-                paged_rows = combined_rows[offset: offset + limit] if include_declined_admin else combined_rows
+                paged_rows = combined_rows[offset: offset + limit]
                 analyses = [_row_to_summary(row) for row in paged_rows]
 
                 return AnalysisListResponse(
