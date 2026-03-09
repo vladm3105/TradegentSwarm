@@ -49,6 +49,17 @@ _env_path = load_runtime_env(Path(__file__).parent / ".env")
 
 SUPPORTED_AGENT_ENGINES = {"legacy", "adk"}
 MANUAL_CLI_INVOCATION_SOURCE = "cli_manual"
+PRODUCTION_GUARDED_COMMANDS = {
+    "analyze",
+    "execute",
+    "pipeline",
+    "watchlist",
+    "scan",
+    "run-due",
+    "review",
+    "earnings-check",
+    "process-queue",
+}
 
 
 def validate_agent_engine() -> str:
@@ -78,6 +89,33 @@ def validate_agent_engine() -> str:
             ) from exc
 
     return engine
+
+
+def _coerce_bool(value: Any) -> bool:
+    """Normalize mixed settings value types to bool."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
+def enforce_production_adk_guard(settings: "Settings", context: str) -> None:
+    """Fail fast when production-mode runtime settings drift from ADK-only policy."""
+    if settings.dry_run_mode:
+        return
+
+    engine = validate_agent_engine()
+    if engine != "adk":
+        raise RuntimeError(
+            f"{context}: production mode requires AGENT_ENGINE=adk (current={engine})"
+        )
+
+    skill_use_claude_code = settings._get("skill_use_claude_code", "skills", "false")
+    if _coerce_bool(skill_use_claude_code):
+        raise RuntimeError(
+            f"{context}: production mode requires skill_use_claude_code=false"
+        )
 
 
 def _create_adk_coordinator(db: "NexusDB"):
@@ -4871,6 +4909,9 @@ def main():
         global cfg
         cfg = Settings(db)
         sys.modules[__name__].__dict__["cfg"] = cfg
+
+        if args.cmd in PRODUCTION_GUARDED_COMMANDS:
+            enforce_production_adk_guard(cfg, context=f"orchestrator {args.cmd}")
 
         if args.cmd == "db-init":
             db.init_schema()

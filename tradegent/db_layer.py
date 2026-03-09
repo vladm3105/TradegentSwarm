@@ -2347,6 +2347,46 @@ class NexusDB:
         bull_case = data.get("bull_case_analysis", {})
         bear_case = data.get("bear_case_analysis", {})
 
+        recommendation_raw = data.get("recommendation")
+        recommendation_action: str | None = None
+        recommendation_confidence: int | None = None
+        if isinstance(recommendation_raw, dict):
+            recommendation_action = recommendation_raw.get("action") or recommendation_raw.get("recommendation")
+            rec_conf = recommendation_raw.get("confidence")
+            if isinstance(rec_conf, (int, float)) and not isinstance(rec_conf, bool):
+                recommendation_confidence = int(rec_conf)
+            elif isinstance(rec_conf, str) and rec_conf.strip().isdigit():
+                recommendation_confidence = int(rec_conf.strip())
+        elif isinstance(recommendation_raw, str):
+            recommendation_action = recommendation_raw
+
+        confidence_raw = data.get("confidence")
+        confidence_level: int | None = None
+        if isinstance(confidence_raw, dict):
+            for key in ("level", "confidence", "confidence_pct", "pct"):
+                candidate = confidence_raw.get(key)
+                if isinstance(candidate, (int, float)) and not isinstance(candidate, bool):
+                    confidence_level = int(candidate)
+                    break
+                if isinstance(candidate, str) and candidate.strip().isdigit():
+                    confidence_level = int(candidate.strip())
+                    break
+        elif isinstance(confidence_raw, (int, float)) and not isinstance(confidence_raw, bool):
+            confidence_level = int(confidence_raw)
+        elif isinstance(confidence_raw, str) and confidence_raw.strip().isdigit():
+            confidence_level = int(confidence_raw.strip())
+
+        if confidence_level is None:
+            confidence_level = recommendation_confidence
+        if confidence_level is None:
+            gate_confidence = gate.get("confidence_actual")
+            if isinstance(gate_confidence, (int, float)) and not isinstance(gate_confidence, bool):
+                confidence_level = int(gate_confidence)
+
+        expected_value_pct = gate.get("ev_actual")
+        if not isinstance(expected_value_pct, (int, float)) or isinstance(expected_value_pct, bool):
+            expected_value_pct = gate.get("expected_value_actual")
+
         # Extract risk/reward ratio from gate criteria or gate.rr_actual
         rr_criteria = gate.get("criteria", {}).get("risk_reward", {})
         risk_reward = rr_criteria.get("value") if isinstance(rr_criteria, dict) else gate.get("rr_actual")
@@ -2408,9 +2448,9 @@ class NexusDB:
                     meta.get("schema_version") or meta.get("version"),
                     file_path,
                     data.get("current_price"),
-                    data.get("recommendation"),  # v2.7: top level
-                    data.get("confidence", {}).get("level"),  # v2.7: confidence.level
-                    gate.get("ev_actual"),  # v2.7: do_nothing_gate.ev_actual
+                    recommendation_action,
+                    confidence_level,
+                    expected_value_pct,
                     gate.get("gate_result"),  # v2.7: do_nothing_gate.gate_result
                     gate.get("gates_passed"),  # v2.7: do_nothing_gate.gates_passed
                     scenarios.get("strong_bull", {}).get("probability"),

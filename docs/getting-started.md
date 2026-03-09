@@ -73,6 +73,15 @@ cd tradegent
 docker compose up -d
 ```
 
+If startup reports `address already in use` for `0.0.0.0:3001` (Metabase),
+free the port and start again:
+
+```bash
+ss -ltnp | grep ':3001 '
+kill <PID_USING_3001>
+docker compose up -d
+```
+
 Verify services are running:
 
 ```bash
@@ -119,6 +128,10 @@ Before running your first analysis, verify all services are healthy:
 ```bash
 cd tradegent && python preflight.py --full
 ```
+
+Use the same Python interpreter/environment you used for installation.
+If you see `ModuleNotFoundError` (for example `dotenv` or `jsonschema`),
+activate the correct environment first, then rerun preflight.
 
 Expected output shows all services healthy:
 ```

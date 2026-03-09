@@ -279,6 +279,10 @@ class NexusService:
 
         # Initialize settings from DB
         orchestrator.cfg = Settings(self._db)
+        orchestrator.enforce_production_adk_guard(
+            orchestrator.cfg,
+            context="service start",
+        )
         log.info(
             f"Settings loaded: poll={orchestrator.cfg.scheduler_poll_seconds}s, "
             f"dry_run={orchestrator.cfg.dry_run_mode}, "
@@ -723,6 +727,10 @@ class NexusService:
             sys.exit(1)
 
         orchestrator.cfg = Settings(self._db)
+        orchestrator.enforce_production_adk_guard(
+            orchestrator.cfg,
+            context="service run_once",
+        )
 
         try:
             self._tick()

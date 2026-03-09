@@ -859,3 +859,68 @@ def test_write_stock_analysis_yaml_generates_broader_price_alert_set() -> None:
     assert alerts[0]["tag"] == "20-day MA"
 
     file_path.unlink(missing_ok=True)
+
+
+def test_write_stock_analysis_yaml_blocks_sparse_rag_coverage(monkeypatch) -> None:
+    monkeypatch.setenv("ADK_MARKET_DATA_GATES_ENABLED", "false")
+
+    llm_content = """```json
+{
+    "current_price": 12.02,
+    "recommendation": {"action": "WATCH", "confidence": 60},
+    "summary": {
+        "narrative": "Sparse output generated for quality gate regression coverage with explicit levels.",
+        "key_levels": {"entry": 12.02, "stop": 11.54, "target_1": 12.98}
+    },
+    "alert_levels": {
+        "price_alerts": [
+            {
+                "price": 12.0,
+                "tag": "Entry Trigger",
+                "significance": "Alert significance contains enough characters to pass baseline checks while remaining intentionally sparse for coverage test.",
+                "derivation": {
+                    "methodology": "support_resistance",
+                    "source_field": "summary.key_levels.entry",
+                    "source_value": 12.02,
+                    "calculation": "direct"
+                }
+            }
+        ]
+    },
+    "fundamentals": {"insider_activity": {"recent_buys": 0, "recent_sells": 0, "net_direction": "neutral"}},
+    "sentiment": {"summary": "Neutral sentiment."}
+}
+```"""
+
+    result = write_analysis_yaml(
+        run_id="run-stock-sparse-rag-coverage-1",
+        ticker="ZZZZ",
+        analysis_type="stock",
+        skill_name="stock-analysis",
+        enforce_stock_quality_gate=True,
+        payload={
+            "draft": {"status": "ok", "llm": {"content": llm_content}},
+            "critique": {"status": "ok", "llm": {"content": "critique phase"}},
+            "repair": {"status": "ok", "llm": {"content": "repair phase"}},
+            "risk_gate": {"status": "ok", "llm": {"content": "risk gate phase"}},
+            "summarize": {"status": "ok", "llm": {"content": "summary phase"}},
+        },
+    )
+
+    assert result["success"] is False
+    assert result.get("status") == "blocked_quality"
+    issues = result.get("quality_issues")
+    assert isinstance(issues, list)
+    assert any("too sparse for RAG ingestion" in issue for issue in issues)
+
+    declined_file_path = result.get("declined_file_path")
+    assert isinstance(declined_file_path, str)
+    declined_path = Path(declined_file_path)
+    assert declined_path.exists()
+    assert "tradegent_knowledge/knowledge/analysis/declined" in str(declined_path)
+
+    declined_data = yaml.safe_load(declined_path.read_text(encoding="utf-8"))
+    assert declined_data["_meta"]["status"] == "declined"
+    assert declined_data["decline"]["reason"] == "stock_quality_gate_failed"
+
+    declined_path.unlink(missing_ok=True)

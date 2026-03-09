@@ -10,6 +10,32 @@ Step-by-step procedures for common operational tasks.
 
 ## Daily Operations
 
+### Restart All Tradegent Services
+
+**When:** Infrastructure drift, service instability, or before production smoke tests.
+
+```bash
+# 1. Restart core infrastructure stack
+cd tradegent
+docker compose down
+docker compose up -d
+
+# 2. If Metabase fails with port 3001 conflict, free port and retry
+ss -ltnp | grep ':3001 '
+kill <PID_USING_3001>
+docker compose up -d
+
+# 3. Verify container health
+docker compose ps
+
+# 4. Run full readiness check
+python preflight.py --full
+```
+
+Expected result:
+- `postgres_container`, `neo4j_container`, `ib_gateway`, `rag`, `graph`, `ib_mcp`, and `ib_gateway_port` all healthy.
+- preflight `Status: READY`.
+
 ### Morning Startup
 
 **When:** Before market open (8:00 ET)

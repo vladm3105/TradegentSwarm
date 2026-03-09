@@ -466,6 +466,20 @@ def _has_real_llm_phase_content(payload: dict[str, Any]) -> bool:
     return False
 
 
+def _is_adk_runtime_payload(payload: dict[str, Any]) -> bool:
+    """Return True when payload carries ADK runtime boundary metadata."""
+    if not isinstance(payload, dict):
+        return False
+
+    runtime_context = _as_dict(payload.get("_runtime_context"))
+    selected_engine = _string_or_default(runtime_context.get("selected_engine"), "").strip().lower()
+    if selected_engine == "adk":
+        return True
+
+    entrypoint = _string_or_default(runtime_context.get("entrypoint"), "").strip()
+    return bool(entrypoint)
+
+
 def _contains_placeholder_language(text: Any) -> bool:
     if not isinstance(text, str):
         return False
@@ -478,6 +492,129 @@ def _contains_placeholder_language(text: Any) -> bool:
         "pending live enrichment",
     )
     return any(marker in lowered for marker in markers)
+
+
+def _to_section_text(value: Any) -> str:
+    """Convert nested section payloads to plain text for lightweight richness checks."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    if isinstance(value, list):
+        parts = [_to_section_text(item) for item in value]
+        return "\n".join(part for part in parts if part)
+    if isinstance(value, dict):
+        try:
+            return yaml.safe_dump(value, sort_keys=False)
+        except Exception:
+            return ""
+    return ""
+
+
+def _estimate_text_tokens(text: str) -> int:
+    if not isinstance(text, str) or not text.strip():
+        return 0
+    return len(text.strip().split())
+
+
+def _nested_value(doc: dict[str, Any], path: str) -> Any:
+    current: Any = doc
+    for token in path.split("."):
+        if not isinstance(current, dict):
+            return None
+        current = current.get(token)
+    return current
+
+
+def _stock_rag_section_paths() -> list[str]:
+    """Load stock-analysis section paths used by RAG chunking.
+
+    Fallback paths keep the gate resilient if section_mappings.yaml is missing.
+    """
+    fallback = [
+        "thesis",
+        "catalysts",
+        "risks",
+        "technicals",
+        "fundamentals",
+        "competitive_position",
+        "sentiment",
+        "what_is_priced_in",
+        "bias_checks",
+    ]
+    mappings_path = _TRADEGENT_DIR / "rag" / "section_mappings.yaml"
+    if not mappings_path.exists():
+        return fallback
+    try:
+        mappings = yaml.safe_load(mappings_path.read_text(encoding="utf-8")) or {}
+        stock_mapping = mappings.get("stock-analysis", {})
+        sections = stock_mapping.get("sections", [])
+        paths: list[str] = []
+        for section in sections:
+            if isinstance(section, dict):
+                section_path = _string_or_default(section.get("path"), "")
+                if section_path:
+                    paths.append(section_path)
+            elif isinstance(section, str) and section.strip():
+                paths.append(section.strip())
+        return paths or fallback
+    except Exception:
+        return fallback
+
+
+def _stock_rag_coverage_issue(doc: dict[str, Any]) -> str | None:
+    """Return blocking issue when stock doc is too sparse for meaningful RAG ingestion."""
+    adk_runtime = _as_dict(doc.get("adk_runtime"))
+    phase_status = _as_dict(adk_runtime.get("phase_status"))
+    phase_status_keys = {str(item) for item in phase_status.keys()}
+    required_phase_keys = {"draft", "critique", "repair", "risk_gate", "summarize"}
+
+    # Apply this stricter gate only to full multi-phase ADK runs.
+    # This avoids blocking lightweight fixtures/manual payloads that do not
+    # represent production runtime output.
+    if not required_phase_keys.issubset(phase_status_keys):
+        return None
+
+    min_section_tokens_raw = os.getenv("ADK_STOCK_MIN_RAG_SECTION_TOKENS", "50").strip()
+    min_total_tokens_raw = os.getenv("ADK_STOCK_MIN_RAG_TOTAL_TOKENS", "120").strip()
+
+    min_section_tokens = 50
+    min_total_tokens = 120
+    try:
+        parsed_section = int(min_section_tokens_raw)
+        if parsed_section > 0:
+            min_section_tokens = parsed_section
+    except ValueError:
+        pass
+    try:
+        parsed_total = int(min_total_tokens_raw)
+        if parsed_total > 0:
+            min_total_tokens = parsed_total
+    except ValueError:
+        pass
+
+    token_counts: list[int] = []
+    for path in _stock_rag_section_paths():
+        value = _nested_value(doc, path)
+        text = _to_section_text(value)
+        tokens = _estimate_text_tokens(text)
+        if tokens > 0:
+            token_counts.append(tokens)
+
+    if not token_counts:
+        return "stock analysis has no mappable RAG sections with content"
+
+    total_tokens = sum(token_counts)
+    max_tokens = max(token_counts)
+    if max_tokens < min_section_tokens or total_tokens < min_total_tokens:
+        return (
+            "stock analysis too sparse for RAG ingestion "
+            f"(max_section_tokens={max_tokens}, total_tokens={total_tokens}, "
+            f"required_section_tokens>={min_section_tokens}, required_total_tokens>={min_total_tokens})"
+        )
+    return None
 
 
 def _stock_quality_issues(doc: dict[str, Any]) -> list[str]:
@@ -510,6 +647,10 @@ def _stock_quality_issues(doc: dict[str, Any]) -> list[str]:
     alert_price = first_alert.get("price") if isinstance(first_alert, dict) else None
     if not isinstance(alert_price, (int, float)) or isinstance(alert_price, bool) or float(alert_price) <= 0:
         issues.append("alert_levels.price_alerts[0].price must be > 0")
+
+    rag_coverage_issue = _stock_rag_coverage_issue(doc)
+    if rag_coverage_issue:
+        issues.append(rag_coverage_issue)
 
     return issues
 
@@ -681,6 +822,44 @@ def _analysis_dir_for_type(analysis_type: str) -> Path:
     if normalized == "earnings":
         return _KNOWLEDGE_ROOT / "analysis" / "earnings"
     return _KNOWLEDGE_ROOT / "analysis" / "stock"
+
+
+def _declined_analysis_dir() -> Path:
+    return _KNOWLEDGE_ROOT / "analysis" / "declined"
+
+
+def _persist_declined_analysis(
+    *,
+    out_path: Path,
+    doc: dict[str, Any],
+    reason: str,
+    quality_issues: list[str],
+    reason_codes: list[str],
+) -> Path:
+    """Persist blocked analyses under knowledge/analysis/declined.
+
+    If an artifact already exists at out_path, move it into declined folder.
+    Otherwise write the declined document directly under declined folder.
+    """
+    declined_dir = _declined_analysis_dir()
+    declined_dir.mkdir(parents=True, exist_ok=True)
+    declined_path = declined_dir / out_path.name
+
+    meta = _as_dict(doc.get("_meta"))
+    meta["status"] = "declined"
+    doc["_meta"] = meta
+    doc["decline"] = {
+        "reason": reason,
+        "quality_issues": quality_issues,
+        "reason_codes": reason_codes,
+    }
+
+    if out_path.exists():
+        out_path.replace(declined_path)
+    else:
+        declined_path.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
+
+    return declined_path
 
 
 def _output_dir_for_skill(*, skill_name: str | None, analysis_type: str) -> Path:
@@ -2095,23 +2274,35 @@ def write_analysis_yaml(
                 payload=payload,
             )
 
-            if enforce_stock_quality_gate or _has_real_llm_phase_content(payload):
+            if enforce_stock_quality_gate or _has_real_llm_phase_content(payload) or _is_adk_runtime_payload(payload):
                 quality_issues = _stock_quality_issues(doc)
                 if quality_issues:
+                    declined_path = _persist_declined_analysis(
+                        out_path=out_path,
+                        doc=doc,
+                        reason="stock_quality_gate_failed",
+                        quality_issues=quality_issues,
+                        reason_codes=["stock_quality_gate_failed"],
+                    )
                     return {
                         "success": False,
                         "status": "blocked_quality",
                         "error": "Stock analysis quality gate failed",
                         "quality_issues": quality_issues,
                         "reason_codes": ["stock_quality_gate_failed"],
+                        "declined_file_path": str(declined_path),
+                        "declined_relative_path": str(declined_path.relative_to(_REPO_ROOT)),
                     }
 
-            if os.getenv("ADK_MARKET_DATA_GATES_ENABLED", "true").strip().lower() in {
+            market_gate_enabled = os.getenv("ADK_MARKET_DATA_GATES_ENABLED", "true").strip().lower() in {
                 "1",
                 "true",
                 "yes",
                 "on",
-            }:
+            }
+            should_apply_market_gate = _is_adk_runtime_payload(payload)
+
+            if market_gate_enabled and should_apply_market_gate:
                 gate_issues, reason_codes = _stock_market_data_gate_issues(doc)
                 if gate_issues:
                     blocking_mode = os.getenv("ADK_MARKET_DATA_GATES_BLOCKING", "true").strip().lower() in {
@@ -2138,12 +2329,21 @@ def write_analysis_yaml(
                         # Allow artifact creation for observability while preserving degraded annotation.
                         pass
                     else:
+                        declined_path = _persist_declined_analysis(
+                            out_path=out_path,
+                            doc=doc,
+                            reason="stock_market_data_gate_failed",
+                            quality_issues=gate_issues,
+                            reason_codes=reason_codes,
+                        )
                         return {
                             "success": False,
                             "status": "blocked_quality",
                             "error": "Stock market data gate failed",
                             "quality_issues": gate_issues,
                             "reason_codes": reason_codes,
+                            "declined_file_path": str(declined_path),
+                            "declined_relative_path": str(declined_path.relative_to(_REPO_ROOT)),
                         }
         else:
             doc = _build_earnings_analysis_document(

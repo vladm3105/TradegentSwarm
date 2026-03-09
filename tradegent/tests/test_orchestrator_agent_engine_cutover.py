@@ -50,6 +50,47 @@ def test_validate_agent_engine_requires_adk_when_strict(monkeypatch: pytest.Monk
         module.validate_agent_engine()
 
 
+def test_production_guard_noop_in_dry_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _load_orchestrator_module()
+
+    monkeypatch.setattr("orchestrator.validate_agent_engine", lambda: "legacy")
+
+    settings = types.SimpleNamespace(
+        dry_run_mode=True,
+        _get=lambda *args, **kwargs: "true",
+    )
+
+    module.enforce_production_adk_guard(settings, context="test")
+
+
+def test_production_guard_rejects_legacy_engine(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _load_orchestrator_module()
+
+    monkeypatch.setattr("orchestrator.validate_agent_engine", lambda: "legacy")
+
+    settings = types.SimpleNamespace(
+        dry_run_mode=False,
+        _get=lambda *args, **kwargs: "false",
+    )
+
+    with pytest.raises(RuntimeError, match="requires AGENT_ENGINE=adk"):
+        module.enforce_production_adk_guard(settings, context="test")
+
+
+def test_production_guard_rejects_skill_use_claude_code(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _load_orchestrator_module()
+
+    monkeypatch.setattr("orchestrator.validate_agent_engine", lambda: "adk")
+
+    settings = types.SimpleNamespace(
+        dry_run_mode=False,
+        _get=lambda *args, **kwargs: "true",
+    )
+
+    with pytest.raises(RuntimeError, match="skill_use_claude_code=false"):
+        module.enforce_production_adk_guard(settings, context="test")
+
+
 def test_generate_analysis_output_uses_adk_without_cli(monkeypatch: pytest.MonkeyPatch) -> None:
     module = _load_orchestrator_module()
 

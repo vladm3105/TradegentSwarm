@@ -37,6 +37,55 @@ sudo systemctl status tradegent tradegent-ib-mcp
 
 ## Connection Issues
 
+### Metabase Fails to Start (Port 3001 In Use)
+
+**Symptoms:**
+- `failed to bind host port 0.0.0.0:3001`
+- `tradegent-metabase` container not running after `docker compose up -d`
+
+**Solutions:**
+
+1. Find process using port 3001:
+   ```bash
+   ss -ltnp | grep ':3001 '
+   ```
+
+2. Stop conflicting process:
+   ```bash
+   kill <PID_USING_3001>
+   ```
+
+3. Start services again:
+   ```bash
+   docker compose up -d
+   docker compose ps
+   ```
+
+### Python Module Missing (`dotenv`, `jsonschema`, etc.)
+
+**Symptoms:**
+- `ModuleNotFoundError: No module named 'dotenv'`
+- validator reports missing `jsonschema`
+
+**Cause:** Different Python interpreter than the one used during setup.
+
+**Solutions:**
+
+1. Verify interpreter in use:
+   ```bash
+   which python
+   python --version
+   ```
+
+2. Run commands with the project runtime/environment:
+   ```bash
+   cd tradegent
+   python preflight.py --full
+   python ../scripts/validate_analysis.py <path-to-analysis.yaml>
+   ```
+
+3. If still missing, install dependency into the active environment, then retry.
+
 ### Database Connection Failed
 
 **Symptoms:**

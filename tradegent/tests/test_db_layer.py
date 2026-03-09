@@ -257,6 +257,50 @@ class TestRunHistory:
         assert run_id == 1
         mock_cursor.execute.assert_called()
 
+
+class TestKBStockUpsert:
+    """Test KB stock-analysis upsert field normalization."""
+
+    def test_upsert_kb_stock_analysis_normalizes_recommendation_shape(
+        self, mock_nexus_db, mock_db_connection, tmp_path
+    ):
+        _, mock_cursor = mock_db_connection
+        mock_cursor.fetchone.return_value = {"id": 321}
+
+        yaml_path = tmp_path / "RKLB_20260309T1216.yaml"
+        yaml_path.write_text("stub", encoding="utf-8")
+
+        payload = {
+            "_meta": {
+                "id": "RKLB_20260309T1216",
+                "created": "2026-03-09T12:16:25.473870",
+                "version": "2.7",
+            },
+            "ticker": "RKLB",
+            "current_price": 68.97,
+            "recommendation": {"action": "WATCH", "confidence": 60},
+            "do_nothing_gate": {
+                "expected_value_actual": 4.2,
+                "gate_result": "MARGINAL",
+                "gates_passed": 3,
+            },
+            "summary": {"key_levels": {"entry": 68.97, "stop": 66.21, "target_1": 74.49}},
+            "scenarios": {
+                "strong_bull": {"probability": 0.2},
+                "base_bull": {"probability": 0.3},
+                "base_bear": {"probability": 0.3},
+            },
+        }
+
+        record_id = mock_nexus_db.upsert_kb_stock_analysis(str(yaml_path), payload)
+        assert record_id == 321
+
+        args, _kwargs = mock_cursor.execute.call_args
+        params = args[1]
+        assert params[5] == "WATCH"
+        assert params[6] == 60
+        assert params[7] == 4.2
+
     def test_mark_schedule_completed(self, mock_nexus_db, mock_db_connection):
         """Test marking a schedule as completed."""
         _, mock_cursor = mock_db_connection
