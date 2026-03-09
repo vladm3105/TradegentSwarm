@@ -32,6 +32,7 @@ export default function KnowledgePage() {
   const [activeTab, setActiveTab] = useState('search');
   const [stats, setStats] = useState<KBStats | null>(null);
   const [analyses, setAnalyses] = useState<AnalysisSummary[]>([]);
+  const [analysisTotal, setAnalysisTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,6 +59,7 @@ export default function KnowledgePage() {
         },
       });
       setAnalyses(analysesRes.analyses);
+      setAnalysisTotal(analysesRes.total);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load knowledge base stats');
     } finally {
@@ -156,7 +158,7 @@ export default function KnowledgePage() {
             {loading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              <p className="text-2xl font-bold">{analyses.length}</p>
+                <p className="text-2xl font-bold">{analysisTotal}</p>
             )}
           </CardContent>
         </Card>

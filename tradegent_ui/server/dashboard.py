@@ -1,7 +1,7 @@
 """Dashboard API endpoints for tradegent_ui frontend."""
 from datetime import datetime, timedelta
 from typing import Optional
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 import psycopg
 from psycopg.rows import dict_row
@@ -205,19 +205,7 @@ async def get_dashboard_stats():
                     watchlist_count=int(watchlist["count"]) if watchlist else 0,
                 )
     except Exception as e:
-        # Return mock data if database unavailable
-        return DashboardStats(
-            total_pnl=12547.82,
-            total_pnl_pct=8.32,
-            open_positions=5,
-            total_market_value=163250.0,
-            today_pnl=342.15,
-            today_pnl_pct=0.45,
-            win_rate=68.5,
-            total_trades=127,
-            active_analyses=3,
-            watchlist_count=8,
-        )
+        raise HTTPException(status_code=503, detail=f"Dashboard stats unavailable: {e}")
 
 
 @router.get("/pnl", response_model=PnLResponse)
@@ -268,25 +256,8 @@ async def get_pnl_data(period: str = Query("30d", pattern="^(1d|7d|30d|90d)$")):
                 monthly = [MonthlyPnL(**row) for row in cur.fetchall()]
 
                 return PnLResponse(daily=daily, weekly=weekly, monthly=monthly)
-    except Exception:
-        # Return mock data
-        return PnLResponse(
-            daily=[
-                DailyPnL(date="2026-02-25", pnl=250, cumulative=1250),
-                DailyPnL(date="2026-02-26", pnl=-120, cumulative=1130),
-                DailyPnL(date="2026-02-27", pnl=340, cumulative=1470),
-                DailyPnL(date="2026-02-28", pnl=180, cumulative=1650),
-                DailyPnL(date="2026-03-01", pnl=-50, cumulative=1600),
-            ],
-            weekly=[
-                WeeklyPnL(week="2026-W08", pnl=600, trades=12, win_rate=66.7),
-                WeeklyPnL(week="2026-W09", pnl=450, trades=8, win_rate=75.0),
-            ],
-            monthly=[
-                MonthlyPnL(month="2026-02", pnl=1600, trades=45, win_rate=68.9),
-                MonthlyPnL(month="2026-01", pnl=2100, trades=52, win_rate=71.2),
-            ],
-        )
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"PnL data unavailable: {e}")
 
 
 @router.get("/performance", response_model=PerformanceResponse)
@@ -324,16 +295,8 @@ async def get_ticker_performance(limit: int = Query(10, ge=1, le=50)):
                 worst = [TickerPerformance(**row) for row in cur.fetchall()]
 
                 return PerformanceResponse(top_performers=top, worst_performers=worst)
-    except Exception:
-        return PerformanceResponse(
-            top_performers=[
-                TickerPerformance(ticker="NVDA", pnl=2340, pnl_pct=12.5, trades=5, win_rate=80),
-                TickerPerformance(ticker="AMD", pnl=1250, pnl_pct=8.3, trades=4, win_rate=75),
-            ],
-            worst_performers=[
-                TickerPerformance(ticker="TSLA", pnl=-450, pnl_pct=-3.2, trades=3, win_rate=33.3),
-            ],
-        )
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Ticker performance unavailable: {e}")
 
 
 @router.get("/analysis-quality", response_model=AnalysisQualityResponse)
@@ -385,15 +348,7 @@ async def get_analysis_quality():
                 )
     except Exception as e:
         log.error("analysis_quality_error", error=str(e), error_type=type(e).__name__)
-        return AnalysisQualityResponse(
-            gate_pass_rate=72.0,
-            recommendation_distribution={"BUY": 35, "WATCH": 40, "NO_POSITION": 20, "AVOID": 5},
-            accuracy_by_confidence=[
-                ConfidenceBucket(confidence_bucket="60-70%", accuracy=0.65, count=15),
-                ConfidenceBucket(confidence_bucket="70-80%", accuracy=0.72, count=22),
-                ConfidenceBucket(confidence_bucket="80-90%", accuracy=0.81, count=18),
-            ],
-        )
+        raise HTTPException(status_code=503, detail=f"Analysis quality unavailable: {e}")
 
 
 @router.get("/service-health", response_model=ServiceHealthResponse)
@@ -507,11 +462,4 @@ async def get_watchlist_summary():
                 )
     except Exception as e:
         log.error("watchlist_summary_error", error=str(e), error_type=type(e).__name__)
-        return WatchlistSummaryResponse(
-            total=8,
-            by_status={"active": 6, "triggered": 1, "expired": 1},
-            by_priority={"HIGH": 2, "MEDIUM": 3, "LOW": 1},
-            expiring_soon=[
-                WatchlistEntry(ticker="AMD", expires="2026-03-05", trigger_type="PRICE_BELOW"),
-            ],
-        )
+        raise HTTPException(status_code=503, detail=f"Watchlist summary unavailable: {e}")
