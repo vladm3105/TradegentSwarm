@@ -33,6 +33,7 @@ class _FakeResponse:
 @pytest.mark.asyncio
 async def test_gateway_uses_role_route_and_fallback(monkeypatch) -> None:
     calls: list[str] = []
+    flush_calls: list[str] = []
 
     async def _fake_acompletion(**kwargs):
         model = kwargs["model"]
@@ -44,6 +45,11 @@ async def test_gateway_uses_role_route_and_fallback(monkeypatch) -> None:
     import llm_gateway.client as client_mod
 
     monkeypatch.setattr(client_mod.litellm, "acompletion", _fake_acompletion)
+
+    async def _fake_flush() -> None:
+        flush_calls.append("flush")
+
+    monkeypatch.setattr(client_mod, "_flush_litellm_logging_worker", _fake_flush)
 
     gateway = LiteLLMGatewayClient(
         routes={
@@ -65,6 +71,7 @@ async def test_gateway_uses_role_route_and_fallback(monkeypatch) -> None:
     assert result.model_alias == "summarizer_fast"
     assert result.input_tokens == 11
     assert result.output_tokens == 7
+    assert flush_calls == ["flush"]
 
 
 @pytest.mark.asyncio

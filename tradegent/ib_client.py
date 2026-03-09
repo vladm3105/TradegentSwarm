@@ -181,6 +181,27 @@ class IBClient:
         except IBClientError:
             return {}
 
+    def get_historical_data(
+        self,
+        symbol: str,
+        duration: str = "2 D",
+        bar_size: str = "1 day",
+        what_to_show: str = "TRADES",
+    ) -> dict | None:
+        """Get historical bars for fallback quote derivation."""
+        try:
+            return self._call_tool(
+                "get_historical_data",
+                {
+                    "symbol": symbol,
+                    "duration": duration,
+                    "bar_size": bar_size,
+                    "what_to_show": what_to_show,
+                },
+            )
+        except IBClientError:
+            return None
+
     def get_order_status(self, order_id: str) -> dict | None:
         """Get order status by ID."""
         try:

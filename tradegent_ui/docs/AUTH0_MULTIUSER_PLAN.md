@@ -1,5 +1,14 @@
 # Implementation Plan: Auth0 Multi-User Environment
 
+> Status: Historical planning document. Some implementation notes are superseded by current security controls.
+>
+> Current behavior (authoritative):
+> - WebSocket auth uses subprotocol bearer token (`['bearer', '<token>']`), not query-string token transport.
+> - `/api/auth/sync-user` requires authenticated identity and is not a public endpoint.
+> - Demo-token auth requires explicit `ALLOW_DEMO_TOKENS=true` and non-production `APP_ENV`.
+>
+> See: `tradegent_ui/README.md` and `docs/operations/security-remediation-runbook-20260308.md`.
+
 ## Overview
 
 Add Auth0 authentication and multi-user support to the Tradegent UI, enabling user registration, per-user IB accounts, and role-based access control.
@@ -313,7 +322,7 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8081/api/dashboard/stats
 new WebSocket('ws://localhost:8081/ws/agent')
 
 // With token (expect connect)
-new WebSocket('ws://localhost:8081/ws/agent?token=...')
+new WebSocket('ws://localhost:8081/ws/agent', ['bearer', token])
 ```
 
 ---
@@ -1080,17 +1089,15 @@ export interface ApiContext {
 |----------|--------|--------|
 | `/health` | Public | Kubernetes probes |
 | `/ready` | Public | Load balancer checks |
-| `/api/auth/sync-user` | Semi-public* | Called during login flow |
+| `/api/auth/sync-user` | Protected | Requires authenticated identity during login sync |
 | `/api/chat` | Protected | User data |
 | `/api/dashboard/*` | Protected | User data |
 | `/api/task/*` | Protected | User data |
 | `/ws/agent` | Protected | User data |
 
-*`sync-user` should validate the request comes from Auth0 callback.
-
 ```python
 # server/main.py
-PUBLIC_ENDPOINTS = ["/health", "/ready", "/api/auth/sync-user"]
+PUBLIC_ENDPOINTS = ["/health", "/ready"]
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):

@@ -48,11 +48,12 @@ except ImportError:
 _env_path = load_runtime_env(Path(__file__).parent / ".env")
 
 SUPPORTED_AGENT_ENGINES = {"legacy", "adk"}
+MANUAL_CLI_INVOCATION_SOURCE = "cli_manual"
 
 
 def validate_agent_engine() -> str:
     """Validate runtime engine configuration and required dependencies."""
-    engine = os.getenv("AGENT_ENGINE", "legacy").strip().lower()
+    engine = os.getenv("AGENT_ENGINE", "adk").strip().lower()
     adk_required = os.getenv("ADK_REQUIRED", "false").strip().lower() in {
         "1",
         "true",
@@ -301,6 +302,7 @@ def _generate_analysis_output(
     timeout: int | None = None,
     phase: int | None = None,
     phase_name: str | None = None,
+    invocation_source: str = "runtime",
 ) -> str:
     """Dispatch analysis generation to selected engine while preserving legacy output contract."""
     engine = validate_agent_engine()
@@ -312,6 +314,12 @@ def _generate_analysis_output(
             label,
             prompt=prompt,
             allowed_tools=allowed_tools,
+        )
+
+    if invocation_source != MANUAL_CLI_INVOCATION_SOURCE:
+        raise RuntimeError(
+            "AGENT_ENGINE=legacy is allowed only for manual CLI analyze command "
+            f"(invocation_source={invocation_source})"
         )
 
     return call_claude_code(
@@ -1373,6 +1381,7 @@ def _phase1_fresh_analysis(
     ticker: str,
     analysis_type: AnalysisType,
     schedule_id: int | None = None,
+    invocation_source: str = "runtime",
 ) -> AnalysisResult | None:
     """
     Phase 1: Run analysis WITHOUT historical context injection.
@@ -1403,6 +1412,7 @@ def _phase1_fresh_analysis(
         timeout=cfg.phase1_timeout,
         phase=1,
         phase_name="Fresh_analysis",
+        invocation_source=invocation_source,
     )
 
     if not output:
@@ -2385,10 +2395,16 @@ def _post_analysis_workflow(
 
 
 def run_analysis(
-    db: NexusDB, ticker: str, analysis_type: AnalysisType, schedule_id: int | None = None
+    db: NexusDB,
+    ticker: str,
+    analysis_type: AnalysisType,
+    schedule_id: int | None = None,
+    invocation_source: str = "runtime",
 ) -> AnalysisResult | None:
     """
-    Stage 1: Generate analysis via Claude Code.
+    Stage 1: Generate analysis via ADK runtime (default).
+
+    Legacy Claude Code path is allowed only for manual CLI `analyze` invocation.
 
     Uses 4-phase workflow when four_phase_analysis_enabled=True:
         Phase 1: Fresh analysis (no KB context)
@@ -2399,13 +2415,17 @@ def run_analysis(
     Otherwise uses legacy workflow (KB context before analysis).
     """
     if cfg.four_phase_analysis_enabled:
-        return _run_analysis_4phase(db, ticker, analysis_type, schedule_id)
+        return _run_analysis_4phase(db, ticker, analysis_type, schedule_id, invocation_source)
     else:
-        return _legacy_run_analysis(db, ticker, analysis_type, schedule_id)
+        return _legacy_run_analysis(db, ticker, analysis_type, schedule_id, invocation_source)
 
 
 def _run_analysis_4phase(
-    db: NexusDB, ticker: str, analysis_type: AnalysisType, schedule_id: int | None = None
+    db: NexusDB,
+    ticker: str,
+    analysis_type: AnalysisType,
+    schedule_id: int | None = None,
+    invocation_source: str = "runtime",
 ) -> AnalysisResult | None:
     """
     4-Phase analysis workflow: Fresh → Index → Retrieve → Synthesize
@@ -2421,11 +2441,11 @@ def _run_analysis_4phase(
     # Use PipelineSpan for tracing if observability is enabled
     if _otel_enabled:
         return _run_analysis_4phase_traced(
-            db, ticker, analysis_type, schedule_id, trace_id, run_id
+            db, ticker, analysis_type, schedule_id, trace_id, run_id, invocation_source
         )
     else:
         return _run_analysis_4phase_untraced(
-            db, ticker, analysis_type, schedule_id, trace_id, run_id
+            db, ticker, analysis_type, schedule_id, trace_id, run_id, invocation_source
         )
 
 
@@ -2436,6 +2456,7 @@ def _run_analysis_4phase_traced(
     schedule_id: int | None,
     trace_id: str,
     run_id: int | None,
+    invocation_source: str,
 ) -> AnalysisResult | None:
     """4-Phase workflow with OpenTelemetry tracing."""
     import time
@@ -2450,7 +2471,13 @@ def _run_analysis_4phase_traced(
             with pipeline.phase(1, "Fresh_analysis") as phase1_span:
                 log.info(f"[{trace_id}] Phase 1: Fresh analysis")
                 p1_start = time.perf_counter()
-                result = _phase1_fresh_analysis(db, ticker, analysis_type, schedule_id)
+                result = _phase1_fresh_analysis(
+                    db,
+                    ticker,
+                    analysis_type,
+                    schedule_id,
+                    invocation_source,
+                )
                 p1_duration = (time.perf_counter() - p1_start) * 1000
 
                 if _otel_metrics:
@@ -2608,12 +2635,19 @@ def _run_analysis_4phase_untraced(
     schedule_id: int | None,
     trace_id: str,
     run_id: int | None,
+    invocation_source: str,
 ) -> AnalysisResult | None:
     """4-Phase workflow without tracing (fallback)."""
     try:
         # Phase 1: Fresh analysis (no KB context)
         log.info(f"[{trace_id}] Phase 1: Fresh analysis")
-        result = _phase1_fresh_analysis(db, ticker, analysis_type, schedule_id)
+        result = _phase1_fresh_analysis(
+            db,
+            ticker,
+            analysis_type,
+            schedule_id,
+            invocation_source,
+        )
         if not result:
             if run_id and schedule_id:
                 db.mark_schedule_completed(
@@ -2722,7 +2756,11 @@ def _run_analysis_4phase_untraced(
 
 
 def _legacy_run_analysis(
-    db: NexusDB, ticker: str, analysis_type: AnalysisType, schedule_id: int | None = None
+    db: NexusDB,
+    ticker: str,
+    analysis_type: AnalysisType,
+    schedule_id: int | None = None,
+    invocation_source: str = "runtime",
 ) -> AnalysisResult | None:
     """
     Legacy analysis workflow (pre-4-phase).
@@ -2746,6 +2784,7 @@ def _legacy_run_analysis(
         prompt,
         cfg.allowed_tools_analysis,
         f"ANALYZE-{ticker}",
+        invocation_source=invocation_source,
     )
 
     if not output:
@@ -4838,7 +4877,12 @@ def main():
             print("✅ Schema initialized")
 
         elif args.cmd == "analyze":
-            r = run_analysis(db, args.ticker.upper(), AnalysisType(args.type))
+            r = run_analysis(
+                db,
+                args.ticker.upper(),
+                AnalysisType(args.type),
+                invocation_source=MANUAL_CLI_INVOCATION_SOURCE,
+            )
             if r:
                 print(
                     f"File: {r.filepath}\nGate: {'PASS' if r.gate_passed else 'FAIL'}\nRec: {r.recommendation} ({r.confidence}%)"

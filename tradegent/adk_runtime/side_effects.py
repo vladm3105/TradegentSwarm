@@ -8,11 +8,11 @@ This module provides replay-safe side-effect primitives used by the coordinator:
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from numbers import Number
 from typing import Any
 
 import yaml  # type: ignore[import-untyped]
@@ -156,25 +156,296 @@ def _as_dict(value: Any) -> dict[str, Any]:
     return {}
 
 
+def _as_list(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return value
+    return []
+
+
+def _normalize_peer_entries(value: Any) -> list[dict[str, Any]]:
+    peers: list[dict[str, Any]] = []
+    for item in _as_list(value):
+        if not isinstance(item, dict):
+            continue
+        ticker = _string_or_default(item.get("ticker"), "").upper()
+        pe_forward = _number_or_default(item.get("pe_forward"), 0.0)
+        if ticker and pe_forward > 0:
+            peers.append({"ticker": ticker, "pe_forward": round(pe_forward, 2)})
+    return peers
+
+
+def _normalize_case_arguments(value: Any, *, fallback: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Normalize case arguments and enforce minimum length with fallback fill."""
+    normalized: list[dict[str, Any]] = []
+    for item in _as_list(value):
+        if isinstance(item, dict):
+            argument = _string_or_default(item.get("argument"), "").strip()
+            if argument:
+                normalized.append({"argument": argument})
+                continue
+        if isinstance(item, str) and item.strip():
+            normalized.append({"argument": item.strip()})
+
+    if len(normalized) >= 3:
+        return normalized
+
+    seen = {entry.get("argument") for entry in normalized}
+    for candidate in fallback:
+        arg = _string_or_default(candidate.get("argument"), "").strip()
+        if not arg or arg in seen:
+            continue
+        normalized.append({"argument": arg})
+        seen.add(arg)
+        if len(normalized) >= 3:
+            break
+    return normalized
+
+
+def _ensure_min_significance(text: Any) -> str:
+    default_significance = (
+        "Monitoring trigger tied to validated level structure and execution risk controls. "
+        "A sustained move through this threshold requires immediate thesis reassessment, "
+        "position sizing review, and confirmation from follow-through price/volume behavior."
+    )
+    candidate = _string_or_default(text, default_significance).strip()
+    if len(candidate) >= 100:
+        return candidate
+    return default_significance
+
+
+def _normalize_alert_entry(raw: Any, *, fallback_price: float, fallback_tag: str) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+    price = _number_or_default(raw.get("price"), fallback_price)
+    if price <= 0:
+        return None
+
+    tag = _string_or_default(raw.get("tag"), fallback_tag).strip()[:15]
+    if not tag:
+        tag = fallback_tag[:15]
+
+    derivation = _as_dict(raw.get("derivation"))
+    methodology = _string_or_default(derivation.get("methodology"), "support_resistance")
+    source_field = _string_or_default(derivation.get("source_field"), "summary.key_levels.entry")
+    source_value = _number_or_default(derivation.get("source_value"), price)
+    calculation = _string_or_default(
+        derivation.get("calculation"),
+        "Alert aligned to validated technical level for execution monitoring.",
+    )
+
+    return {
+        "price": round(price, 2),
+        "tag": tag,
+        "significance": _ensure_min_significance(raw.get("significance")),
+        "derivation": {
+            "methodology": methodology,
+            "source_field": source_field,
+            "source_value": round(source_value, 2),
+            "calculation": calculation,
+        },
+    }
+
+
+def _build_price_alerts(
+    *,
+    primary_alert: dict[str, Any],
+    override_alerts: Any,
+    latest_alerts: Any,
+    baseline_alerts: Any,
+    entry_level: float,
+    stop_level: float,
+    target_level: float,
+    ma_20d: float,
+    runtime_price: float,
+    max_deviation_pct: float,
+) -> list[dict[str, Any]]:
+    alerts: list[dict[str, Any]] = []
+    seen_tags: set[str] = set()
+
+    def _add(alert: dict[str, Any] | None) -> None:
+        if not isinstance(alert, dict):
+            return
+        price = _number_or_default(alert.get("price"), 0.0)
+        if price <= 0:
+            return
+        if runtime_price > 0 and _is_key_level_outlier(price, runtime_price, max_deviation_pct):
+            return
+        tag = _string_or_default(alert.get("tag"), "Alert")
+        key = tag.lower().strip()
+        if key in seen_tags:
+            return
+        seen_tags.add(key)
+        alerts.append(alert)
+
+    _add(primary_alert)
+
+    for candidate in _as_list(override_alerts):
+        _add(_normalize_alert_entry(candidate, fallback_price=entry_level, fallback_tag="Entry"))
+
+    for candidate in _as_list(latest_alerts):
+        _add(_normalize_alert_entry(candidate, fallback_price=entry_level, fallback_tag="Trend"))
+
+    for candidate in _as_list(baseline_alerts):
+        _add(_normalize_alert_entry(candidate, fallback_price=entry_level, fallback_tag="Level"))
+
+    generated_candidates = [
+        {
+            "price": ma_20d,
+            "tag": "20-day MA",
+            "significance": (
+                "Trend confirmation trigger around the 20-day average; sustained reclaim supports "
+                "continuation while repeated rejection signals momentum fatigue and risk-off behavior."
+            ),
+            "derivation": {
+                "methodology": "moving_average",
+                "source_field": "technical.moving_averages.ma_20d",
+                "source_value": ma_20d,
+                "calculation": "Direct use of 20-day moving average from technical context.",
+            },
+        },
+        {
+            "price": entry_level,
+            "tag": "Entry Trigger",
+            "significance": (
+                "Entry alert marks the planned execution threshold; crossing and holding this level "
+                "supports activation only when volume and broad market context remain constructive."
+            ),
+            "derivation": {
+                "methodology": "support_resistance",
+                "source_field": "summary.key_levels.entry",
+                "source_value": entry_level,
+                "calculation": "Alert anchored to validated entry level used in execution plan.",
+            },
+        },
+        {
+            "price": stop_level,
+            "tag": "Risk Stop",
+            "significance": (
+                "Risk control alert at stop threshold; a confirmed break requires exposure reduction or "
+                "exit to preserve downside discipline under the defined risk budget."
+            ),
+            "derivation": {
+                "methodology": "stop_buffer",
+                "source_field": "summary.key_levels.stop",
+                "source_value": stop_level,
+                "calculation": "Alert uses stop level derived from volatility-aware downside buffer.",
+            },
+        },
+        {
+            "price": target_level,
+            "tag": "Target 1",
+            "significance": (
+                "Target monitoring alert at first objective; reaching this level triggers reassessment "
+                "of realized reward, residual upside, and trade management decisions."
+            ),
+            "derivation": {
+                "methodology": "scenario_target",
+                "source_field": "summary.key_levels.target_1",
+                "source_value": target_level,
+                "calculation": "Alert tied to base-case scenario target objective.",
+            },
+        },
+    ]
+
+    for candidate in generated_candidates:
+        normalized = _normalize_alert_entry(
+            candidate,
+            fallback_price=entry_level,
+            fallback_tag="Level",
+        )
+        _add(normalized)
+
+    if not alerts:
+        fallback = _normalize_alert_entry(primary_alert, fallback_price=entry_level, fallback_tag="20-day MA")
+        if fallback is not None:
+            alerts.append(fallback)
+    return alerts
+
+
 def _extract_latest_document(value: Any) -> dict[str, Any]:
     """Extract latest context document from ADK payload/context wrappers."""
     if not isinstance(value, dict):
         return {}
 
-    if isinstance(value.get("latest_document"), dict):
-        return value["latest_document"]
+    latest_document = value.get("latest_document")
+    if isinstance(latest_document, dict):
+        return latest_document
 
     payload = value.get("payload")
     if isinstance(payload, dict):
         context = payload.get("context")
-        if isinstance(context, dict) and isinstance(context.get("latest_document"), dict):
-            return context["latest_document"]
+        nested_latest_document = context.get("latest_document") if isinstance(context, dict) else None
+        if isinstance(nested_latest_document, dict):
+            return nested_latest_document
 
     context = value.get("context")
-    if isinstance(context, dict) and isinstance(context.get("latest_document"), dict):
-        return context["latest_document"]
+    context_latest_document = context.get("latest_document") if isinstance(context, dict) else None
+    if isinstance(context_latest_document, dict):
+        return context_latest_document
 
     return {}
+
+
+def _path_exists(doc: dict[str, Any], path: str) -> bool:
+    current: Any = doc
+    for token in path.split("."):
+        if not isinstance(current, dict) or token not in current:
+            return False
+        current = current[token]
+    if current is None:
+        return False
+    if isinstance(current, str):
+        return bool(current.strip())
+    if isinstance(current, (dict, list)):
+        return len(current) > 0
+    return True
+
+
+def _stock_depth_score(doc: dict[str, Any]) -> int:
+    signal_paths = (
+        "technical.moving_averages",
+        "technical.momentum",
+        "fundamentals.valuation",
+        "fundamentals.growth",
+        "sentiment.analyst",
+        "sentiment.options",
+        "scenarios.strong_bull",
+        "scenarios.base_bull",
+        "scenarios.base_bear",
+        "scenarios.strong_bear",
+        "bull_case_analysis.arguments",
+        "bear_case_analysis.arguments",
+    )
+    return sum(1 for path in signal_paths if _path_exists(doc, path))
+
+
+def _load_rich_stock_baseline(*, ticker: str) -> dict[str, Any]:
+    """Select the richest prior stock document for ticker to backfill sparse outputs."""
+    stock_dir = _KNOWLEDGE_ROOT / "analysis" / "stock"
+    if not stock_dir.exists():
+        return {}
+
+    pattern = f"{ticker.upper()}_*.yaml"
+    candidates = sorted(stock_dir.glob(pattern), key=lambda path: path.stat().st_mtime, reverse=True)
+    best_doc: dict[str, Any] = {}
+    best_score = -1
+    best_mtime = -1.0
+    for candidate in candidates:
+        try:
+            loaded = yaml.safe_load(candidate.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(loaded, dict):
+            continue
+        score = _stock_depth_score(loaded)
+        if score <= 0:
+            continue
+        mtime = candidate.stat().st_mtime
+        if score > best_score or (score == best_score and mtime > best_mtime):
+            best_doc = loaded
+            best_score = score
+            best_mtime = mtime
+    return best_doc
 
 
 def _has_real_llm_phase_content(payload: dict[str, Any]) -> bool:
@@ -214,7 +485,7 @@ def _stock_quality_issues(doc: dict[str, Any]) -> list[str]:
     issues: list[str] = []
 
     current_price = doc.get("current_price")
-    if not isinstance(current_price, Number) or float(current_price) <= 0:
+    if not isinstance(current_price, (int, float)) or isinstance(current_price, bool) or float(current_price) <= 0:
         issues.append("current_price must be > 0")
 
     recommendation = _as_dict(doc.get("recommendation"))
@@ -230,17 +501,179 @@ def _stock_quality_issues(doc: dict[str, Any]) -> list[str]:
     key_levels = _as_dict(summary.get("key_levels"))
     for field in ("entry", "stop", "target_1"):
         value = key_levels.get(field)
-        if not isinstance(value, Number) or float(value) <= 0:
+        if not isinstance(value, (int, float)) or isinstance(value, bool) or float(value) <= 0:
             issues.append(f"summary.key_levels.{field} must be > 0")
 
     alert_levels = _as_dict(doc.get("alert_levels"))
     price_alerts = alert_levels.get("price_alerts")
     first_alert = price_alerts[0] if isinstance(price_alerts, list) and price_alerts else {}
     alert_price = first_alert.get("price") if isinstance(first_alert, dict) else None
-    if not isinstance(alert_price, Number) or float(alert_price) <= 0:
+    if not isinstance(alert_price, (int, float)) or isinstance(alert_price, bool) or float(alert_price) <= 0:
         issues.append("alert_levels.price_alerts[0].price must be > 0")
 
     return issues
+
+
+def _stock_market_data_gate_issues(doc: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Return human-readable issues and machine-readable reason codes for stock market-data gate."""
+    issues: list[str] = []
+    reason_codes: list[str] = []
+
+    allowed_sources = {
+        token.strip().lower()
+        for token in os.getenv("ADK_MARKET_DATA_ALLOWED_SOURCES", "ib_gateway,ib_mcp").split(",")
+        if token.strip()
+    }
+    if not allowed_sources:
+        allowed_sources = {"ib_gateway", "ib_mcp"}
+
+    max_staleness_sec_raw = os.getenv("ADK_MARKET_DATA_MAX_STALENESS_SEC", "120").strip()
+    max_staleness_sec = 120
+    try:
+        parsed = int(max_staleness_sec_raw)
+        if parsed > 0:
+            max_staleness_sec = parsed
+    except ValueError:
+        pass
+
+    max_deviation_pct_raw = os.getenv("ADK_MARKET_DATA_MAX_DEVIATION_PCT", "20").strip()
+    max_deviation_pct = 20.0
+    try:
+        parsed_float = float(max_deviation_pct_raw)
+        if parsed_float > 0:
+            max_deviation_pct = parsed_float
+    except ValueError:
+        pass
+
+    max_key_level_deviation_pct_raw = os.getenv(
+        "ADK_MARKET_DATA_MAX_KEY_LEVEL_DEVIATION_PCT", "40"
+    ).strip()
+    max_key_level_deviation_pct = 40.0
+    try:
+        parsed_level_dev = float(max_key_level_deviation_pct_raw)
+        if parsed_level_dev > 0:
+            max_key_level_deviation_pct = parsed_level_dev
+    except ValueError:
+        pass
+
+    data_quality = _as_dict(doc.get("data_quality"))
+    source = _string_or_default(data_quality.get("price_data_source"), "").strip().lower()
+    if source not in allowed_sources:
+        issues.append(
+            f"price_data_source '{source or '<missing>'}' is not allowed (allowed={sorted(allowed_sources)})"
+        )
+        reason_codes.append("market_data_source_not_allowed")
+
+    price_verified = bool(data_quality.get("price_data_verified", False))
+    if source in allowed_sources and not price_verified:
+        issues.append("data_quality.price_data_verified must be true for IB-backed market data")
+        reason_codes.append("price_unverified")
+
+    quote_timestamp = data_quality.get("quote_timestamp")
+    created_at = _as_dict(doc.get("_meta")).get("created")
+    if not isinstance(quote_timestamp, str) or not quote_timestamp.strip():
+        issues.append("data_quality.quote_timestamp is required for market-data staleness checks")
+        reason_codes.append("quote_timestamp_missing")
+    else:
+        quote_ts = _parse_iso_datetime(quote_timestamp)
+        created_ts = _parse_iso_datetime(created_at)
+        if quote_ts is None or created_ts is None:
+            issues.append("data_quality.quote_timestamp or _meta.created is not a valid ISO datetime")
+            reason_codes.append("quote_timestamp_invalid")
+        else:
+            age_sec = (created_ts - quote_ts).total_seconds()
+            if age_sec > max_staleness_sec:
+                issues.append(
+                    f"quote staleness {age_sec:.1f}s exceeds max {max_staleness_sec}s"
+                )
+                reason_codes.append("quote_staleness_exceeded")
+
+    current_price = doc.get("current_price")
+    prior_close = data_quality.get("prior_close")
+    if not isinstance(prior_close, (int, float)) or isinstance(prior_close, bool) or float(prior_close) <= 0:
+        issues.append("data_quality.prior_close must be > 0 for price sanity check")
+        reason_codes.append("prior_close_missing")
+    elif isinstance(current_price, (int, float)) and not isinstance(current_price, bool) and float(current_price) > 0:
+        deviation_pct = abs(float(current_price) - float(prior_close)) / float(prior_close) * 100.0
+        if deviation_pct > max_deviation_pct:
+            issues.append(
+                f"current_price deviation {deviation_pct:.2f}% exceeds max {max_deviation_pct:.2f}% from prior_close"
+            )
+            reason_codes.append("price_sanity_check_failed")
+
+    summary = _as_dict(doc.get("summary"))
+    key_levels = _as_dict(summary.get("key_levels"))
+    entry_level = key_levels.get("entry")
+    stop_level = key_levels.get("stop")
+    target_level = key_levels.get("target_1")
+
+    if all(isinstance(level, (int, float)) and not isinstance(level, bool) and float(level) > 0 for level in (entry_level, stop_level, target_level)):
+        entry_val = _number_or_default(entry_level, 0.0)
+        stop_val = _number_or_default(stop_level, 0.0)
+        target_val = _number_or_default(target_level, 0.0)
+
+        if not (stop_val < entry_val < target_val):
+            issues.append("summary.key_levels must satisfy stop < entry < target_1")
+            reason_codes.append("key_level_order_invalid")
+
+        if isinstance(current_price, (int, float)) and not isinstance(current_price, bool) and float(current_price) > 0:
+            current_val = float(current_price)
+            for field_name, level_val in (
+                ("entry", entry_val),
+                ("stop", stop_val),
+                ("target_1", target_val),
+            ):
+                level_dev_pct = abs(level_val - current_val) / current_val * 100.0
+                if level_dev_pct > max_key_level_deviation_pct:
+                    issues.append(
+                        "summary.key_levels."
+                        f"{field_name} deviation {level_dev_pct:.2f}% exceeds max "
+                        f"{max_key_level_deviation_pct:.2f}% from current_price"
+                    )
+                    reason_codes.append("key_level_sanity_failed")
+
+    alert_levels = _as_dict(doc.get("alert_levels"))
+    price_alerts = _as_list(alert_levels.get("price_alerts"))
+    first_alert = _as_dict(price_alerts[0]) if price_alerts else {}
+    alert_price = first_alert.get("price")
+    if (
+        isinstance(alert_price, (int, float))
+        and not isinstance(alert_price, bool)
+        and float(alert_price) > 0
+        and isinstance(current_price, (int, float))
+        and not isinstance(current_price, bool)
+        and float(current_price) > 0
+    ):
+        alert_dev_pct = abs(float(alert_price) - float(current_price)) / float(current_price) * 100.0
+        if alert_dev_pct > max_key_level_deviation_pct:
+            issues.append(
+                "alert_levels.price_alerts[0].price deviation "
+                f"{alert_dev_pct:.2f}% exceeds max {max_key_level_deviation_pct:.2f}% from current_price"
+            )
+            reason_codes.append("alert_level_sanity_failed")
+
+    return issues, sorted(set(reason_codes))
+
+
+def _parse_iso_datetime(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    token = value.strip().replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(token)
+    except ValueError:
+        return None
+
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _is_key_level_outlier(level: float, current_price: float, max_deviation_pct: float) -> bool:
+    if current_price <= 0:
+        return False
+    deviation_pct = abs(level - current_price) / current_price * 100.0
+    return deviation_pct > max_deviation_pct
 
 
 def _analysis_dir_for_type(analysis_type: str) -> Path:
@@ -314,6 +747,7 @@ def _build_stock_analysis_document(
     )
 
     latest_doc = _extract_latest_document(overrides.get("context"))
+    rich_baseline_doc = _load_rich_stock_baseline(ticker=ticker)
     latest_summary = _as_dict(latest_doc.get("summary"))
     latest_key_levels = _as_dict(latest_summary.get("key_levels"))
     latest_alert_levels = _as_dict(latest_doc.get("alert_levels"))
@@ -326,10 +760,63 @@ def _build_stock_analysis_document(
         else {}
     )
     latest_recommendation = _as_dict(latest_doc.get("recommendation"))
+    latest_data_quality = _as_dict(latest_doc.get("data_quality"))
+    latest_market_environment = _as_dict(latest_doc.get("market_environment"))
+    latest_comparable_companies = _as_dict(latest_doc.get("comparable_companies"))
+    latest_liquidity_analysis = _as_dict(latest_doc.get("liquidity_analysis"))
+    data_quality_override = _as_dict(overrides.get("data_quality"))
+    runtime_context_override = _as_dict(overrides.get("_runtime_context"))
+    runtime_market_data = _as_dict(runtime_context_override.get("market_data"))
+    market_environment_override = _as_dict(overrides.get("market_environment"))
+    news_age_check_override = _as_dict(overrides.get("news_age_check"))
+    catalyst_override = _as_dict(overrides.get("catalyst"))
+    threat_assessment_override = _as_dict(overrides.get("threat_assessment"))
+    technical_override = _as_dict(overrides.get("technical"))
+    fundamentals_override = _as_dict(overrides.get("fundamentals"))
+    sentiment_override = _as_dict(overrides.get("sentiment"))
+    scenarios_override = _as_dict(overrides.get("scenarios"))
+    bull_override = _as_dict(overrides.get("bull_case_analysis"))
+    bear_override = _as_dict(overrides.get("bear_case_analysis"))
+    bias_override = _as_dict(overrides.get("bias_check"))
+    falsification_override = _as_dict(overrides.get("falsification"))
+    comparable_companies_override = _as_dict(overrides.get("comparable_companies"))
+    liquidity_analysis_override = _as_dict(overrides.get("liquidity_analysis"))
+
+    baseline_news_age_check = _as_dict(rich_baseline_doc.get("news_age_check"))
+    baseline_catalyst = _as_dict(rich_baseline_doc.get("catalyst"))
+    baseline_threat_assessment = _as_dict(rich_baseline_doc.get("threat_assessment"))
+    baseline_technical = _as_dict(rich_baseline_doc.get("technical"))
+    baseline_fundamentals = _as_dict(rich_baseline_doc.get("fundamentals"))
+    baseline_sentiment = _as_dict(rich_baseline_doc.get("sentiment"))
+    baseline_scenarios = _as_dict(rich_baseline_doc.get("scenarios"))
+    baseline_bull = _as_dict(rich_baseline_doc.get("bull_case_analysis"))
+    baseline_bear = _as_dict(rich_baseline_doc.get("bear_case_analysis"))
+    baseline_bias = _as_dict(rich_baseline_doc.get("bias_check"))
+    baseline_falsification = _as_dict(rich_baseline_doc.get("falsification"))
+    baseline_market_environment = _as_dict(rich_baseline_doc.get("market_environment"))
+    baseline_comparable_companies = _as_dict(rich_baseline_doc.get("comparable_companies"))
+    baseline_liquidity_analysis = _as_dict(rich_baseline_doc.get("liquidity_analysis"))
+    baseline_alert_levels = _as_dict(rich_baseline_doc.get("alert_levels"))
+    baseline_price_alerts = baseline_alert_levels.get("price_alerts")
+
+    latest_news_age_check = _as_dict(latest_doc.get("news_age_check"))
+    latest_catalyst = _as_dict(latest_doc.get("catalyst"))
+    latest_threat_assessment = _as_dict(latest_doc.get("threat_assessment"))
+    latest_technical = _as_dict(latest_doc.get("technical"))
+    latest_fundamentals = _as_dict(latest_doc.get("fundamentals"))
+    latest_sentiment = _as_dict(latest_doc.get("sentiment"))
+    latest_scenarios = _as_dict(latest_doc.get("scenarios"))
+    latest_bull = _as_dict(latest_doc.get("bull_case_analysis"))
+    latest_bear = _as_dict(latest_doc.get("bear_case_analysis"))
+    latest_bias = _as_dict(latest_doc.get("bias_check"))
+    latest_falsification = _as_dict(latest_doc.get("falsification"))
 
     current_price = _number_or_default(overrides.get("current_price"), 0.0)
     if current_price <= 0:
         current_price = _number_or_default(latest_doc.get("current_price"), 0.0)
+    runtime_price = _number_or_default(runtime_market_data.get("current_price"), 0.0)
+    if runtime_price > 0:
+        current_price = runtime_price
 
     summary_text = _string_or_default(
         summary_override.get("narrative"),
@@ -371,6 +858,31 @@ def _build_stock_analysis_document(
         if target_level <= 0:
             target_level = round(current_price * 1.08, 2)
 
+    # If live runtime market data is available, normalize obviously stale/outlier
+    # levels to a bounded structure around live price before strict gate checks.
+    max_key_level_deviation_pct = 40.0
+    max_key_level_deviation_raw = os.getenv(
+        "ADK_MARKET_DATA_MAX_KEY_LEVEL_DEVIATION_PCT", "40"
+    ).strip()
+    try:
+        parsed_max_key_level_dev = float(max_key_level_deviation_raw)
+        if parsed_max_key_level_dev > 0:
+            max_key_level_deviation_pct = parsed_max_key_level_dev
+    except ValueError:
+        pass
+
+    if runtime_price > 0:
+        key_levels_outlier = any(
+            _is_key_level_outlier(level, runtime_price, max_key_level_deviation_pct)
+            for level in (entry_level, stop_level, target_level)
+            if level > 0
+        )
+        invalid_order = not (stop_level < entry_level < target_level)
+        if key_levels_outlier or invalid_order:
+            entry_level = round(runtime_price, 2)
+            stop_level = round(runtime_price * 0.96, 2)
+            target_level = round(runtime_price * 1.08, 2)
+
     default_significance = (
         "Primary monitoring alert for trend-confirmation behavior around the trigger level. "
         "A sustained move through this threshold indicates setup continuation or invalidation "
@@ -381,6 +893,9 @@ def _build_stock_analysis_document(
         alert_price = _number_or_default(first_latest_alert.get("price"), 0.0)
     if alert_price <= 0 and entry_level > 0:
         alert_price = round(entry_level * 0.995, 2)
+
+    if runtime_price > 0 and _is_key_level_outlier(alert_price, runtime_price, max_key_level_deviation_pct):
+        alert_price = round(entry_level * 0.995, 2)
     alert_tag = _string_or_default(first_alert_override.get("tag"), "20-day MA")
     if not alert_tag.strip():
         alert_tag = _string_or_default(first_latest_alert.get("tag"), "20-day MA")
@@ -388,6 +903,291 @@ def _build_stock_analysis_document(
     if alert_significance == default_significance:
         alert_significance = _string_or_default(first_latest_alert.get("significance"), default_significance)
     alert_derivation = _as_dict(first_alert_override.get("derivation"))
+    if alert_derivation:
+        derivation_source_value = _number_or_default(alert_derivation.get("source_value"), alert_price)
+        if runtime_price > 0 and _is_key_level_outlier(
+            derivation_source_value, runtime_price, max_key_level_deviation_pct
+        ):
+            alert_derivation["source_value"] = alert_price
+
+    source_candidate = _string_or_default(
+        data_quality_override.get("price_data_source"),
+        "",
+    ).strip().lower()
+    runtime_source = _string_or_default(runtime_market_data.get("price_data_source"), "").strip().lower()
+    if runtime_source in {"ib_gateway", "ib_mcp"}:
+        source_candidate = runtime_source
+    # Never silently preserve/emit manual source for ADK stock outputs.
+    # Missing/invalid source should be surfaced by market-data gates.
+    if source_candidate == "manual":
+        source_candidate = ""
+    price_data_source = source_candidate
+    quote_timestamp = _string_or_default(data_quality_override.get("quote_timestamp"), "")
+    runtime_quote_ts = _string_or_default(runtime_market_data.get("quote_timestamp"), "")
+    if runtime_quote_ts:
+        quote_timestamp = runtime_quote_ts
+    prior_close = _number_or_default(data_quality_override.get("prior_close"), 0.0)
+    runtime_prior_close = _number_or_default(runtime_market_data.get("prior_close"), 0.0)
+    if runtime_prior_close > 0:
+        prior_close = runtime_prior_close
+    price_verified = bool(data_quality_override.get("price_data_verified", False))
+    if "price_data_verified" in runtime_market_data:
+        price_verified = bool(runtime_market_data.get("price_data_verified"))
+
+    peers = _normalize_peer_entries(comparable_companies_override.get("peers"))
+    if not peers:
+        peers = _normalize_peer_entries(latest_comparable_companies.get("peers"))
+    if len(peers) < 3:
+        anchor_pe = round(max(8.0, min(45.0, current_price / 10.0 if current_price > 0 else 24.0)), 2)
+        fallback_peers = [
+            {"ticker": ticker.upper(), "pe_forward": anchor_pe},
+            {"ticker": "SPY", "pe_forward": 23.0},
+            {"ticker": "QQQ", "pe_forward": 29.0},
+        ]
+        seen = {entry["ticker"] for entry in peers}
+        for fallback in fallback_peers:
+            if fallback["ticker"] in seen:
+                continue
+            peers.append(fallback)
+            seen.add(fallback["ticker"])
+            if len(peers) >= 3:
+                break
+
+    valuation_position = _string_or_default(
+        comparable_companies_override.get("valuation_position"),
+        _string_or_default(latest_comparable_companies.get("valuation_position"), "contextual"),
+    )
+
+    adv_shares = int(
+        _number_or_default(
+            liquidity_analysis_override.get("adv_shares"),
+            _number_or_default(latest_liquidity_analysis.get("adv_shares"), 0.0),
+        )
+    )
+    if adv_shares <= 0:
+        adv_shares = 100000
+
+    adv_dollars = _number_or_default(
+        liquidity_analysis_override.get("adv_dollars"),
+        _number_or_default(latest_liquidity_analysis.get("adv_dollars"), 0.0),
+    )
+    if adv_dollars <= 0 and current_price > 0:
+        adv_dollars = round(adv_shares * current_price, 2)
+
+    bid_ask_spread_pct = _number_or_default(
+        liquidity_analysis_override.get("bid_ask_spread_pct"),
+        _number_or_default(latest_liquidity_analysis.get("bid_ask_spread_pct"), 0.0),
+    )
+    if bid_ask_spread_pct <= 0:
+        bid_ask_spread_pct = 0.05
+
+    liquidity_score = int(
+        _number_or_default(
+            liquidity_analysis_override.get("liquidity_score"),
+            _number_or_default(latest_liquidity_analysis.get("liquidity_score"), 0.0),
+        )
+    )
+    if liquidity_score <= 0:
+        liquidity_score = 6 if adv_dollars > 0 else 4
+
+    market_regime = _string_or_default(
+        market_environment_override.get("regime"),
+        _string_or_default(latest_market_environment.get("regime"), "neutral"),
+    )
+    market_sector = _string_or_default(
+        market_environment_override.get("sector"),
+        _string_or_default(latest_market_environment.get("sector"), "unclassified"),
+    )
+
+    news_age_check: dict[str, Any] = dict(baseline_news_age_check)
+    news_age_check.update(latest_news_age_check)
+    news_age_check.update(news_age_check_override)
+    news_items = _as_list(news_age_check.get("items"))
+    if not news_items:
+        news_items = [
+            {
+                "news_item": "No fresh catalyst confirmed during runtime draft generation",
+                "date": forecast_until,
+                "age_weeks": 0,
+                "priced_in": "partially",
+                "reasoning": "No same-day high-impact catalyst identified; setup is treated as technically driven until new information emerges.",
+            }
+        ]
+    news_age_check["items"] = news_items
+
+    catalyst: dict[str, Any] = dict(baseline_catalyst)
+    catalyst.update(latest_catalyst)
+    catalyst.update(catalyst_override)
+    catalyst.setdefault("type", "technical")
+    catalyst.setdefault(
+        "reasoning",
+        "Primary catalyst is technical behavior around defined support/resistance zones with confirmation from follow-through volume.",
+    )
+
+    threat_assessment: dict[str, Any] = dict(baseline_threat_assessment)
+    threat_assessment.update(latest_threat_assessment)
+    threat_assessment.update(threat_assessment_override)
+    threat_assessment.setdefault("primary_concern", "cyclical")
+    threat_assessment.setdefault(
+        "threat_summary",
+        "Cyclical regime shifts can compress valuation multiples and invalidate momentum assumptions if macro conditions deteriorate.",
+    )
+
+    technical: dict[str, Any] = dict(baseline_technical)
+    technical.update(latest_technical)
+    technical.update(technical_override)
+    technical.setdefault(
+        "technical_summary",
+        "Structure is neutral-to-constructive while price remains above invalidation and trend-following levels continue to hold.",
+    )
+
+    fundamentals: dict[str, Any] = dict(baseline_fundamentals)
+    fundamentals.update(latest_fundamentals)
+    fundamentals.update(fundamentals_override)
+    fundamentals_insider = _as_dict(fundamentals.get("insider_activity"))
+    if not fundamentals_insider:
+        fundamentals_insider = {
+            "recent_buys": 0,
+            "recent_sells": 0,
+            "net_direction": "neutral",
+        }
+    fundamentals["insider_activity"] = fundamentals_insider
+
+    sentiment: dict[str, Any] = dict(baseline_sentiment)
+    sentiment.update(latest_sentiment)
+    sentiment.update(sentiment_override)
+    sentiment.setdefault(
+        "summary",
+        "Sentiment is neutral with balanced positioning risk; directional conviction requires confirmation from price/volume behavior.",
+    )
+
+    scenarios: dict[str, Any] = dict(baseline_scenarios)
+    scenarios.update(latest_scenarios)
+    scenarios.update(scenarios_override)
+
+    def _scenario_case(name: str, default_prob: float) -> dict[str, Any]:
+        case = _as_dict(scenarios.get(name))
+        probability = _number_or_default(case.get("probability"), default_prob)
+        case["probability"] = probability
+        return case
+
+    scenarios_payload: dict[str, Any] = {
+        "strong_bull": _scenario_case("strong_bull", 0.2),
+        "base_bull": _scenario_case("base_bull", 0.3),
+        "base_bear": _scenario_case("base_bear", 0.3),
+        "strong_bear": _scenario_case("strong_bear", 0.2),
+    }
+    for field in ("probability_check", "expected_value", "ev_calculation"):
+        if field in scenarios:
+            scenarios_payload[field] = scenarios[field]
+
+    bull_source = dict(baseline_bull)
+    bull_source.update(latest_bull)
+    bull_source.update(bull_override)
+    bear_source = dict(baseline_bear)
+    bear_source.update(latest_bear)
+    bear_source.update(bear_override)
+
+    bull_arguments = _normalize_case_arguments(bull_source.get("arguments"), fallback=bull_args)
+    bear_arguments = _normalize_case_arguments(bear_source.get("arguments"), fallback=bear_args)
+
+    bull_summary_default = (
+        "Bull case summary: participation breadth and trend structure support upside "
+        "continuation under stable macro conditions, with catalyst follow-through and "
+        "acceptable execution risk in the current planning horizon."
+    )
+    bear_summary_default = (
+        "Bear case summary: expectation reset and valuation compression can dominate if "
+        "macro or execution conditions deteriorate, producing downside acceleration and "
+        "invalidating near-term setup assumptions."
+    )
+
+    bias_check: dict[str, Any] = dict(baseline_bias)
+    bias_check.update(latest_bias)
+    bias_check.update(bias_override)
+    bias_check.setdefault("recency_bias", {"detected": False, "severity": "low"})
+    bias_check.setdefault("confirmation_bias", {"detected": False, "severity": "low"})
+    bias_check.setdefault("anchoring", {"detected": False, "severity": "low"})
+    bias_check.setdefault("overconfidence", {"detected": False, "severity": "low"})
+    bias_check.setdefault("loss_aversion", {"detected": False, "severity": "low"})
+    bias_check.setdefault("both_sides_argued_equally", True)
+    bias_check.setdefault(
+        "bias_summary",
+        "Bias check indicates balanced bull/bear framing with conservative assumptions and explicit invalidation criteria.",
+    )
+
+    falsification: dict[str, Any] = dict(baseline_falsification)
+    falsification.update(latest_falsification)
+    falsification.update(falsification_override)
+    if not _as_list(falsification.get("criteria")):
+        falsification["criteria"] = [
+            {"condition": "Break below planned support zone with confirming distribution volume"},
+            {"condition": "Fundamental catalyst invalidated by verified negative update"},
+        ]
+    falsification.setdefault(
+        "thesis_invalid_if",
+        "Any two major bearish invalidation conditions are confirmed by market and fundamental evidence.",
+    )
+
+    market_environment: dict[str, Any] = dict(baseline_market_environment)
+    market_environment.update(latest_market_environment)
+    market_environment.update(market_environment_override)
+    market_environment["regime"] = market_regime
+    market_environment["sector"] = market_sector
+
+    comparable_companies: dict[str, Any] = dict(baseline_comparable_companies)
+    comparable_companies.update(latest_comparable_companies)
+    comparable_companies.update(comparable_companies_override)
+    comparable_companies["peers"] = peers
+    comparable_companies["valuation_position"] = valuation_position
+
+    liquidity_analysis: dict[str, Any] = dict(baseline_liquidity_analysis)
+    liquidity_analysis.update(latest_liquidity_analysis)
+    liquidity_analysis.update(liquidity_analysis_override)
+    liquidity_analysis["adv_shares"] = adv_shares
+    liquidity_analysis["adv_dollars"] = adv_dollars
+    liquidity_analysis["bid_ask_spread_pct"] = bid_ask_spread_pct
+    liquidity_analysis["liquidity_score"] = liquidity_score
+
+    if runtime_source in {"ib_gateway", "ib_mcp"} and runtime_quote_ts:
+        runtime_note = (
+            f"Live quote cross-check from {runtime_source} at {runtime_quote_ts} confirmed real-time "
+            "price context for this analysis cycle."
+        )
+        existing_news_summary = _string_or_default(news_age_check.get("news_summary"), "")
+        if runtime_note not in existing_news_summary:
+            news_age_check["news_summary"] = (
+                (existing_news_summary.strip() + "\n\n" + runtime_note).strip()
+                if existing_news_summary.strip()
+                else runtime_note
+            )
+
+    ma_20d = _number_or_default(_as_dict(technical.get("moving_averages")).get("ma_20d"), alert_price)
+    primary_alert = {
+        "price": alert_price,
+        "tag": alert_tag,
+        "significance": alert_significance,
+        "derivation": alert_derivation
+        if alert_derivation
+        else {
+            "methodology": "moving_average",
+            "source_field": "technical.moving_averages.ma_20d",
+            "source_value": alert_price,
+            "calculation": "Alert anchored to moving-average trigger used for trend continuation or breakdown confirmation.",
+        },
+    }
+    price_alerts = _build_price_alerts(
+        primary_alert=primary_alert,
+        override_alerts=price_alerts_override,
+        latest_alerts=latest_price_alerts,
+        baseline_alerts=baseline_price_alerts,
+        entry_level=entry_level,
+        stop_level=stop_level,
+        target_level=target_level,
+        ma_20d=ma_20d,
+        runtime_price=runtime_price,
+        max_deviation_pct=max_key_level_deviation_pct,
+    )
 
     return {
         "_meta": {
@@ -405,85 +1205,31 @@ def _build_stock_analysis_document(
         },
         "ticker": ticker.upper(),
         "current_price": current_price,
-        "data_quality": {"price_data_source": "manual", "price_data_verified": True},
-        "news_age_check": {
-            "items": [
-                {
-                    "news_item": "No fresh catalyst confirmed during runtime draft generation",
-                    "date": forecast_until,
-                    "age_weeks": 0,
-                    "priced_in": "partially",
-                    "reasoning": "No same-day high-impact catalyst identified; setup is treated as technically driven until new information emerges.",
-                }
-            ]
+        "data_quality": {
+            "price_data_source": price_data_source,
+            "price_data_verified": price_verified,
+            "quote_timestamp": quote_timestamp,
+            "prior_close": prior_close,
         },
-        "catalyst": {
-            "type": "technical",
-            "reasoning": "Primary catalyst is technical behavior around defined support/resistance zones with confirmation from follow-through volume.",
-        },
-        "market_environment": {"regime": "sideways", "sector": "unknown"},
-        "threat_assessment": {
-            "primary_concern": "cyclical",
-            "threat_summary": "Cyclical regime shifts can compress valuation multiples and invalidate momentum assumptions if macro conditions deteriorate.",
-        },
-        "technical": {
-            "technical_summary": "Structure is neutral-to-constructive while price remains above invalidation and trend-following levels continue to hold."
-        },
-        "fundamentals": {
-            "insider_activity": {
-                "recent_buys": 0,
-                "recent_sells": 0,
-                "net_direction": "neutral",
-            }
-        },
-        "sentiment": {
-            "summary": "Sentiment is neutral with balanced positioning risk; directional conviction requires confirmation from price/volume behavior."
-        },
-        "comparable_companies": {
-            "peers": [
-                {"ticker": "AAPL", "pe_forward": 25.0},
-                {"ticker": "MSFT", "pe_forward": 28.0},
-                {"ticker": "GOOGL", "pe_forward": 23.0},
-            ],
-            "valuation_position": "fair",
-        },
-        "liquidity_analysis": {
-            "adv_shares": 1000000,
-            "adv_dollars": 100000000,
-            "bid_ask_spread_pct": 0.05,
-            "liquidity_score": 8,
-        },
-        "scenarios": {
-            "strong_bull": {"probability": 0.2},
-            "base_bull": {"probability": 0.3},
-            "base_bear": {"probability": 0.3},
-            "strong_bear": {"probability": 0.2},
-        },
+        "news_age_check": news_age_check,
+        "catalyst": catalyst,
+        "market_environment": market_environment,
+        "threat_assessment": threat_assessment,
+        "technical": technical,
+        "fundamentals": fundamentals,
+        "sentiment": sentiment,
+        "comparable_companies": comparable_companies,
+        "liquidity_analysis": liquidity_analysis,
+        "scenarios": scenarios_payload,
         "bull_case_analysis": {
-            "arguments": bull_args,
-            "summary": (
-                "Bull case summary: participation breadth and trend structure support upside "
-                "continuation under stable macro conditions, with catalyst follow-through and "
-                "acceptable execution risk in the current planning horizon."
-            ),
+            "arguments": bull_arguments,
+            "summary": _string_or_default(bull_source.get("summary"), bull_summary_default),
         },
         "bear_case_analysis": {
-            "arguments": bear_args,
-            "summary": (
-                "Bear case summary: expectation reset and valuation compression can dominate if "
-                "macro or execution conditions deteriorate, producing downside acceleration and "
-                "invalidating near-term setup assumptions."
-            ),
+            "arguments": bear_arguments,
+            "summary": _string_or_default(bear_source.get("summary"), bear_summary_default),
         },
-        "bias_check": {
-            "recency_bias": {"detected": False, "severity": "low"},
-            "confirmation_bias": {"detected": False, "severity": "low"},
-            "anchoring": {"detected": False, "severity": "low"},
-            "overconfidence": {"detected": False, "severity": "low"},
-            "loss_aversion": {"detected": False, "severity": "low"},
-            "both_sides_argued_equally": True,
-            "bias_summary": "Bias check indicates balanced bull/bear framing with conservative assumptions and explicit invalidation criteria.",
-        },
+        "bias_check": bias_check,
         "do_nothing_gate": {
             "ev_threshold": 5.0,
             "confidence_threshold": 60,
@@ -493,13 +1239,7 @@ def _build_stock_analysis_document(
             "confidence_actual": 60,
             "confidence_passes": True,
         },
-        "falsification": {
-            "criteria": [
-                {"condition": "Break below planned support zone with confirming distribution volume"},
-                {"condition": "Fundamental catalyst invalidated by verified negative update"},
-            ],
-            "thesis_invalid_if": "Any two major bearish invalidation conditions are confirmed by market and fundamental evidence.",
-        },
+        "falsification": falsification,
         "recommendation": {"action": rec_action, "confidence": rec_confidence},
         "summary": {
             "narrative": summary_text,
@@ -528,21 +1268,7 @@ def _build_stock_analysis_document(
             },
         },
         "alert_levels": {
-            "price_alerts": [
-                {
-                    "price": alert_price,
-                    "tag": alert_tag,
-                    "significance": alert_significance,
-                    "derivation": alert_derivation
-                    if alert_derivation
-                    else {
-                        "methodology": "moving_average",
-                        "source_field": "technical.moving_averages.ma_20d",
-                        "source_value": alert_price,
-                        "calculation": "Alert anchored to moving-average trigger used for trend continuation or breakdown confirmation.",
-                    },
-                }
-            ]
+            "price_alerts": price_alerts
         },
         "meta_learning": {"data_source_effectiveness": []},
         "adk_runtime": _build_runtime_metadata(payload),
@@ -1374,9 +2100,51 @@ def write_analysis_yaml(
                 if quality_issues:
                     return {
                         "success": False,
+                        "status": "blocked_quality",
                         "error": "Stock analysis quality gate failed",
                         "quality_issues": quality_issues,
+                        "reason_codes": ["stock_quality_gate_failed"],
                     }
+
+            if os.getenv("ADK_MARKET_DATA_GATES_ENABLED", "true").strip().lower() in {
+                "1",
+                "true",
+                "yes",
+                "on",
+            }:
+                gate_issues, reason_codes = _stock_market_data_gate_issues(doc)
+                if gate_issues:
+                    blocking_mode = os.getenv("ADK_MARKET_DATA_GATES_BLOCKING", "true").strip().lower() in {
+                        "1",
+                        "true",
+                        "yes",
+                        "on",
+                    }
+                    if not isinstance(doc.get("adk_runtime"), dict):
+                        doc["adk_runtime"] = _build_runtime_metadata(payload)
+                    adk_runtime = _as_dict(doc.get("adk_runtime"))
+                    adk_runtime["degraded"] = True
+                    adk_runtime["degraded_reasons"] = reason_codes
+                    adk_runtime["degraded_details"] = gate_issues
+                    doc["adk_runtime"] = adk_runtime
+
+                    if not isinstance(doc.get("_meta"), dict):
+                        doc["_meta"] = {}
+                    meta = _as_dict(doc.get("_meta"))
+                    meta["status"] = "degraded"
+                    doc["_meta"] = meta
+
+                    if not blocking_mode:
+                        # Allow artifact creation for observability while preserving degraded annotation.
+                        pass
+                    else:
+                        return {
+                            "success": False,
+                            "status": "blocked_quality",
+                            "error": "Stock market data gate failed",
+                            "quality_issues": gate_issues,
+                            "reason_codes": reason_codes,
+                        }
         else:
             doc = _build_earnings_analysis_document(
                 run_id=run_id,

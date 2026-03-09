@@ -96,10 +96,14 @@ All API endpoints require JWT authentication:
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8081/api/...
 ```
 
-**Demo mode (DEBUG=true):**
+**Demo token mode (development/test only):**
 ```bash
 curl -H "Authorization: Bearer demo-token-1" http://localhost:8081/api/...
 ```
+
+Requirements:
+- `ALLOW_DEMO_TOKENS=true`
+- `APP_ENV=development` or `APP_ENV=test`
 
 ---
 
@@ -145,7 +149,9 @@ curl -H "Authorization: Bearer demo-token-1" http://localhost:8081/api/...
 # Backend
 AGUI_HOST=0.0.0.0
 AGUI_PORT=8081
-DEBUG=true  # Enable demo tokens
+DEBUG=false
+APP_ENV=development
+ALLOW_DEMO_TOKENS=false
 
 # Frontend
 NEXT_PUBLIC_API_URL=http://localhost:8081

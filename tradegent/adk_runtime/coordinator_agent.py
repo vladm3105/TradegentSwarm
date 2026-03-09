@@ -18,6 +18,12 @@ from .mcp_tool_bus import MCPToolBus
 from .policy_gate import PolicyGate
 from .run_state_store import RunStateStore
 from .skill_router import SkillRouter
+from .skills import (
+    SkillAdapterContext,
+    allow_adapter_for_request,
+    get_skill_adapter,
+    run_skill_adapter,
+)
 from .subagent_invoker import SubagentInvoker
 from .validators import validate_request_envelope, validate_response_envelope
 from .versioning import ensure_compatible_contract_version
@@ -102,19 +108,36 @@ class CoordinatorAgent:
         context = self.tool_bus.call("context_retrieval", {"request": request})
         self.state_store.transition(run_id, "retrieval_done", phase="retrieval")
 
+        phase_input = {
+            "context": context,
+            "ticker": request.get("ticker"),
+            "analysis_type": request.get("analysis_type"),
+            "intent": request.get("intent"),
+            "skill_name": getattr(plan, "skill_name", None),
+        }
+
         if not self.state_store.claim_side_effect_marker(run_id, "draft", "subagent_invocation"):
             subagent_outputs = {}
         else:
-            subagent_outputs = self.subagents.run(
-                plan,
-                {
-                    "context": context,
-                    "ticker": request.get("ticker"),
-                    "analysis_type": request.get("analysis_type"),
-                    "intent": request.get("intent"),
-                    "skill_name": getattr(plan, "skill_name", None),
-                },
+            skill_name = str(getattr(plan, "skill_name", "") or "")
+            adapter = get_skill_adapter(skill_name=skill_name, subagents=self.subagents)
+            use_adapter = adapter is not None and allow_adapter_for_request(
+                request=request,
+                run_id=run_id,
             )
+
+            if use_adapter:
+                subagent_outputs = run_skill_adapter(
+                    adapter=adapter,
+                    ctx=SkillAdapterContext(
+                        run_id=run_id,
+                        request=request,
+                        plan=plan,
+                        retrieval_context=context,
+                    ),
+                )
+            else:
+                subagent_outputs = self.subagents.run(plan, phase_input)
 
         self.state_store.transition(run_id, "draft_done", phase="draft")
         if "critique" in plan.phases:
@@ -132,6 +155,7 @@ class CoordinatorAgent:
                 run_id=run_id,
                 request=request,
                 plan=plan,
+                retrieval_context=context,
                 subagent_outputs=subagent_outputs,
             )
             validation = artifacts.get("contract_validation")
@@ -226,6 +250,7 @@ class CoordinatorAgent:
         run_id: str,
         request: RequestEnvelope,
         plan: Any,
+        retrieval_context: dict[str, Any],
         subagent_outputs: dict[str, Any],
     ) -> dict[str, Any]:
         """Execute mutable operations with marker-based replay protection."""
@@ -242,7 +267,14 @@ class CoordinatorAgent:
                     "skill_name": getattr(plan, "skill_name", None),
                     "enforce_stock_quality_gate": str(request.get("analysis_type", "")).lower()
                     == "stock",
-                    "payload": subagent_outputs,
+                    "payload": {
+                        "_runtime_context": (
+                            retrieval_context.get("payload", {}).get("context")
+                            if isinstance(retrieval_context, dict)
+                            else {}
+                        ),
+                        **subagent_outputs,
+                    },
                 },
             )
             artifacts["yaml_write"] = yaml_result

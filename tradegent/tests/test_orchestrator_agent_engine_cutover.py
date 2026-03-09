@@ -92,9 +92,29 @@ def test_generate_analysis_output_uses_legacy_cli(monkeypatch: pytest.MonkeyPatc
         prompt="analyze",
         allowed_tools="mcp__ib-mcp__*",
         label="ANALYZE-NVDA",
+        invocation_source=module.MANUAL_CLI_INVOCATION_SOURCE,
     )
 
     assert result == "legacy-output"
+
+
+def test_generate_analysis_output_blocks_legacy_outside_manual_cli(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_orchestrator_module()
+
+    monkeypatch.setattr("orchestrator.validate_agent_engine", lambda: "legacy")
+
+    with pytest.raises(RuntimeError, match="allowed only for manual CLI analyze command"):
+        module._generate_analysis_output(
+            db=MagicMock(),
+            ticker="NVDA",
+            analysis_type=module.AnalysisType.STOCK,
+            prompt="analyze",
+            allowed_tools="mcp__ib-mcp__*",
+            label="ANALYZE-NVDA",
+            invocation_source="runtime",
+        )
 
 
 def test_run_adk_analysis_generation_rejects_invalid_envelope(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -244,6 +244,9 @@ class SubagentInvoker:
         if str(getattr(plan, "skill_name", "")) == "stock-analysis":
             schema_hint = {
                 "current_price": "number (> 0)",
+                "data_quality.price_data_source": "string (must be ib_gateway or ib_mcp)",
+                "data_quality.quote_timestamp": "ISO datetime string",
+                "data_quality.prior_close": "number (> 0)",
                 "summary.thesis": "string (>= 120 chars, no placeholders)",
                 "summary.key_levels.entry": "number (> 0)",
                 "summary.key_levels.stop": "number (> 0)",
@@ -258,6 +261,8 @@ class SubagentInvoker:
                     "Return a single JSON object representing final stock analysis only.",
                     "Do not include the prompt envelope or schema metadata in the output.",
                     "Do not use placeholder wording like 'runtime generated draft analysis'.",
+                    "Set data_quality.price_data_source to ib_gateway or ib_mcp.",
+                    "Include data_quality.quote_timestamp and data_quality.prior_close with current market quote context.",
                     "All numeric trading levels must be > 0.",
                 ],
             }
@@ -303,6 +308,11 @@ class SubagentInvoker:
             "schema_hint": schema_hint,
             "output_contract": output_contract,
             "source_context": reference_context,
+            "phase_prompt_spec": (
+                payload.get("phase_prompt_specs", {}).get(phase)
+                if isinstance(payload.get("phase_prompt_specs"), dict)
+                else None
+            ),
         }
 
     @staticmethod

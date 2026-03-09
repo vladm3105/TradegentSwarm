@@ -303,9 +303,13 @@ curl -H "Authorization: Bearer tg_your_api_key" http://localhost:8081/api/dashbo
 WebSocket connections require a token:
 
 ```javascript
-// Pass token as query parameter
-const ws = new WebSocket('ws://localhost:8081/ws/agent?token=your_jwt_token');
+// Pass token via websocket subprotocol (browser-safe)
+const ws = new WebSocket('ws://localhost:8081/ws/agent', ['bearer', yourJwtToken]);
 ```
+
+Notes:
+- Query-string token auth (`?token=...`) is not supported.
+- The same subprotocol token pattern is required for `/ws/stream`.
 
 ## API Endpoints
 
@@ -325,7 +329,7 @@ const ws = new WebSocket('ws://localhost:8081/ws/agent?token=your_jwt_token');
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
 | `/api/auth/me` | GET | Yes | Get current user profile |
-| `/api/auth/sync-user` | POST | No | Sync user from Auth0 (login flow) |
+| `/api/auth/sync-user` | POST | Yes | Sync authenticated user profile during login flow |
 | `/api/auth/complete-onboarding` | POST | Yes | Mark onboarding completed |
 
 **User Endpoints:**
@@ -733,6 +737,10 @@ cat logs/agui.log | jq 'select(.ticker == "NVDA")'
 ```bash
 DEBUG=true uvicorn server.main:app ...
 ```
+
+Security note:
+- `DEBUG=true` does not enable demo-token auth by itself.
+- Demo-token auth requires `ALLOW_DEMO_TOKENS=true` and non-production `APP_ENV`.
 
 **Log Fields:**
 | Field | Description |

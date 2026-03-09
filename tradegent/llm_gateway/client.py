@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import inspect
 from dataclasses import dataclass
 from typing import Any
 
@@ -148,6 +149,11 @@ class LiteLLMGatewayClient:
                 output_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
                 provider = self._provider_from_model(model)
 
+                # Flush pending logging callbacks while event loop is active.
+                # This avoids fallback to atexit worker cleanup that can surface
+                # "coroutine ... was never awaited" warnings in short-lived CLI runs.
+                await _flush_litellm_logging_worker()
+
                 return LLMChatResult(
                     content=content,
                     model_alias=role_alias,
@@ -180,3 +186,19 @@ class LiteLLMGatewayClient:
                 seen.add(token)
                 out.append(token)
         return out
+
+
+async def _flush_litellm_logging_worker() -> None:
+    """Best-effort flush of LiteLLM global logging worker queue."""
+    try:
+        from litellm.litellm_core_utils import logging_worker as lw  # type: ignore[import-untyped]
+
+        worker = getattr(lw, "GLOBAL_LOGGING_WORKER", None)
+        flush = getattr(worker, "flush", None)
+        if callable(flush):
+            maybe = flush()
+            if inspect.isawaitable(maybe):
+                await maybe
+    except Exception:
+        # Never fail request path on telemetry/logging flush issues.
+        return

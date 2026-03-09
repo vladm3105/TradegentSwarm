@@ -172,14 +172,15 @@ Direct calls to `SkillRouter` from UI/CLI/scheduler are out of contract.
 
 #### Runtime Engine Mode
 
-Tradegent runtime is ADK-only for orchestration.
+Tradegent runtime uses ADK by default for orchestration.
 
 | Setting | Allowed Value | Behavior |
 |---|---|---|
-| `AGENT_ENGINE` | `adk` | required for runtime start |
+| `AGENT_ENGINE` | `adk`, `legacy` | `adk` is default; `legacy` is restricted to manual CLI analyze |
 
 Runtime guardrail:
-- any value other than `adk` is configuration-invalid and blocks startup until corrected.
+- `AGENT_ENGINE` accepts `adk` and `legacy` only.
+- `legacy` mode is blocked for scheduler/service/UI runtime paths and allowed only for manual CLI `analyze` invocations.
 
 #### 3. `SubagentInvoker`
 - Executes delegated specialist tasks as ADK sub-agents (research, critique, risk-check, summarization).
@@ -591,7 +592,7 @@ All sub-agent outputs are schema-validated before phase advancement.
 
 ### Workstream C: Orchestrator Integration
 - Add feature flag strategy:
-  - `AGENT_ENGINE=adk` (single supported runtime mode)
+  - `AGENT_ENGINE=adk` (default runtime mode)
 - Keep existing commands unchanged for users.
 - Route analyze/run-scanners through ADK path by default.
 
@@ -825,7 +826,7 @@ Operational rollback path:
 1. Add LiteLLM service deployment and config manifests.
 2. Create shared llm_gateway client package for both repos.
 3. Implement provider alias registry and routing policy loader.
-4. Enforce ADK-only runtime config validation (`AGENT_ENGINE=adk`) and startup guardrails.
+4. Enforce runtime config validation (`AGENT_ENGINE` in `{adk, legacy}`) with guardrails that restrict `legacy` to manual CLI `analyze` only.
 
 ## Epic B: ADK Runtime in tradegent
 5. Add adk_runtime package (agent base, tool runner, middleware).
@@ -902,7 +903,8 @@ This order minimizes business risk because high-value analysis quality is proven
 ## 16. Definition of Done (Program Level)
 
 - ADK is the default engine for tradegent and tradegent_ui.
-- Runtime operates on ADK-only orchestration mode.
+- Runtime operates in ADK-default orchestration mode.
+- Legacy mode is reserved for manual CLI `analyze` compatibility only.
 - All critical skills pass schema and gate quality thresholds.
 - Multi-provider routing works through LiteLLM with enforced policies.
 - Cost and latency are observable and within approved budgets.
@@ -979,7 +981,8 @@ The migration must preserve operational contracts for infrastructure and observa
 3. Application contract parity:
   - `tradegent_ui` `/health` and `/ready` unchanged.
   - B3 headers present in responses and log correlation continuity verified.
-  - Existing CLI commands and scheduler paths still function with `AGENT_ENGINE` switch.
+  - Default runtime remains `AGENT_ENGINE=adk`.
+  - Legacy engine fallback is limited to manual CLI `analyze` invocation only.
 
 ### 18.2 Non-Breaking CI Gate Set
 

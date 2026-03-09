@@ -177,7 +177,7 @@ class BaseAgent(ABC):
                 return MCPResponse(success=False, error="Ticker is required")
 
             # ADK-first orchestration path: use canonical Coordinator envelope.
-            if os.getenv("AGENT_ENGINE", "legacy").strip().lower() == "adk":
+            if os.getenv("AGENT_ENGINE", "adk").strip().lower() == "adk":
                 from .adk_bridge import run_adk_analysis_from_ui
 
                 try:

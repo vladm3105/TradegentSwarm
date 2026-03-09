@@ -636,3 +636,226 @@ def test_write_stock_analysis_yaml_derives_levels_from_price_when_missing() -> N
     assert data["alert_levels"]["price_alerts"][0]["price"] == 248.75
 
     file_path.unlink(missing_ok=True)
+
+
+def test_write_stock_analysis_yaml_preserves_rich_sections_from_context() -> None:
+    result = write_analysis_yaml(
+        run_id="run-stock-rich-context-1",
+        ticker="MSFT",
+        analysis_type="stock",
+        skill_name="stock-analysis",
+        enforce_stock_quality_gate=True,
+        payload={
+            "draft": {
+                "status": "ok",
+                "payload": {
+                    "context": {
+                        "status": "ok",
+                        "payload": {
+                            "context": {
+                                "latest_document": {
+                                    "current_price": 410.0,
+                                    "data_quality": {
+                                        "price_data_source": "ib_mcp",
+                                        "price_data_verified": True,
+                                        "quote_timestamp": "2026-03-08T20:00:00+00:00",
+                                        "prior_close": 408.0,
+                                    },
+                                    "technical": {
+                                        "moving_averages": {"ma_20d": 405.0},
+                                        "momentum": {"rsi_14": 55},
+                                        "technical_summary": "Context technical detail.",
+                                    },
+                                    "fundamentals": {
+                                        "valuation": {"pe_ratio": 31.5},
+                                        "growth": {"revenue_growth_yoy": 12.0},
+                                    },
+                                    "sentiment": {
+                                        "analyst": {"total": 54},
+                                        "summary": "Context sentiment detail.",
+                                    },
+                                    "scenarios": {
+                                        "strong_bull": {"probability": 0.25},
+                                        "base_bull": {"probability": 0.35},
+                                        "base_bear": {"probability": 0.25},
+                                        "strong_bear": {"probability": 0.15},
+                                        "expected_value": 4.2,
+                                    },
+                                    "summary": {
+                                        "narrative": "Context narrative with concrete setup details.",
+                                        "key_levels": {
+                                            "entry": 410.0,
+                                            "stop": 398.0,
+                                            "target_1": 438.0,
+                                        },
+                                    },
+                                    "alert_levels": {
+                                        "price_alerts": [
+                                            {
+                                                "price": 408.5,
+                                                "tag": "20-day MA",
+                                                "significance": "Context alert significance with enough detail to satisfy quality gating for production monitoring and execution decisions.",
+                                                "derivation": {
+                                                    "methodology": "moving_average",
+                                                    "source_field": "technical.moving_averages.ma_20d",
+                                                    "source_value": 408.5,
+                                                    "calculation": "direct",
+                                                },
+                                            }
+                                        ]
+                                    },
+                                }
+                            }
+                        },
+                    }
+                },
+                "llm": {"content": "non-structured content"},
+            }
+        },
+    )
+
+    assert result["success"] is True
+    file_path = Path(result["file_path"])
+    data = yaml.safe_load(file_path.read_text(encoding="utf-8"))
+
+    assert data["technical"]["moving_averages"]["ma_20d"] == 405.0
+    assert data["technical"]["momentum"]["rsi_14"] == 55
+    assert data["fundamentals"]["valuation"]["pe_ratio"] == 31.5
+    assert data["fundamentals"]["growth"]["revenue_growth_yoy"] == 12.0
+    assert data["sentiment"]["analyst"]["total"] == 54
+    assert data["scenarios"]["expected_value"] == 4.2
+
+    file_path.unlink(missing_ok=True)
+
+
+def test_write_stock_analysis_yaml_rich_overrides_prefer_payload_over_context() -> None:
+    result = write_analysis_yaml(
+        run_id="run-stock-rich-override-1",
+        ticker="NVDA",
+        analysis_type="stock",
+        skill_name="stock-analysis",
+        enforce_stock_quality_gate=True,
+        payload={
+            "technical": {
+                "moving_averages": {"ma_20d": 500.0},
+                "momentum": {"rsi_14": 62},
+            },
+            "sentiment": {
+                "analyst": {"total": 61},
+                "summary": "Override sentiment detail.",
+            },
+            "summary": {
+                "narrative": "Override narrative with concrete entry and invalidation framing.",
+                "key_levels": {
+                    "entry": 505.0,
+                    "stop": 485.0,
+                    "target_1": 545.0,
+                },
+            },
+            "alert_levels": {
+                "price_alerts": [
+                    {
+                        "price": 502.5,
+                        "tag": "20-day MA",
+                        "significance": "Override alert significance with enough detail to support actionable monitoring and preserve quality requirements.",
+                        "derivation": {
+                            "methodology": "moving_average",
+                            "source_field": "technical.moving_averages.ma_20d",
+                            "source_value": 502.5,
+                            "calculation": "direct",
+                        },
+                    }
+                ]
+            },
+            "draft": {
+                "status": "ok",
+                "payload": {
+                    "context": {
+                        "status": "ok",
+                        "payload": {
+                            "context": {
+                                "latest_document": {
+                                    "technical": {"moving_averages": {"ma_20d": 490.0}},
+                                    "sentiment": {"analyst": {"total": 40}},
+                                }
+                            }
+                        },
+                    }
+                },
+                "llm": {"content": '{"current_price": 506.0, "data_quality": {"price_data_source": "ib_mcp", "price_data_verified": true, "quote_timestamp": "2026-03-08T20:45:00+00:00", "prior_close": 501.0}}'},
+            },
+        },
+    )
+
+    assert result["success"] is True
+    file_path = Path(result["file_path"])
+    data = yaml.safe_load(file_path.read_text(encoding="utf-8"))
+
+    assert data["technical"]["moving_averages"]["ma_20d"] == 500.0
+    assert data["technical"]["momentum"]["rsi_14"] == 62
+    assert data["sentiment"]["analyst"]["total"] == 61
+    assert data["summary"]["key_levels"]["entry"] == 505.0
+
+    file_path.unlink(missing_ok=True)
+
+
+def test_write_stock_analysis_yaml_generates_broader_price_alert_set() -> None:
+    result = write_analysis_yaml(
+        run_id="run-stock-alert-breadth-1",
+        ticker="MSFT",
+        analysis_type="stock",
+        skill_name="stock-analysis",
+        enforce_stock_quality_gate=True,
+        payload={
+            "current_price": 410.68,
+            "data_quality": {
+                "price_data_source": "ib_mcp",
+                "price_data_verified": True,
+                "quote_timestamp": "2026-03-08T21:30:00+00:00",
+                "prior_close": 408.96,
+            },
+            "technical": {
+                "moving_averages": {"ma_20d": 402.0},
+                "momentum": {"rsi_14": 42},
+            },
+            "summary": {
+                "narrative": "Alert breadth regression test with explicit levels and risk controls.",
+                "key_levels": {
+                    "entry": 410.68,
+                    "stop": 394.25,
+                    "target_1": 443.53,
+                },
+            },
+            "alert_levels": {
+                "price_alerts": [
+                    {
+                        "price": 408.63,
+                        "tag": "20-day MA",
+                        "significance": "Primary alert significance text with enough detail to satisfy gating and preserve actionable monitoring context for execution quality.",
+                        "derivation": {
+                            "methodology": "moving_average",
+                            "source_field": "technical.moving_averages.ma_20d",
+                            "source_value": 408.63,
+                            "calculation": "direct",
+                        },
+                    }
+                ]
+            },
+            "draft": {
+                "status": "ok",
+                "llm": {"content": '{"summary": {"thesis": "live output"}}'},
+            },
+        },
+    )
+
+    assert result["success"] is True
+    file_path = Path(result["file_path"])
+    data = yaml.safe_load(file_path.read_text(encoding="utf-8"))
+
+    alerts = data["alert_levels"]["price_alerts"]
+    assert isinstance(alerts, list)
+    assert len(alerts) >= 3
+    assert alerts[0]["price"] == 408.63
+    assert alerts[0]["tag"] == "20-day MA"
+
+    file_path.unlink(missing_ok=True)

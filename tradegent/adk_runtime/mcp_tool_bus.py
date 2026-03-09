@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -174,10 +175,13 @@ class MCPToolBus:
                     "request": request,
                     "source": None,
                     "latest_document": None,
+                    "market_data": None,
                     "warnings": ["ticker_missing"],
                     "cache_hit": False,
                 },
             }
+
+        market_data = self._fetch_live_market_data(ticker)
 
         cached = self._context_cache.get(cache_key)
         if cached is not None:
@@ -200,6 +204,7 @@ class MCPToolBus:
                                 "request": request,
                                 "source": source_path,
                                 "latest_document": cached.get("latest_document"),
+                                "market_data": market_data,
                                 "warnings": [],
                                 "cache_hit": True,
                             },
@@ -214,6 +219,7 @@ class MCPToolBus:
                     "request": request,
                     "source": None,
                     "latest_document": None,
+                    "market_data": market_data,
                     "warnings": ["no_prior_document"],
                     "cache_hit": False,
                 },
@@ -242,7 +248,86 @@ class MCPToolBus:
                 "request": request,
                 "source": str(latest),
                 "latest_document": latest_doc,
+                "market_data": market_data,
                 "warnings": [],
                 "cache_hit": False,
             },
         }
+
+    def _fetch_live_market_data(self, ticker: str) -> dict[str, Any] | None:
+        """Best-effort live quote snapshot for downstream stock data-quality guards."""
+        try:
+            from ib_client import get_ib_client
+
+            client = get_ib_client()
+            quote = client.get_stock_price(ticker)
+            if not isinstance(quote, dict):
+                return None
+
+            def _num(*keys: str) -> float | None:
+                for key in keys:
+                    value = quote.get(key)
+                    if isinstance(value, (int, float)) and float(value) > 0:
+                        return float(value)
+                return None
+
+            last = _num("last", "price", "market_price")
+            close = _num("close", "prior_close", "previous_close")
+
+            if last is None or close is None:
+                try:
+                    batch = client.get_quotes_batch([ticker])
+                    quote_obj = batch.get(ticker) if isinstance(batch, dict) else None
+                    if quote_obj is not None:
+                        batch_last = getattr(quote_obj, "last", None)
+                        batch_close = getattr(quote_obj, "close", None)
+                        if last is None and isinstance(batch_last, (int, float)) and float(batch_last) > 0:
+                            last = float(batch_last)
+                        if close is None and isinstance(batch_close, (int, float)) and float(batch_close) > 0:
+                            close = float(batch_close)
+                except Exception:
+                    pass
+
+            if close is None:
+                try:
+                    hist = client.get_historical_data(
+                        ticker,
+                        duration="2 D",
+                        bar_size="1 day",
+                        what_to_show="TRADES",
+                    )
+                    if isinstance(hist, dict):
+                        bars = hist.get("bars")
+                    elif isinstance(hist, list):
+                        bars = hist
+                    else:
+                        bars = None
+
+                    if isinstance(bars, list) and bars:
+                        last_bar = bars[-1]
+                        if isinstance(last_bar, dict):
+                            for key in ("close", "c"):
+                                value = last_bar.get(key)
+                                if isinstance(value, (int, float)) and float(value) > 0:
+                                    close = float(value)
+                                    break
+                except Exception:
+                    pass
+
+            snapshot: dict[str, Any] = {
+                "ticker": ticker,
+                "quote_timestamp": datetime.now(timezone.utc).isoformat(),
+                "price_data_source": "ib_mcp",
+                "price_data_verified": False,
+            }
+            if last is not None:
+                snapshot["current_price"] = last
+            elif close is not None:
+                snapshot["current_price"] = close
+            if isinstance(close, (int, float)) and float(close) > 0:
+                snapshot["prior_close"] = float(close)
+            if "current_price" in snapshot or "prior_close" in snapshot:
+                snapshot["price_data_verified"] = True
+            return snapshot
+        except Exception:
+            return None
