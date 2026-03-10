@@ -257,7 +257,7 @@ export default function AnalysisPage() {
   const urlTicker = searchParams.get('ticker')?.toUpperCase() || '';
 
   const [ticker, setTicker] = useState(urlTicker);
-  const [filter, setFilter] = useState<'all' | 'active' | 'expired' | 'declined'>('all');
+  const [filter, setFilter] = useState<'all' | 'completed' | 'expired' | 'declined' | 'error'>('all');
   const [searchTicker, setSearchTicker] = useState(urlTicker);
   const [analyses, setAnalyses] = useState<AnalysisSummary[]>([]);
   const [total, setTotal] = useState(0);
@@ -472,9 +472,10 @@ export default function AnalysisPage() {
               <Tabs value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
                 <TabsList>
                   <TabsTrigger value="all">All</TabsTrigger>
-                  <TabsTrigger value="active">Active</TabsTrigger>
+                  <TabsTrigger value="completed">Completed</TabsTrigger>
                   <TabsTrigger value="expired">Expired</TabsTrigger>
                   <TabsTrigger value="declined">Declined</TabsTrigger>
+                  <TabsTrigger value="error">Error</TabsTrigger>
                 </TabsList>
               </Tabs>
               <Button

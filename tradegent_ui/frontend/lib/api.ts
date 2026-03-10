@@ -572,7 +572,7 @@ export interface AnalysisDetailResponse {
 }
 
 export async function listAnalyses(params?: {
-  status?: 'all' | 'active' | 'expired' | 'declined';
+  status?: 'all' | 'completed' | 'expired' | 'declined' | 'error';
   limit?: number;
   offset?: number;
 }): Promise<AnalysisListResponse> {

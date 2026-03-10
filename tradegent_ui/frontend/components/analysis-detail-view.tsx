@@ -172,12 +172,13 @@ export function AnalysisDetailView({ analysis, className }: AnalysisDetailViewPr
             </p>
           </div>
           <div className="flex items-center gap-3">
-            {analysis._meta.status && analysis._meta.status !== 'active' && (
+            {analysis._meta.status && !['completed', 'active'].includes(analysis._meta.status) && (
               <Badge
                 variant="outline"
                 className={cn(
                   'capitalize border-white/30 text-white',
                   analysis._meta.status === 'declined' && 'border-red-400/60 text-red-300 bg-red-900/30',
+                  analysis._meta.status === 'error' && 'border-orange-400/60 text-orange-300 bg-orange-900/30',
                   analysis._meta.status === 'expired' && 'border-slate-400/60 text-slate-300',
                 )}
               >

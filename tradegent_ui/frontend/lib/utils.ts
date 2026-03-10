@@ -152,9 +152,11 @@ export function getGateClass(result: string): string {
  */
 export function getStatusClass(status: string): string {
   switch (status.toLowerCase()) {
+    case 'completed':
     case 'active':   return 'text-green-700 border-green-300 bg-green-50 dark:text-green-400 dark:border-green-800 dark:bg-green-950/30';
     case 'expired':  return 'text-muted-foreground border-muted';
     case 'declined': return 'text-red-700 border-red-300 bg-red-50 dark:text-red-400 dark:border-red-800 dark:bg-red-950/30';
+    case 'error':    return 'text-orange-700 border-orange-300 bg-orange-50 dark:text-orange-400 dark:border-orange-800 dark:bg-orange-950/30';
     default:         return 'text-muted-foreground border-muted';
   }
 }

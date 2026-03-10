@@ -80,7 +80,7 @@ def _collect_declined_rows(
     ticker: Optional[str] = None,
     status_filter: Optional[str] = None,
 ) -> list[dict]:
-    if status_filter in {"active", "expired"}:
+    if status_filter in {"completed", "expired", "error"}:
         return []
 
     if not _DECLINED_DIR.exists():
@@ -155,7 +155,7 @@ def _row_to_summary(row: dict) -> "AnalysisSummary":
         gate_result=row.get("gate_result"),
         expected_value=_to_float(row.get("expected_value_pct")),
         analysis_date=analysis_date_str,
-        status=row.get("status") or "active",
+        status=row.get("status") or "completed",
         schema_version=str(row.get("schema_version") or ""),
     )
 
@@ -186,15 +186,16 @@ def _row_to_detail(row: dict) -> "AnalysisDetailResponse":
     else:
         analysis_date_str = ""
 
-    # Prefer explicit row status (e.g. declined), then _meta.status in YAML,
-    # then fall back to date-derived active/expired.
+    # Prefer explicit row status (e.g. declined, error), then _meta.status in YAML,
+    # then fall back to date-derived completed/expired. Normalize legacy 'active' → 'completed'.
     row_status = row.get("status")
     yaml_content = row.get("yaml_content") or {}
-    if row_status and row_status not in {"active", "expired"}:
+    if row_status and row_status not in {"active", "completed", "expired"}:
         status = row_status
     else:
         meta = yaml_content.get("_meta") if isinstance(yaml_content.get("_meta"), dict) else {}
-        status = str(meta.get("status") or row_status or "active")
+        raw = str(meta.get("status") or row_status or "completed")
+        status = "completed" if raw == "active" else raw
 
     return AnalysisDetailResponse(
         id=row["id"],
@@ -245,13 +246,13 @@ class AnalysisDetailResponse(BaseModel):
     gate_result: Optional[str] = None
     expected_value: Optional[float] = None
     current_price: Optional[float] = None
-    status: str = "active"
+    status: str = "completed"
     yaml_content: dict
 
 
 @router.get("/list", response_model=AnalysisListResponse)
 async def list_analyses(
-    status: Optional[str] = Query(None, pattern="^(active|expired|declined|all)$"),
+    status: Optional[str] = Query(None, pattern="^(completed|expired|declined|error|all)$"),
     analysis_type: str = Query("all", pattern="^(stock|earnings|all)$"),
     include_declined: bool = Query(True),
     limit: int = Query(50, ge=1, le=100),
@@ -266,15 +267,17 @@ async def list_analyses(
                 # Build query
                 conditions = ["user_id = %s"]
                 params: list[object] = [user_id]
-                if status == "active":
-                    # Active: analysis date within last 30 days, not explicitly declined
+                if status == "completed":
+                    # Completed: recent analysis, not explicitly declined or error
                     conditions.append("analysis_date >= CURRENT_DATE - INTERVAL '30 days'")
-                    conditions.append("COALESCE(yaml_content->>'_meta.status', yaml_content->'_meta'->>'status', '') <> 'declined'")
+                    conditions.append("COALESCE(yaml_content->'_meta'->>'status', '') NOT IN ('declined', 'error')")
                 elif status == "expired":
                     conditions.append("analysis_date < CURRENT_DATE - INTERVAL '30 days'")
-                    conditions.append("COALESCE(yaml_content->>'_meta.status', yaml_content->'_meta'->>'status', '') <> 'declined'")
+                    conditions.append("COALESCE(yaml_content->'_meta'->>'status', '') NOT IN ('declined', 'error')")
                 elif status == "declined":
                     conditions.append("yaml_content->'_meta'->>'status' = 'declined'")
+                elif status == "error":
+                    conditions.append("yaml_content->'_meta'->>'status' = 'error'")
                 where_clause = "WHERE " + " AND ".join(conditions)
 
                 # Declined folder files: show to all authenticated users
@@ -306,13 +309,12 @@ async def list_analyses(
                             file_path,
                             yaml_content,
                             COALESCE(yaml_content->>'analysis_type', 'stock') as analysis_type,
-                            COALESCE(
-                                NULLIF(yaml_content->'_meta'->>'status', ''),
-                                CASE
-                                    WHEN analysis_date >= CURRENT_DATE - INTERVAL '30 days' THEN 'active'
-                                    ELSE 'expired'
-                                END
-                            ) as status
+                            CASE
+                                WHEN yaml_content->'_meta'->>'status' IN ('declined', 'error', 'completed', 'expired')
+                                    THEN yaml_content->'_meta'->>'status'
+                                WHEN analysis_date >= CURRENT_DATE - INTERVAL '30 days' THEN 'completed'
+                                ELSE 'expired'
+                            END as status
                         FROM nexus.kb_stock_analyses
                         {where_clause}
                         ORDER BY analysis_date DESC
@@ -341,13 +343,12 @@ async def list_analyses(
                             file_path,
                             yaml_content,
                             COALESCE(yaml_content->>'analysis_type', 'earnings') as analysis_type,
-                            COALESCE(
-                                NULLIF(yaml_content->'_meta'->>'status', ''),
-                                CASE
-                                    WHEN analysis_date >= CURRENT_DATE - INTERVAL '30 days' THEN 'active'
-                                    ELSE 'expired'
-                                END
-                            ) as status
+                            CASE
+                                WHEN yaml_content->'_meta'->>'status' IN ('declined', 'error', 'completed', 'expired')
+                                    THEN yaml_content->'_meta'->>'status'
+                                WHEN analysis_date >= CURRENT_DATE - INTERVAL '30 days' THEN 'completed'
+                                ELSE 'expired'
+                            END as status
                         FROM nexus.kb_earnings_analyses
                         {where_clause}
                         ORDER BY analysis_date DESC
