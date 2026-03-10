@@ -4,19 +4,61 @@ import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Eye, Clock, Plus, Trash2, RefreshCw, Loader2, AlertCircle } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Eye,
+  Clock,
+  Plus,
+  RefreshCw,
+  Loader2,
+  AlertCircle,
+  ListPlus,
+  Sparkles,
+} from 'lucide-react';
 import { cn, formatCurrency, formatDate } from '@/lib/utils';
-import { listWatchlist, type WatchlistEntry, type WatchlistStats } from '@/lib/api';
+import {
+  createWatchlist,
+  listWatchlist,
+  listWatchlists,
+  type CreateWatchlistPayload,
+  type WatchlistEntry,
+  type WatchlistStats,
+  type WatchlistSummary,
+} from '@/lib/api';
 import { useChat } from '@/hooks/use-chat';
 import { useUIStore } from '@/stores/ui-store';
 
+const priorityColors: Record<string, string> = {
+  high: 'bg-loss/20 text-loss',
+  medium: 'bg-yellow-500/20 text-yellow-500',
+  low: 'bg-muted text-muted-foreground',
+};
+
+type EntryFilter = 'all' | 'high' | 'expiring';
+
 export default function WatchlistPage() {
-  const [filter, setFilter] = useState<'all' | 'high' | 'expiring'>('all');
+  const [filter, setFilter] = useState<EntryFilter>('all');
+  const [selectedWatchlistId, setSelectedWatchlistId] = useState<number | 'all'>('all');
+  const [watchlists, setWatchlists] = useState<WatchlistSummary[]>([]);
   const [entries, setEntries] = useState<WatchlistEntry[]>([]);
   const [stats, setStats] = useState<WatchlistStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createLoading, setCreateLoading] = useState(false);
+  const [newWatchlist, setNewWatchlist] = useState<CreateWatchlistPayload>({
+    name: '',
+    description: '',
+    color: '#3b82f6',
+    is_pinned: false,
+  });
 
   const { sendMessage } = useChat();
   const { setChatPanelOpen } = useUIStore();
@@ -25,61 +67,155 @@ export default function WatchlistPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await listWatchlist({
-        status: 'active',
-        priority: filter === 'high' ? 'high' : undefined,
-        limit: 50,
-      });
+      const [watchlistsResponse, entriesResponse] = await Promise.all([
+        listWatchlists(),
+        listWatchlist({
+          status: 'active',
+          priority: filter === 'high' ? 'high' : undefined,
+          watchlistId: selectedWatchlistId === 'all' ? undefined : selectedWatchlistId,
+          limit: 100,
+        }),
+      ]);
 
-      let filtered = response.entries;
+      let filteredEntries = entriesResponse.entries;
       if (filter === 'expiring') {
-        filtered = filtered.filter(e => e.days_until_expiry !== null && e.days_until_expiry <= 7);
+        filteredEntries = filteredEntries.filter(
+          (entry) => entry.days_until_expiry !== null && entry.days_until_expiry <= 7,
+        );
       }
 
-      setEntries(filtered);
-      setStats(response.stats);
+      setWatchlists(watchlistsResponse.watchlists);
+      setEntries(filteredEntries);
+      setStats(entriesResponse.stats);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load watchlist');
+      setError(err instanceof Error ? err.message : 'Failed to load watchlists');
     } finally {
       setLoading(false);
     }
-  }, [filter]);
+  }, [filter, selectedWatchlistId]);
 
   useEffect(() => {
     fetchWatchlist();
   }, [fetchWatchlist]);
 
+  const selectedWatchlist =
+    selectedWatchlistId === 'all'
+      ? null
+      : watchlists.find((watchlist) => watchlist.id === selectedWatchlistId) ?? null;
+
   const handleAddEntry = () => {
     setChatPanelOpen(true);
+    if (selectedWatchlist) {
+      sendMessage(`add to watchlist ${selectedWatchlist.name}`);
+      return;
+    }
     sendMessage('add to watchlist');
   };
 
-  const priorityColors: Record<string, string> = {
-    high: 'bg-loss/20 text-loss',
-    medium: 'bg-yellow-500/20 text-yellow-500',
-    low: 'bg-muted text-muted-foreground',
+  const handleCreateWatchlist = async () => {
+    if (!newWatchlist.name?.trim()) {
+      setError('Watchlist name is required');
+      return;
+    }
+
+    setCreateLoading(true);
+    setError(null);
+    try {
+      const created = await createWatchlist({
+        name: newWatchlist.name.trim(),
+        description: newWatchlist.description?.trim() || null,
+        color: newWatchlist.color || '#3b82f6',
+        is_pinned: newWatchlist.is_pinned ?? false,
+      });
+      setCreateOpen(false);
+      setNewWatchlist({
+        name: '',
+        description: '',
+        color: '#3b82f6',
+        is_pinned: false,
+      });
+      setSelectedWatchlistId(created.id);
+      await fetchWatchlist();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create watchlist');
+    } finally {
+      setCreateLoading(false);
+    }
   };
 
   const highPriorityCount = stats?.by_priority?.high || 0;
-  const expiringSoonCount = entries.filter(e => e.days_until_expiry !== null && e.days_until_expiry <= 7).length;
+  const expiringSoonCount = entries.filter(
+    (entry) => entry.days_until_expiry !== null && entry.days_until_expiry <= 7,
+  ).length;
+  const allEntriesCount = watchlists.reduce((sum, watchlist) => sum + watchlist.active_entries, 0);
 
   return (
     <div className="flex-1 space-y-6 p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ListPlus className="h-5 w-5" />
+              Create Watchlist
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Name</label>
+              <Input
+                value={newWatchlist.name ?? ''}
+                onChange={(event) => setNewWatchlist((current) => ({ ...current, name: event.target.value }))}
+                placeholder="Swing Pullbacks"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Description</label>
+              <Input
+                value={newWatchlist.description ?? ''}
+                onChange={(event) => setNewWatchlist((current) => ({ ...current, description: event.target.value }))}
+                placeholder="Manual list for setups that need a cleaner entry"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Accent Color</label>
+              <input
+                className="h-10 w-full rounded-md border border-input bg-background px-2"
+                type="color"
+                value={newWatchlist.color ?? '#3b82f6'}
+                onChange={(event) => setNewWatchlist((current) => ({ ...current, color: event.target.value }))}
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={createLoading}>
+                Cancel
+              </Button>
+              <Button onClick={handleCreateWatchlist} disabled={createLoading}>
+                {createLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+                Create
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Watchlist</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Watchlists</h1>
           <p className="text-muted-foreground">
-            Track potential trades and trigger conditions
+            Organize setups by source and keep manual lists separate from scanners and analysis signals.
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={fetchWatchlist} disabled={loading}>
-            <RefreshCw className={cn('h-4 w-4 mr-2', loading && 'animate-spin')} />
+            <RefreshCw className={cn('mr-2 h-4 w-4', loading && 'animate-spin')} />
             Refresh
           </Button>
+          <Button variant="outline" onClick={() => setCreateOpen(true)}>
+            <ListPlus className="mr-2 h-4 w-4" />
+            Create List
+          </Button>
           <Button onClick={handleAddEntry}>
-            <Plus className="h-4 w-4 mr-2" />
+            <Plus className="mr-2 h-4 w-4" />
             Add Entry
           </Button>
         </div>
@@ -97,151 +233,192 @@ export default function WatchlistPage() {
         </Card>
       )}
 
-      {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Total Entries</p>
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin mt-2" />
-            ) : (
-              <p className="text-2xl font-bold">{stats?.total || 0}</p>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Active</p>
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin mt-2" />
-            ) : (
-              <p className="text-2xl font-bold text-gain">{stats?.active || 0}</p>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">High Priority</p>
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin mt-2" />
-            ) : (
-              <p className="text-2xl font-bold text-loss">{highPriorityCount}</p>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Expiring Soon</p>
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin mt-2" />
-            ) : (
-              <p className="text-2xl font-bold text-yellow-500">{expiringSoonCount}</p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <Card className="h-fit">
+          <CardHeader>
+            <CardTitle className="text-base">Named Lists</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <button
+              className={cn(
+                'flex w-full items-center justify-between rounded-lg border px-3 py-3 text-left transition-colors',
+                selectedWatchlistId === 'all' ? 'border-primary bg-primary/5' : 'hover:bg-muted/50',
+              )}
+              onClick={() => setSelectedWatchlistId('all')}
+              type="button"
+            >
+              <div>
+                <p className="font-medium">All Entries</p>
+                <p className="text-xs text-muted-foreground">Combined view across every named watchlist</p>
+              </div>
+              <Badge variant="secondary">{allEntriesCount}</Badge>
+            </button>
 
-      {/* Watchlist */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Eye className="h-5 w-5" />
-              Active Watchlist
-            </CardTitle>
-            <Tabs value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
-              <TabsList>
-                <TabsTrigger value="all">All</TabsTrigger>
-                <TabsTrigger value="high">High Priority</TabsTrigger>
-                <TabsTrigger value="expiring">Expiring Soon</TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : entries.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Eye className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No watchlist entries found</p>
-              <Button variant="outline" size="sm" className="mt-4" onClick={handleAddEntry}>
-                Add your first entry
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {entries.map((entry) => (
-                <div
-                  key={entry.id}
-                  className="flex items-center justify-between p-4 rounded-lg border hover:bg-muted/50 transition-colors"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                      <Eye className="h-5 w-5 text-primary" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold">{entry.ticker}</span>
-                        <Badge className={priorityColors[entry.priority.toLowerCase()] || priorityColors.medium}>
-                          {entry.priority.toUpperCase()}
-                        </Badge>
-                        <Badge variant="outline">{entry.status}</Badge>
-                      </div>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        {entry.entry_trigger && (
-                          <span className="truncate max-w-[300px]">{entry.entry_trigger}</span>
-                        )}
-                        {entry.entry_price && (
-                          <>
-                            <span>•</span>
-                            <span>Target: {formatCurrency(entry.entry_price)}</span>
-                          </>
-                        )}
-                      </div>
-                      {entry.notes && (
-                        <p className="text-sm text-muted-foreground mt-1 truncate max-w-[400px]">
-                          {entry.notes}
-                        </p>
-                      )}
-                    </div>
+            {watchlists.map((watchlist) => (
+              <button
+                key={watchlist.id}
+                className={cn(
+                  'flex w-full items-center justify-between rounded-lg border px-3 py-3 text-left transition-colors',
+                  selectedWatchlistId === watchlist.id ? 'border-primary bg-primary/5' : 'hover:bg-muted/50',
+                )}
+                onClick={() => setSelectedWatchlistId(watchlist.id)}
+                type="button"
+              >
+                <div className="min-w-0 pr-3">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="h-2.5 w-2.5 rounded-full"
+                      style={{ backgroundColor: watchlist.color || '#3b82f6' }}
+                    />
+                    <p className="truncate font-medium">{watchlist.name}</p>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      {entry.days_until_expiry !== null && (
-                        <div className="flex items-center gap-1 text-sm">
-                          <Clock className="h-3 w-3" />
-                          <span
-                            className={cn(
-                              entry.days_until_expiry <= 3
-                                ? 'text-loss'
-                                : entry.days_until_expiry <= 7
-                                ? 'text-yellow-500'
-                                : 'text-muted-foreground'
-                            )}
-                          >
-                            {entry.days_until_expiry} days left
-                          </span>
-                        </div>
-                      )}
-                      {entry.expires_at && (
-                        <p className="text-xs text-muted-foreground">
-                          Expires {formatDate(entry.expires_at)}
-                        </p>
-                      )}
-                    </div>
-                    <Button variant="ghost" size="icon">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                  <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                    <span className="capitalize">{watchlist.source_type}</span>
+                    {watchlist.is_default && <span>• default</span>}
+                    {watchlist.is_pinned && <span>• pinned</span>}
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                <Badge variant="secondary">{watchlist.active_entries}</Badge>
+              </button>
+            ))}
+          </CardContent>
+        </Card>
+
+        <div className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-4">
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-muted-foreground">Selected List</p>
+                {loading ? <Loader2 className="mt-2 h-4 w-4 animate-spin" /> : <p className="text-2xl font-bold">{selectedWatchlist?.name || 'All'}</p>}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-muted-foreground">Active Entries</p>
+                {loading ? <Loader2 className="mt-2 h-4 w-4 animate-spin" /> : <p className="text-2xl font-bold text-gain">{stats?.active || 0}</p>}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-muted-foreground">High Priority</p>
+                {loading ? <Loader2 className="mt-2 h-4 w-4 animate-spin" /> : <p className="text-2xl font-bold text-loss">{highPriorityCount}</p>}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-muted-foreground">Expiring Soon</p>
+                {loading ? <Loader2 className="mt-2 h-4 w-4 animate-spin" /> : <p className="text-2xl font-bold text-yellow-500">{expiringSoonCount}</p>}
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <Eye className="h-5 w-5" />
+                    {selectedWatchlist?.name || 'All Watchlists'}
+                  </CardTitle>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {selectedWatchlist?.description || 'Review active setups, grouped by the list that produced them.'}
+                  </p>
+                </div>
+                <Tabs value={filter} onValueChange={(value) => setFilter(value as EntryFilter)}>
+                  <TabsList>
+                    <TabsTrigger value="all">All</TabsTrigger>
+                    <TabsTrigger value="high">High Priority</TabsTrigger>
+                    <TabsTrigger value="expiring">Expiring Soon</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="flex items-center justify-center py-10">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : entries.length === 0 ? (
+                <div className="py-10 text-center text-muted-foreground">
+                  <Sparkles className="mx-auto mb-4 h-12 w-12 opacity-40" />
+                  <p>No entries found for this selection</p>
+                  <Button variant="outline" size="sm" className="mt-4" onClick={handleAddEntry}>
+                    Add an entry
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {entries.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className="flex flex-col gap-4 rounded-xl border p-4 transition-colors hover:bg-muted/40 lg:flex-row lg:items-center lg:justify-between"
+                    >
+                      <div className="flex items-start gap-4">
+                        <div
+                          className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
+                          style={{ backgroundColor: `${entry.watchlist_color || '#3b82f6'}22` }}
+                        >
+                          <Eye className="h-5 w-5" style={{ color: entry.watchlist_color || '#3b82f6' }} />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-bold tracking-wide">{entry.ticker}</span>
+                            <Badge className={priorityColors[entry.priority.toLowerCase()] || priorityColors.medium}>
+                              {entry.priority.toUpperCase()}
+                            </Badge>
+                            <Badge variant="outline">{entry.status}</Badge>
+                            {selectedWatchlistId === 'all' && entry.watchlist_name && (
+                              <Badge variant="secondary">{entry.watchlist_name}</Badge>
+                            )}
+                          </div>
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                            {entry.entry_trigger && <span>{entry.entry_trigger}</span>}
+                            {entry.entry_price !== null && (
+                              <>
+                                <span>•</span>
+                                <span>Target {formatCurrency(entry.entry_price)}</span>
+                              </>
+                            )}
+                          </div>
+                          {entry.notes && (
+                            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">{entry.notes}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 flex-col items-start gap-2 text-sm lg:items-end">
+                        {entry.days_until_expiry !== null && (
+                          <div className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            <span
+                              className={cn(
+                                entry.days_until_expiry <= 3
+                                  ? 'text-loss'
+                                  : entry.days_until_expiry <= 7
+                                    ? 'text-yellow-500'
+                                    : 'text-muted-foreground',
+                              )}
+                            >
+                              {entry.days_until_expiry} days left
+                            </span>
+                          </div>
+                        )}
+                        {entry.expires_at && (
+                          <p className="text-xs text-muted-foreground">Expires {formatDate(entry.expires_at)}</p>
+                        )}
+                        {entry.watchlist_source_type && (
+                          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground/80">
+                            {entry.watchlist_source_type}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }

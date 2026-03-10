@@ -667,8 +667,38 @@ export async function getTradeStats(): Promise<TradeStats> {
 }
 
 // Watchlist API
+export interface WatchlistSummary {
+  id: number;
+  name: string;
+  description: string | null;
+  source_type: 'manual' | 'scanner' | 'auto';
+  source_ref: string | null;
+  color: string | null;
+  is_default: boolean;
+  is_pinned: boolean;
+  total_entries: number;
+  active_entries: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WatchlistsResponse {
+  watchlists: WatchlistSummary[];
+}
+
+export interface CreateWatchlistPayload {
+  name: string;
+  description?: string | null;
+  color?: string;
+  is_pinned?: boolean;
+}
+
 export interface WatchlistEntry {
   id: number;
+  watchlist_id: number | null;
+  watchlist_name: string | null;
+  watchlist_source_type: 'manual' | 'scanner' | 'auto' | null;
+  watchlist_color: string | null;
   ticker: string;
   entry_trigger: string | null;
   entry_price: number | null;
@@ -699,15 +729,28 @@ export interface WatchlistListResponse {
   stats: WatchlistStats;
 }
 
+export async function listWatchlists(): Promise<WatchlistsResponse> {
+  return fetchApi<WatchlistsResponse>('/api/watchlists');
+}
+
+export async function createWatchlist(payload: CreateWatchlistPayload): Promise<WatchlistSummary> {
+  return fetchApi<WatchlistSummary>('/api/watchlists', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function listWatchlist(params?: {
   status?: 'active' | 'triggered' | 'expired' | 'invalidated' | 'all';
   priority?: 'high' | 'medium' | 'low';
+  watchlistId?: number;
   limit?: number;
   offset?: number;
 }): Promise<WatchlistListResponse> {
   const query = new URLSearchParams();
   if (params?.status && params.status !== 'all') query.set('status', params.status);
   if (params?.priority) query.set('priority', params.priority);
+  if (params?.watchlistId) query.set('watchlist_id', String(params.watchlistId));
   if (params?.limit) query.set('limit', String(params.limit));
   if (params?.offset) query.set('offset', String(params.offset));
 
@@ -718,8 +761,9 @@ export async function getWatchlistDetail(id: number): Promise<WatchlistEntry> {
   return fetchApi<WatchlistEntry>(`/api/watchlist/detail/${id}`);
 }
 
-export async function getWatchlistStats(): Promise<WatchlistStats> {
-  return fetchApi<WatchlistStats>('/api/watchlist/stats');
+export async function getWatchlistStats(watchlistId?: number): Promise<WatchlistStats> {
+  const query = watchlistId ? `?watchlist_id=${watchlistId}` : '';
+  return fetchApi<WatchlistStats>(`/api/watchlist/stats${query}`);
 }
 
 // Scanners API

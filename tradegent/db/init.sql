@@ -575,10 +575,39 @@ CREATE TRIGGER trades_updated_at BEFORE UPDATE ON nexus.trades
 COMMENT ON TABLE nexus.trades IS 'Trade journal entries for position tracking and post-trade review.';
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- 10. WATCHLIST TABLE (DB-backed watchlist for persistence)
+-- 10. WATCHLIST TABLES (named watchlists + entries)
 -- ═══════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS nexus.watchlists (
+    id              SERIAL PRIMARY KEY,
+    name            VARCHAR(100) NOT NULL,
+    description     TEXT,
+    source_type     VARCHAR(20) NOT NULL DEFAULT 'manual',
+    source_ref      VARCHAR(100),
+    color           VARCHAR(7) DEFAULT '#3b82f6',
+    is_default      BOOLEAN NOT NULL DEFAULT false,
+    is_pinned       BOOLEAN NOT NULL DEFAULT false,
+    user_id         INTEGER REFERENCES nexus.users(id),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    CONSTRAINT chk_watchlists_source_type CHECK (source_type IN ('manual', 'scanner', 'auto')),
+    CONSTRAINT chk_watchlists_color CHECK (color IS NULL OR color ~ '^#[0-9A-Fa-f]{6}$')
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_watchlists_name_unique ON nexus.watchlists(name);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_watchlists_default_unique ON nexus.watchlists(is_default) WHERE is_default = true;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_watchlists_source_unique ON nexus.watchlists(source_type, source_ref) WHERE source_ref IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_watchlists_source_type ON nexus.watchlists(source_type);
+
+DROP TRIGGER IF EXISTS watchlists_updated_at ON nexus.watchlists;
+CREATE TRIGGER watchlists_updated_at BEFORE UPDATE ON nexus.watchlists
+    FOR EACH ROW EXECUTE FUNCTION nexus.update_timestamp();
+
+COMMENT ON TABLE nexus.watchlists IS 'Named watchlist containers for manual, scanner, and automatic watch entries.';
+
 CREATE TABLE IF NOT EXISTS nexus.watchlist (
     id              SERIAL PRIMARY KEY,
+    watchlist_id    INTEGER REFERENCES nexus.watchlists(id) ON DELETE SET NULL,
     ticker          VARCHAR(10) NOT NULL,
 
     -- Entry conditions
@@ -609,6 +638,7 @@ CREATE TABLE IF NOT EXISTS nexus.watchlist (
 
 -- Note: UNIQUE constraint on (ticker, status) not used - allows multiple entries per ticker
 CREATE INDEX IF NOT EXISTS idx_watchlist_ticker ON nexus.watchlist(ticker);
+CREATE INDEX IF NOT EXISTS idx_watchlist_watchlist_id ON nexus.watchlist(watchlist_id);
 CREATE INDEX IF NOT EXISTS idx_watchlist_active ON nexus.watchlist(status) WHERE status = 'active';
 CREATE INDEX IF NOT EXISTS idx_watchlist_expires ON nexus.watchlist(expires_at) WHERE status = 'active';
 

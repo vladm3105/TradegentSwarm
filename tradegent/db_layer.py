@@ -1085,35 +1085,120 @@ class NexusDB:
 
     # ─── Watchlist Methods ────────────────────────────────────────────────
 
-    def get_watchlist_entry(self, ticker: str) -> dict | None:
-        """Get active watchlist entry for ticker."""
+    def get_watchlist_entry(self, ticker: str, watchlist_id: int | None = None) -> dict | None:
+        """Get the active watchlist entry for ticker, optionally scoped to a named list."""
+        query = "SELECT * FROM nexus.watchlist WHERE ticker = %s AND status = 'active'"
+        params: list[Any] = [ticker.upper()]
+        if watchlist_id is not None:
+            query += " AND watchlist_id = %s"
+            params.append(watchlist_id)
+        query += " ORDER BY created_at DESC LIMIT 1"
+
         with self.conn.cursor() as cur:
-            cur.execute(
-                "SELECT * FROM nexus.watchlist WHERE ticker = %s AND status = 'active' ORDER BY created_at DESC LIMIT 1",
-                [ticker.upper()]
-            )
+            cur.execute(query, params)
             row = cur.fetchone()
         return dict(row) if row else None
 
-    def get_active_watchlist(self) -> list[dict]:
-        """Get all active watchlist entries."""
+    def get_active_watchlist(self, watchlist_id: int | None = None) -> list[dict]:
+        """Get all active watchlist entries, optionally for a named list."""
+        query = "SELECT * FROM nexus.watchlist WHERE status = 'active'"
+        params: list[Any] = []
+        if watchlist_id is not None:
+            query += " AND watchlist_id = %s"
+            params.append(watchlist_id)
+        query += " ORDER BY priority DESC, created_at DESC"
+
         with self.conn.cursor() as cur:
-            cur.execute(
-                "SELECT * FROM nexus.watchlist WHERE status = 'active' ORDER BY priority DESC, created_at DESC"
-            )
+            cur.execute(query, params)
             return [dict(r) for r in cur.fetchall()]
+
+    def get_or_create_watchlist(
+        self,
+        name: str,
+        source_type: str = "manual",
+        source_ref: str | None = None,
+        description: str | None = None,
+        color: str | None = None,
+        is_default: bool = False,
+        is_pinned: bool = False,
+    ) -> dict:
+        """Get an existing named watchlist or create it if missing."""
+        with self.conn.cursor() as cur:
+            if source_ref:
+                cur.execute(
+                    "SELECT * FROM nexus.watchlists WHERE source_type = %s AND source_ref = %s LIMIT 1",
+                    [source_type, source_ref],
+                )
+                row = cur.fetchone()
+                if row:
+                    return dict(row)
+
+            cur.execute(
+                "SELECT * FROM nexus.watchlists WHERE lower(name) = lower(%s) LIMIT 1",
+                [name],
+            )
+            row = cur.fetchone()
+            if row:
+                return dict(row)
+
+            try:
+                cur.execute(
+                    """
+                    INSERT INTO nexus.watchlists (
+                        name, description, source_type, source_ref, color, is_default, is_pinned
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    RETURNING *
+                    """,
+                    [
+                        name,
+                        description,
+                        source_type,
+                        source_ref,
+                        color or "#3b82f6",
+                        is_default,
+                        is_pinned,
+                    ],
+                )
+                row = cur.fetchone()
+                self.conn.commit()
+                return dict(row)
+            except pg_errors.UniqueViolation:
+                self.conn.rollback()
+
+        with self.conn.cursor() as cur:
+            if source_ref:
+                cur.execute(
+                    "SELECT * FROM nexus.watchlists WHERE source_type = %s AND source_ref = %s LIMIT 1",
+                    [source_type, source_ref],
+                )
+            else:
+                cur.execute(
+                    "SELECT * FROM nexus.watchlists WHERE lower(name) = lower(%s) LIMIT 1",
+                    [name],
+                )
+            row = cur.fetchone()
+        if not row:
+            raise RuntimeError(f"Failed to create watchlist: {name}")
+        return dict(row)
 
     def add_watchlist_entry(self, entry: dict) -> int:
         """Add new watchlist entry. Returns entry ID."""
         with self.conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO nexus.watchlist (ticker, entry_trigger, entry_price,
-                    invalidation, invalidation_price, expires_at, priority, source, source_analysis, notes)
-                VALUES (%(ticker)s, %(entry_trigger)s, %(entry_price)s,
-                    %(invalidation)s, %(invalidation_price)s, %(expires_at)s,
-                    %(priority)s, %(source)s, %(source_analysis)s, %(notes)s)
+                INSERT INTO nexus.watchlist (
+                    watchlist_id, ticker, entry_trigger, entry_price,
+                    invalidation, invalidation_price, expires_at, priority,
+                    source, source_analysis, notes
+                )
+                VALUES (
+                    %(watchlist_id)s, %(ticker)s, %(entry_trigger)s, %(entry_price)s,
+                    %(invalidation)s, %(invalidation_price)s, %(expires_at)s, %(priority)s,
+                    %(source)s, %(source_analysis)s, %(notes)s
+                )
                 RETURNING id
             """, {
+                "watchlist_id": entry.get("watchlist_id"),
                 "ticker": entry.get("ticker", "").upper(),
                 "entry_trigger": entry.get("entry_trigger"),
                 "entry_price": entry.get("entry_price"),

@@ -2322,15 +2322,27 @@ def _chain_to_watchlist(
     if recommendation.upper() not in ("WATCH", "WATCHLIST"):
         return False
 
-    # Check if already in watchlist
-    existing = db.get_watchlist_entry(ticker)
+    analysis_watchlist = db.get_or_create_watchlist(
+        name="Analysis Signals",
+        description="Automatic watchlist entries created from WATCH recommendations in completed analyses.",
+        source_type="auto",
+        source_ref="analysis-watch",
+        color="#3b82f6",
+        is_default=True,
+        is_pinned=True,
+    )
+
+    existing = db.get_watchlist_entry(ticker, watchlist_id=analysis_watchlist["id"])
     if existing:
-        log.info(f"  → {ticker} already in watchlist (id={existing['id']})")
+        log.info(
+            f"  → {ticker} already in watchlist {analysis_watchlist['name']} (id={existing['id']})"
+        )
         return False
 
     from datetime import timedelta
 
     entry = {
+        "watchlist_id": analysis_watchlist["id"],
         "ticker": ticker.upper(),
         "entry_trigger": f"Price at or below ${entry_price:.2f}" if entry_price else "See analysis",
         "entry_price": entry_price,
@@ -2344,7 +2356,9 @@ def _chain_to_watchlist(
     }
 
     entry_id = db.add_watchlist_entry(entry)
-    log.info(f"  → Chained to watchlist: {ticker} (id={entry_id})")
+    log.info(
+        f"  → Chained to watchlist {analysis_watchlist['name']}: {ticker} (id={entry_id})"
+    )
     return True
 
 
@@ -3393,10 +3407,19 @@ def _route_scanner_results(db: NexusDB, scanner_name: str, results: list[ScanRes
 
         elif score >= 5.5:
             # Medium score -> Add to watchlist
-            existing = db.get_watchlist_entry(ticker)
+            scanner_watchlist = db.get_or_create_watchlist(
+                name=scanner_name,
+                description=f"Candidates produced by scanner {scanner_name}.",
+                source_type="scanner",
+                source_ref=scanner_name,
+                color="#f97316",
+                is_pinned=True,
+            )
+            existing = db.get_watchlist_entry(ticker, watchlist_id=scanner_watchlist["id"])
             if not existing:
                 from datetime import timedelta
                 db.add_watchlist_entry({
+                    "watchlist_id": scanner_watchlist["id"],
                     "ticker": ticker,
                     "entry_trigger": result.catalyst or "Scanner trigger",
                     "entry_price": None,
@@ -3408,7 +3431,9 @@ def _route_scanner_results(db: NexusDB, scanner_name: str, results: list[ScanRes
                     "source_analysis": None,
                     "notes": f"Score: {score:.1f}",
                 })
-                log.info(f"  → Medium score ({score:.1f}): Added {ticker} to watchlist")
+                log.info(
+                    f"  → Medium score ({score:.1f}): Added {ticker} to watchlist {scanner_watchlist['name']}"
+                )
                 stats["watchlisted"] += 1
         else:
             stats["skipped"] += 1
