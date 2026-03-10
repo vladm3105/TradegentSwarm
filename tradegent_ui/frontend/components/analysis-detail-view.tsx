@@ -171,9 +171,23 @@ export function AnalysisDetailView({ analysis, className }: AnalysisDetailViewPr
               Stock Analysis v{analysis._meta.version} | {analysis.analysis_date}
             </p>
           </div>
-          <Badge className={cn('text-lg px-6 py-2 rounded-full', getRecommendationColor(analysis.recommendation))}>
-            {analysis.recommendation.replace('_', ' ')}
-          </Badge>
+          <div className="flex items-center gap-3">
+            {analysis._meta.status && analysis._meta.status !== 'active' && (
+              <Badge
+                variant="outline"
+                className={cn(
+                  'capitalize border-white/30 text-white',
+                  analysis._meta.status === 'declined' && 'border-red-400/60 text-red-300 bg-red-900/30',
+                  analysis._meta.status === 'expired' && 'border-slate-400/60 text-slate-300',
+                )}
+              >
+                {analysis._meta.status}
+              </Badge>
+            )}
+            <Badge className={cn('text-lg px-6 py-2 rounded-full', getRecommendationColor(analysis.recommendation))}>
+              {analysis.recommendation.replace('_', ' ')}
+            </Badge>
+          </div>
         </div>
       </div>
 

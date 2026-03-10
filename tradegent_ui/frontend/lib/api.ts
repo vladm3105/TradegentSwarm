@@ -567,11 +567,12 @@ export interface AnalysisDetailResponse {
   gate_result: string | null;
   expected_value: number | null;
   current_price: number | null;
+  status: string;
   yaml_content: Record<string, unknown>;
 }
 
 export async function listAnalyses(params?: {
-  status?: 'all' | 'active' | 'expired';
+  status?: 'all' | 'active' | 'expired' | 'declined';
   limit?: number;
   offset?: number;
 }): Promise<AnalysisListResponse> {

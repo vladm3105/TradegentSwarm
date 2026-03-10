@@ -148,6 +148,18 @@ export function getGateClass(result: string): string {
 }
 
 /**
+ * Get analysis status badge class
+ */
+export function getStatusClass(status: string): string {
+  switch (status.toLowerCase()) {
+    case 'active':   return 'text-green-700 border-green-300 bg-green-50 dark:text-green-400 dark:border-green-800 dark:bg-green-950/30';
+    case 'expired':  return 'text-muted-foreground border-muted';
+    case 'declined': return 'text-red-700 border-red-300 bg-red-50 dark:text-red-400 dark:border-red-800 dark:bg-red-950/30';
+    default:         return 'text-muted-foreground border-muted';
+  }
+}
+
+/**
  * Debounce function
  */
 export function debounce<T extends (...args: unknown[]) => unknown>(

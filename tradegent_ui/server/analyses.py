@@ -186,6 +186,16 @@ def _row_to_detail(row: dict) -> "AnalysisDetailResponse":
     else:
         analysis_date_str = ""
 
+    # Prefer explicit row status (e.g. declined), then _meta.status in YAML,
+    # then fall back to date-derived active/expired.
+    row_status = row.get("status")
+    yaml_content = row.get("yaml_content") or {}
+    if row_status and row_status not in {"active", "expired"}:
+        status = row_status
+    else:
+        meta = yaml_content.get("_meta") if isinstance(yaml_content.get("_meta"), dict) else {}
+        status = str(meta.get("status") or row_status or "active")
+
     return AnalysisDetailResponse(
         id=row["id"],
         ticker=row["ticker"],
@@ -197,7 +207,8 @@ def _row_to_detail(row: dict) -> "AnalysisDetailResponse":
         gate_result=row.get("gate_result"),
         expected_value=_to_float(row.get("expected_value_pct")),
         current_price=_to_float(row.get("current_price")),
-        yaml_content=row.get("yaml_content") or {},
+        status=status,
+        yaml_content=yaml_content,
     )
 
 
@@ -234,12 +245,13 @@ class AnalysisDetailResponse(BaseModel):
     gate_result: Optional[str] = None
     expected_value: Optional[float] = None
     current_price: Optional[float] = None
+    status: str = "active"
     yaml_content: dict
 
 
 @router.get("/list", response_model=AnalysisListResponse)
 async def list_analyses(
-    status: Optional[str] = Query(None, pattern="^(active|expired|all)$"),
+    status: Optional[str] = Query(None, pattern="^(active|expired|declined|all)$"),
     analysis_type: str = Query("all", pattern="^(stock|earnings|all)$"),
     include_declined: bool = Query(True),
     limit: int = Query(50, ge=1, le=100),
@@ -255,20 +267,25 @@ async def list_analyses(
                 conditions = ["user_id = %s"]
                 params: list[object] = [user_id]
                 if status == "active":
-                    # Active: analysis date within last 30 days
+                    # Active: analysis date within last 30 days, not explicitly declined
                     conditions.append("analysis_date >= CURRENT_DATE - INTERVAL '30 days'")
+                    conditions.append("COALESCE(yaml_content->>'_meta.status', yaml_content->'_meta'->>'status', '') <> 'declined'")
                 elif status == "expired":
                     conditions.append("analysis_date < CURRENT_DATE - INTERVAL '30 days'")
+                    conditions.append("COALESCE(yaml_content->>'_meta.status', yaml_content->'_meta'->>'status', '') <> 'declined'")
+                elif status == "declined":
+                    conditions.append("yaml_content->'_meta'->>'status' = 'declined'")
                 where_clause = "WHERE " + " AND ".join(conditions)
 
-                include_declined_admin = include_declined and "admin" in user.roles
+                # Declined folder files: show to all authenticated users
+                show_declined_files = include_declined and status in {None, "all", "declined"}
                 db_limit = limit + offset
                 db_offset = 0
 
                 total = 0
                 combined_rows: list[dict] = []
 
-                if analysis_type in {"all", "stock"}:
+                if analysis_type in {"all", "stock"} and status != "declined":
                     cur.execute(
                         f"SELECT COUNT(*) as cnt FROM nexus.kb_stock_analyses {where_clause}",
                         params,
@@ -289,10 +306,13 @@ async def list_analyses(
                             file_path,
                             yaml_content,
                             COALESCE(yaml_content->>'analysis_type', 'stock') as analysis_type,
-                            CASE
-                                WHEN analysis_date >= CURRENT_DATE - INTERVAL '30 days' THEN 'active'
-                                ELSE 'expired'
-                            END as status
+                            COALESCE(
+                                NULLIF(yaml_content->'_meta'->>'status', ''),
+                                CASE
+                                    WHEN analysis_date >= CURRENT_DATE - INTERVAL '30 days' THEN 'active'
+                                    ELSE 'expired'
+                                END
+                            ) as status
                         FROM nexus.kb_stock_analyses
                         {where_clause}
                         ORDER BY analysis_date DESC
@@ -300,7 +320,7 @@ async def list_analyses(
                     """, params + [db_limit, db_offset])
                     combined_rows.extend(dict(row) for row in cur.fetchall())
 
-                if analysis_type in {"all", "earnings"}:
+                if analysis_type in {"all", "earnings"} and status != "declined":
                     cur.execute(
                         f"SELECT COUNT(*) as cnt FROM nexus.kb_earnings_analyses {where_clause}",
                         params,
@@ -321,10 +341,13 @@ async def list_analyses(
                             file_path,
                             yaml_content,
                             COALESCE(yaml_content->>'analysis_type', 'earnings') as analysis_type,
-                            CASE
-                                WHEN analysis_date >= CURRENT_DATE - INTERVAL '30 days' THEN 'active'
-                                ELSE 'expired'
-                            END as status
+                            COALESCE(
+                                NULLIF(yaml_content->'_meta'->>'status', ''),
+                                CASE
+                                    WHEN analysis_date >= CURRENT_DATE - INTERVAL '30 days' THEN 'active'
+                                    ELSE 'expired'
+                                END
+                            ) as status
                         FROM nexus.kb_earnings_analyses
                         {where_clause}
                         ORDER BY analysis_date DESC
@@ -335,9 +358,9 @@ async def list_analyses(
                         entry["id"] = _EARNINGS_ID_OFFSET + int(entry["id"])
                         combined_rows.append(entry)
 
-                # Declined artifacts are file-backed and currently global; expose to admins only.
+                # Declined artifacts are file-backed; visible to all authenticated users.
                 declined_rows: list[dict] = []
-                if include_declined_admin and analysis_type in {"all", "stock"}:
+                if show_declined_files and analysis_type in {"all", "stock"}:
                     declined_rows = _collect_declined_rows(status_filter=status)
                     combined_rows.extend(declined_rows)
 

@@ -14,7 +14,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { BarChart3, Search, RefreshCw, Eye, Loader2, AlertCircle, X } from 'lucide-react';
-import { cn, formatDate, getRecommendationClass, getGateClass } from '@/lib/utils';
+import { cn, formatDate, getRecommendationClass, getGateClass, getStatusClass } from '@/lib/utils';
 import { listAnalyses, getAnalysisDetail, type AnalysisSummary, type AnalysisDetailResponse } from '@/lib/api';
 import { transformToAnalysisDetail, hasFullAnalysisData } from '@/lib/analysis-transformer';
 import { AnalysisDetailView } from '@/components/analysis-detail-view';
@@ -38,6 +38,11 @@ function AnalysisRow({ analysis, onView, isLoading }: AnalysisRowProps) {
             {analysis.type}
           </Badge>
         </div>
+      </td>
+      <td className="p-4">
+        <Badge variant="outline" className={cn('text-xs capitalize', getStatusClass(analysis.status))}>
+          {analysis.status}
+        </Badge>
       </td>
       <td className="p-4">
         {analysis.recommendation ? (
@@ -252,7 +257,7 @@ export default function AnalysisPage() {
   const urlTicker = searchParams.get('ticker')?.toUpperCase() || '';
 
   const [ticker, setTicker] = useState(urlTicker);
-  const [filter, setFilter] = useState<'all' | 'active' | 'expired'>('all');
+  const [filter, setFilter] = useState<'all' | 'active' | 'expired' | 'declined'>('all');
   const [searchTicker, setSearchTicker] = useState(urlTicker);
   const [analyses, setAnalyses] = useState<AnalysisSummary[]>([]);
   const [total, setTotal] = useState(0);
@@ -284,7 +289,7 @@ export default function AnalysisPage() {
     setListError(null);
     try {
       const response = await listAnalyses({
-        status: filter === 'all' ? undefined : filter,
+        status: filter,
         limit: 50,
       });
       setAnalyses(response.analyses);
@@ -469,6 +474,7 @@ export default function AnalysisPage() {
                   <TabsTrigger value="all">All</TabsTrigger>
                   <TabsTrigger value="active">Active</TabsTrigger>
                   <TabsTrigger value="expired">Expired</TabsTrigger>
+                  <TabsTrigger value="declined">Declined</TabsTrigger>
                 </TabsList>
               </Tabs>
               <Button
@@ -529,6 +535,7 @@ export default function AnalysisPage() {
                 <thead>
                   <tr className="border-b text-left">
                     <th className="p-4 font-medium text-muted-foreground">Ticker</th>
+                    <th className="p-4 font-medium text-muted-foreground">Status</th>
                     <th className="p-4 font-medium text-muted-foreground">Recommendation</th>
                     <th className="p-4 font-medium text-muted-foreground">Confidence</th>
                     <th className="p-4 font-medium text-muted-foreground">Gate</th>
