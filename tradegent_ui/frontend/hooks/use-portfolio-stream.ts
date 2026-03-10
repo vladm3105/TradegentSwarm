@@ -3,10 +3,17 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getSession } from 'next-auth/react';
 import { createLogger } from '@/lib/logger';
+import {
+  createAuthenticatedWebSocket,
+  resolveWebSocketEndpoint,
+} from '@/lib/websocket-auth';
 
 const log = createLogger('use-portfolio-stream');
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8081';
+const STREAM_WS_URL = resolveWebSocketEndpoint(
+  process.env.NEXT_PUBLIC_WS_URL,
+  '/ws/stream'
+);
 
 export interface Position {
   symbol: string;
@@ -57,7 +64,7 @@ export function usePortfolioStream({ enabled = true }: UsePortfolioStreamOptions
         return;
       }
 
-      const ws = new WebSocket(`${WS_URL}/ws/stream?token=${session.accessToken}`);
+      const ws = createAuthenticatedWebSocket(STREAM_WS_URL, session.accessToken);
 
       ws.onopen = () => {
         log.info('Portfolio stream connected');

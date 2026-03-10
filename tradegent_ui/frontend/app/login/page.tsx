@@ -9,14 +9,20 @@ import { Input } from '@/components/ui/input';
 import { AlertCircle, Loader2, Github, Mail, KeyRound } from 'lucide-react';
 
 // Check if Auth0 is configured via env
-const AUTH0_CONFIGURED = !!process.env.NEXT_PUBLIC_AUTH0_CONFIGURED;
+const AUTH0_CONFIGURED = process.env.NEXT_PUBLIC_AUTH0_CONFIGURED === 'true';
+const GOOGLE_CONFIGURED = process.env.NEXT_PUBLIC_GOOGLE_CONFIGURED === 'true';
+const OAUTH_CONFIGURED = AUTH0_CONFIGURED || GOOGLE_CONFIGURED;
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
+const ADMIN_EMAIL = process.env.NEXT_PUBLIC_ADMIN_EMAIL || process.env.ADMIN_EMAIL || 'admin@tradegent.local';
+const DEMO_EMAIL = process.env.NEXT_PUBLIC_DEMO_EMAIL || process.env.DEMO_EMAIL || 'demo@tradegent.local';
+const DEMO_PASSWORD_SET = process.env.NEXT_PUBLIC_DEMO_ENABLED === 'true';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [showCredentialsLogin, setShowCredentialsLogin] = useState(!AUTH0_CONFIGURED);
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -99,27 +105,29 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* Auth0 Login Buttons */}
-          {AUTH0_CONFIGURED && (
+          {/* OAuth Login Buttons */}
+          {OAUTH_CONFIGURED && (
             <>
-              <Button
-                type="button"
-                className="w-full"
-                onClick={handleAuth0Login}
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Signing in...
-                  </>
-                ) : (
-                  <>
-                    <KeyRound className="h-4 w-4 mr-2" />
-                    Sign in with Auth0
-                  </>
-                )}
-              </Button>
+              {AUTH0_CONFIGURED && (
+                <Button
+                  type="button"
+                  className="w-full"
+                  onClick={handleAuth0Login}
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Signing in...
+                    </>
+                  ) : (
+                    <>
+                      <KeyRound className="h-4 w-4 mr-2" />
+                      Sign in with Auth0
+                    </>
+                  )}
+                </Button>
+              )}
 
               <div className="relative">
                 <div className="absolute inset-0 flex items-center">
@@ -136,10 +144,17 @@ export default function LoginPage() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => signIn('auth0', {
-                    callbackUrl,
-                    authorizationParams: { connection: 'google-oauth2' }
-                  })}
+                  onClick={() => {
+                    if (GOOGLE_CONFIGURED) {
+                      void signIn('google', { callbackUrl });
+                      return;
+                    }
+
+                    void signIn('auth0', {
+                      callbackUrl,
+                      authorizationParams: { connection: 'google-oauth2' },
+                    });
+                  }}
                   disabled={isLoading}
                 >
                   <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24">
@@ -162,95 +177,101 @@ export default function LoginPage() {
                   </svg>
                   Google
                 </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => signIn('auth0', {
-                    callbackUrl,
-                    authorizationParams: { connection: 'github' }
-                  })}
-                  disabled={isLoading}
-                >
-                  <Github className="h-4 w-4 mr-2" />
-                  GitHub
-                </Button>
+
+                {AUTH0_CONFIGURED ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => signIn('auth0', {
+                      callbackUrl,
+                      authorizationParams: { connection: 'github' }
+                    })}
+                    disabled={isLoading}
+                  >
+                    <Github className="h-4 w-4 mr-2" />
+                    GitHub
+                  </Button>
+                ) : (
+                  <div />
+                )}
               </div>
 
-              {/* Toggle to show email/password login */}
-              <Button
-                type="button"
-                variant="link"
-                className="w-full text-muted-foreground"
-                onClick={() => setShowCredentialsLogin(!showCredentialsLogin)}
-              >
-                {showCredentialsLogin ? 'Hide' : 'Show'} email login
-              </Button>
             </>
           )}
 
           {/* Email/Password Login Form */}
-          {showCredentialsLogin && (
-            <>
-              {AUTH0_CONFIGURED && (
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <span className="w-full border-t" />
-                  </div>
-                  <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-background px-2 text-muted-foreground">
-                      Email login
-                    </span>
-                  </div>
+          <>
+            {OAUTH_CONFIGURED && (
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-background px-2 text-muted-foreground">
+                    Email login
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <form onSubmit={handleCredentialsLogin} className="space-y-4">
+              <div className="space-y-2">
+                <label htmlFor="email" className="text-sm font-medium">
+                  Email
+                </label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={isLoading}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="password" className="text-sm font-medium">
+                  Password
+                </label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={isLoading}
+                  required
+                />
+              </div>
+
+              <Button type="submit" className="w-full" disabled={isLoading}>
+                {isLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Signing in...
+                  </>
+                ) : (
+                  <>
+                    <Mail className="h-4 w-4 mr-2" />
+                    Sign In
+                  </>
+                )}
+              </Button>
+
+              {!IS_PRODUCTION && (
+                <div className="rounded-md border border-muted bg-muted/40 p-3 text-xs text-muted-foreground">
+                  <p className="font-medium text-foreground">Local accounts enabled</p>
+                  <p>Admin: {ADMIN_EMAIL}</p>
+                  {DEMO_PASSWORD_SET ? (
+                    <p>Demo: {DEMO_EMAIL}</p>
+                  ) : (
+                    <p>Demo account is disabled (DEMO_PASSWORD not set)</p>
+                  )}
                 </div>
               )}
-
-              <form onSubmit={handleCredentialsLogin} className="space-y-4">
-                <div className="space-y-2">
-                  <label htmlFor="email" className="text-sm font-medium">
-                    Email
-                  </label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="you@example.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    disabled={isLoading}
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label htmlFor="password" className="text-sm font-medium">
-                    Password
-                  </label>
-                  <Input
-                    id="password"
-                    type="password"
-                    placeholder="Enter your password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    disabled={isLoading}
-                    required
-                  />
-                </div>
-
-                <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Signing in...
-                    </>
-                  ) : (
-                    <>
-                      <Mail className="h-4 w-4 mr-2" />
-                      Sign In
-                    </>
-                  )}
-                </Button>
-              </form>
-            </>
-          )}
+            </form>
+          </>
         </CardContent>
       </Card>
     </div>

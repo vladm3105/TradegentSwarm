@@ -35,8 +35,10 @@ const nextConfig = {
     ],
   },
 
-  // Strict mode for better development
-  reactStrictMode: true,
+  // Strict mode disabled: causes React double-mount in dev which triggers WS
+  // connect/disconnect loop (useEffect cleanup fires before remount).
+  // Re-enable when WebSocket hook is StrictMode-compatible.
+  reactStrictMode: false,
 
   // Output standalone for Docker deployment
   output: 'standalone',

@@ -51,9 +51,18 @@ IB_ACCOUNT=DU_PAPER_ACCOUNT
 VNC_PASS=nexus123
 
 # LLM Providers
+OPENAI_API_KEY=sk-proj-...
+ANTHROPIC_API_KEY=sk-ant-...  # Optional: for Claude models
+OPENROUTER_API_KEY=sk-or-...  # Optional: for OpenRouter
+
+# LiteLLM routing (role-based model selection)
+LLM_MODEL=gpt-4o-mini
+LITELLM_ROUTE_REASONING_STANDARD=openrouter/openai/gpt-4o-mini,openai/gpt-4o-mini
+LITELLM_ROUTE_SUMMARIZER_FAST=openai/gpt-4o-mini
+
+# Embedding/extraction providers
 EMBED_PROVIDER=openai
 EXTRACT_PROVIDER=openai
-OPENAI_API_KEY=sk-proj-...
 
 # PostgreSQL
 PG_USER=tradegent

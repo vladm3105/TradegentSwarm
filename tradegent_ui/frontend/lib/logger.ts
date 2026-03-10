@@ -77,12 +77,20 @@ class Logger {
     };
   }
 
-  private log(level: LogLevel, message: string, context?: LogContext): void {
-    const entry = this.formatEntry(level, message, context);
+  // Core emit — accepts explicit component so createLogger() can bind its own
+  // component name without touching shared singleton state.
+  logForComponent(component: string, level: LogLevel, message: string, context?: LogContext): void {
+    const entry: LogEntry = {
+      timestamp: new Date().toISOString(),
+      level,
+      message,
+      context,
+      component,
+      correlationId: this.correlationId || undefined,
+    };
 
-    // Format for console
     const prefix = `[${entry.timestamp}] [${level.toUpperCase()}]`;
-    const componentPrefix = entry.component ? `[${entry.component}]` : '';
+    const componentPrefix = component ? `[${component}]` : '';
     const correlationPrefix = entry.correlationId ? `[${entry.correlationId.slice(0, 8)}]` : '';
     const fullPrefix = `${prefix}${componentPrefix}${correlationPrefix}`;
 
@@ -116,6 +124,10 @@ class Logger {
         // Ignore storage errors
       }
     }
+  }
+
+  private log(level: LogLevel, message: string, context?: LogContext): void {
+    this.logForComponent(this.component, level, message, context);
   }
 
   debug(message: string, context?: LogContext): void {
@@ -230,14 +242,36 @@ class Logger {
   }
 }
 
+// Interface returned by createLogger — component is bound via closure,
+// so multiple modules each get their own component label without interfering.
+export interface ComponentLogger {
+  debug(message: string, context?: LogContext): void;
+  info(message: string, context?: LogContext): void;
+  warn(message: string, context?: LogContext): void;
+  error(message: string, context?: LogContext): void;
+  ws(event: string, context?: LogContext): void;
+  api(method: string, url: string, context?: LogContext): void;
+  action(action: string, context?: LogContext): void;
+}
+
 // Export singleton instance
 export const logger = Logger.getInstance();
 
-// Export function to create component-specific logger
-export function createLogger(component: string): Logger {
-  const log = Logger.getInstance();
-  log.setComponent(component);
-  return log;
+// Export function to create component-specific logger.
+// Returns a plain object that binds the component name via closure — does NOT
+// mutate the shared Logger singleton, so multiple callers with different
+// component names are fully isolated from each other.
+export function createLogger(component: string): ComponentLogger {
+  const singleton = Logger.getInstance();
+  return {
+    debug: (msg, ctx) => singleton.logForComponent(component, 'debug', msg, ctx),
+    info:  (msg, ctx) => singleton.logForComponent(component, 'info',  msg, ctx),
+    warn:  (msg, ctx) => singleton.logForComponent(component, 'warn',  msg, ctx),
+    error: (msg, ctx) => singleton.logForComponent(component, 'error', msg, ctx),
+    ws:     (event, ctx) => singleton.logForComponent(component, 'debug', `WS ${event}`, ctx),
+    api:    (method, url, ctx) => singleton.logForComponent(component, 'debug', `API ${method} ${url}`, ctx),
+    action: (action, ctx) => singleton.logForComponent(component, 'info', `Action: ${action}`, ctx),
+  };
 }
 
 // Type declaration for window extensions

@@ -2328,7 +2328,7 @@ class NexusDB:
 
     # ─── KB Stock Analyses ─────────────────────────────────────────────────────
 
-    def upsert_kb_stock_analysis(self, file_path: str, data: dict) -> int:
+    def upsert_kb_stock_analysis(self, file_path: str, data: dict, user_id: int = 1) -> int:
         """Upsert a stock analysis into kb_stock_analyses. Returns ID."""
         # Validate inputs
         file_path = self._validate_file_path(file_path, "stock analysis")
@@ -2407,11 +2407,13 @@ class NexusDB:
                         catalyst_score, technical_score, fundamental_score, sentiment_score,
                         total_threat_level, yaml_content,
                         bull_case_strength, bear_case_strength,
-                        catalyst_type, catalyst_date, risk_reward_ratio, position_size_pct, days_to_catalyst
+                        catalyst_type, catalyst_date, risk_reward_ratio, position_size_pct, days_to_catalyst,
+                        user_id
                     ) VALUES (
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                        %s
                     )
                     ON CONFLICT (file_path) DO UPDATE SET
                         current_price = EXCLUDED.current_price,
@@ -2440,6 +2442,7 @@ class NexusDB:
                         risk_reward_ratio = EXCLUDED.risk_reward_ratio,
                         position_size_pct = EXCLUDED.position_size_pct,
                         days_to_catalyst = EXCLUDED.days_to_catalyst,
+                        user_id = EXCLUDED.user_id,
                         updated_at = now()
                     RETURNING id
                 """, [
@@ -2474,6 +2477,7 @@ class NexusDB:
                     risk_reward,
                     position_size,  # Added: from trade_plan.position_sizing.max_portfolio_pct
                     catalyst.get("days_until"),
+                    user_id,
                 ])
                 result = cur.fetchone()
                 if result is None:
@@ -2539,7 +2543,7 @@ class NexusDB:
 
     # ─── KB Earnings Analyses ──────────────────────────────────────────────────
 
-    def upsert_kb_earnings_analysis(self, file_path: str, data: dict) -> int:
+    def upsert_kb_earnings_analysis(self, file_path: str, data: dict, user_id: int = 1) -> int:
         """Upsert an earnings analysis into kb_earnings_analyses. Returns ID."""
         # Validate inputs
         file_path = self._validate_file_path(file_path, "earnings analysis")
@@ -2599,11 +2603,13 @@ class NexusDB:
                         bull_probability, base_probability, bear_probability, disaster_probability,
                         catalyst_score, technical_score, fundamental_score, sentiment_score,
                         total_threat_level, gate_criteria_met, risk_reward_ratio,
-                        iv_rank, expected_move_pct
+                        iv_rank, expected_move_pct,
+                        user_id
                     ) VALUES (
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                        %s
                     )
                     ON CONFLICT (file_path) DO UPDATE SET
                         recommendation = EXCLUDED.recommendation,
@@ -2627,6 +2633,7 @@ class NexusDB:
                         risk_reward_ratio = EXCLUDED.risk_reward_ratio,
                         iv_rank = EXCLUDED.iv_rank,
                         expected_move_pct = EXCLUDED.expected_move_pct,
+                        user_id = EXCLUDED.user_id,
                         updated_at = now()
                     RETURNING id
                 """, [
@@ -2671,6 +2678,7 @@ class NexusDB:
                     risk_reward,
                     iv_rank,
                     expected_move_pct,
+                    user_id,
                 ])
                 result = cur.fetchone()
                 if result is None:
@@ -2825,7 +2833,7 @@ class NexusDB:
 
     # ─── KB Trade Journals ─────────────────────────────────────────────────────
 
-    def upsert_kb_trade_journal(self, file_path: str, data: dict) -> int:
+    def upsert_kb_trade_journal(self, file_path: str, data: dict, user_id: int = 1) -> int:
         """Upsert a trade journal into kb_trade_journals. Returns ID."""
         file_path = self._validate_file_path(file_path, "trade journal")
         meta = data.get("_meta", {})
@@ -2861,8 +2869,8 @@ class NexusDB:
                         direction, entry_date, entry_price, exit_date, exit_price,
                         outcome, return_pct, pnl_dollars, holding_days,
                         entry_grade, exit_grade, overall_grade,
-                        biases_detected, primary_lesson, yaml_content
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        biases_detected, primary_lesson, yaml_content, user_id
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (trade_id) DO UPDATE SET
                         outcome = EXCLUDED.outcome,
                         return_pct = EXCLUDED.return_pct,
@@ -2870,6 +2878,7 @@ class NexusDB:
                         overall_grade = EXCLUDED.overall_grade,
                         biases_detected = EXCLUDED.biases_detected,
                         yaml_content = EXCLUDED.yaml_content,
+                        user_id = EXCLUDED.user_id,
                         updated_at = now()
                     RETURNING id
                 """, [
@@ -2892,6 +2901,7 @@ class NexusDB:
                     data.get("biases_detected", []),
                     data.get("primary_lesson"),
                     json.dumps(data),
+                    user_id,
                 ])
                 result_row = cur.fetchone()
                 if result_row is None:
@@ -2937,7 +2947,7 @@ class NexusDB:
 
     # ─── KB Watchlist Entries ──────────────────────────────────────────────────
 
-    def upsert_kb_watchlist_entry(self, file_path: str, data: dict) -> int:
+    def upsert_kb_watchlist_entry(self, file_path: str, data: dict, user_id: int = 1) -> int:
         """Upsert a watchlist entry into kb_watchlist_entries. Returns ID."""
         file_path = self._validate_file_path(file_path, "watchlist entry")
         meta = data.get("_meta", {})
@@ -2955,12 +2965,13 @@ class NexusDB:
                     INSERT INTO nexus.kb_watchlist_entries (
                         watchlist_id, ticker, file_path, entry_trigger, entry_price,
                         status, priority, conviction_level, expires_at,
-                        source_analysis, source_score, yaml_content
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        source_analysis, source_score, yaml_content, user_id
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (watchlist_id) DO UPDATE SET
                         status = EXCLUDED.status,
                         entry_trigger = EXCLUDED.entry_trigger,
                         yaml_content = EXCLUDED.yaml_content,
+                        user_id = EXCLUDED.user_id,
                         updated_at = now()
                     RETURNING id
                 """, [
@@ -2976,6 +2987,7 @@ class NexusDB:
                     data.get("source_analysis"),
                     data.get("source_score"),
                     json.dumps(data),
+                    user_id,
                 ])
                 result = cur.fetchone()
                 if result is None:

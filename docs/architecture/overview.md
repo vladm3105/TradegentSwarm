@@ -209,6 +209,39 @@ Rebuilds from: Layer 1 files via extract_document()
 **UI Visualization:** The tradegent_ui renders visualizations directly from Layer 2
 (kb_* tables). SVG file generation is deprecated (`svg_generation_enabled=false`).
 
+### Layer 5: UI Parser Registry
+
+Because analysis skill templates evolve across versions, the frontend uses a **version-specific parser registry** to translate raw `yaml_content` (JSONB) into the `AnalysisDetail` display model:
+
+```
+kb_stock_analyses / kb_earnings_analyses
+  .yaml_content (JSONB)  ←  source of truth
+  .schema_version        ←  e.g. "2.7"
+  .analysis_type         ←  "stock-analysis" | "earnings-analysis"
+         │
+         │  frontend/lib/parsers/registry.ts
+         │  resolves key: "<type>:<major.minor>"
+         ▼
+  version-specific parser  (one per schema version)
+         │
+         ▼
+  AnalysisDetail  →  React components
+```
+
+**Registered parsers:**
+
+| Key | File |
+|-----|------|
+| `stock-analysis:2.6` | `lib/parsers/stock/v2.6.ts` |
+| `stock-analysis:2.7` | `lib/parsers/stock/v2.7.ts` |
+| `earnings-analysis:2.3` | `lib/parsers/earnings/v2.3.ts` |
+| `earnings-analysis:2.5` | `lib/parsers/earnings/v2.5.ts` |
+| `earnings-analysis:2.6` | `lib/parsers/earnings/v2.6.ts` |
+
+To support a new schema version: add `lib/parsers/<type>/vX.Y.ts` and one `REGISTRY.set()` line in `registry.ts`.
+
+See [UI_FEATURES — Analysis Display System](../../tradegent_ui/docs/UI_FEATURES.md#8-analysis-display-system) for field-path mappings per version.
+
 ---
 
 ## MCP Server Integration
@@ -264,12 +297,31 @@ Layer 6: Rate limits
 
 ---
 
+## LiteLLM Multi-Provider Gateway
+
+TradegentSwarm uses **LiteLLM** as a unified gateway for multi-provider LLM access:
+
+| Role Alias | Purpose | Default Route |
+|------------|---------|---------------|
+| `reasoning_premium` | High-stakes synthesis | `openai/gpt-4o` |
+| `reasoning_standard` | Primary analysis | `openrouter/gpt-4o-mini` |
+| `extraction_fast` | Parsing, normalization | `openai/gpt-4o-mini` |
+| `critic_model` | Self-review | `openai/gpt-4o-mini` |
+| `summarizer_fast` | UI summaries | `openai/gpt-4o-mini` |
+
+**Supported providers**: OpenAI, Anthropic, Azure, Gemini, OpenRouter, Ollama, Mistral
+
+See [LiteLLM Integration](litellm-integration.md) for configuration details.
+
+---
+
 ## ADK Migration Architecture
 
 For the ADK + LiteLLM target architecture, configuration governance model, and workflow visualizations, see:
 
-- [`docs/architecture/adk-multi-provider-orchestration.md`](adk-multi-provider-orchestration.md)
-- [`docs/architecture/adk-multi-provider-orchestration.svg`](adk-multi-provider-orchestration.svg)
+- [LiteLLM Integration](litellm-integration.md) - Multi-provider gateway configuration
+- [ADK Multi-Provider Orchestration](adk-multi-provider-orchestration.md) - Full orchestration architecture
+- [ADK Multi-Provider Orchestration SVG](adk-multi-provider-orchestration.svg) - Visual diagram
 
 ---
 

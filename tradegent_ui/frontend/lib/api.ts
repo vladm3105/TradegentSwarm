@@ -26,6 +26,24 @@ import { createLogger } from '@/lib/logger';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
 const log = createLogger('api');
+let sessionLookupCount = 0;
+const TRACE_BACKEND_INTERACTIONS = process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_DEBUG === 'true';
+
+function createRequestId(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+  return `api-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function buildApiUrl(endpoint: string): string {
+  // In the browser, always use the Next.js proxy route to avoid
+  // direct localhost calls failing in remote/forwarded sessions.
+  if (typeof window !== 'undefined') {
+    return `/api/orchestrator?path=${encodeURIComponent(endpoint)}`;
+  }
+  return `${API_URL}${endpoint}`;
+}
 
 export class ApiError extends Error {
   constructor(
@@ -48,7 +66,23 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
 
   // Get session with access token - wrap in try/catch to prevent redirect issues
   try {
+    sessionLookupCount += 1;
+    const startedAt = performance.now();
     const session = await getSession();
+    const duration = Math.round(performance.now() - startedAt);
+    if (sessionLookupCount <= 10 || sessionLookupCount % 25 === 0) {
+      const logPayload = {
+        sessionLookupCount,
+        hasSession: !!session,
+        hasAccessToken: !!session?.accessToken,
+        duration,
+      };
+      if (TRACE_BACKEND_INTERACTIONS) {
+        log.info('Session lookup for API auth headers', logPayload);
+      } else {
+        log.debug('Session lookup for API auth headers', logPayload);
+      }
+    }
     if (session?.accessToken) {
       headers['Authorization'] = `Bearer ${session.accessToken}`;
     }
@@ -68,11 +102,12 @@ async function fetchApi<T>(
   endpoint: string,
   options?: RequestInit
 ): Promise<T> {
-  const url = `${API_URL}${endpoint}`;
+  const url = buildApiUrl(endpoint);
   const method = options?.method || 'GET';
   const startTime = performance.now();
+  const requestId = createRequestId();
 
-  log.api(method, endpoint);
+  log.api(method, endpoint, { requestId, url });
 
   try {
     // Get auth headers
@@ -82,6 +117,7 @@ async function fetchApi<T>(
       ...options,
       headers: {
         ...authHeaders,
+        'X-Client-Request-ID': requestId,
         ...options?.headers,
       },
     });
@@ -93,7 +129,7 @@ async function fetchApi<T>(
 
       // Handle specific auth errors
       if (response.status === 401) {
-        log.error(`API ${method} ${endpoint} unauthorized`, { duration });
+        log.error(`API ${method} ${endpoint} unauthorized`, { duration, requestId });
         // Session might be expired, trigger re-auth
         if (typeof window !== 'undefined') {
           window.location.href = '/login?error=SessionExpired';
@@ -102,7 +138,7 @@ async function fetchApi<T>(
       }
 
       if (response.status === 403) {
-        log.error(`API ${method} ${endpoint} forbidden`, { duration });
+        log.error(`API ${method} ${endpoint} forbidden`, { duration, requestId });
         throw new ApiError(
           errorBody.detail || 'You do not have permission to perform this action.',
           403,
@@ -113,6 +149,7 @@ async function fetchApi<T>(
       log.error(`API ${method} ${endpoint} failed`, {
         status: response.status,
         duration,
+        requestId,
         error: errorBody.detail || errorBody.message,
       });
       throw new ApiError(
@@ -125,6 +162,7 @@ async function fetchApi<T>(
     log.debug(`API ${method} ${endpoint} completed`, {
       status: response.status,
       duration,
+      requestId,
     });
 
     return response.json();
@@ -135,11 +173,12 @@ async function fetchApi<T>(
       throw error;
     }
     if (error instanceof TypeError) {
-      log.error(`API ${method} ${endpoint} network error`, { duration });
+      log.error(`API ${method} ${endpoint} network error`, { duration, requestId });
       throw new ApiError('Network error - is the backend running?', 0);
     }
     log.error(`API ${method} ${endpoint} unexpected error`, {
       duration,
+      requestId,
       error: String(error),
     });
     throw new ApiError(String(error), 500);
@@ -153,17 +192,19 @@ async function fetchPublicApi<T>(
   endpoint: string,
   options?: RequestInit
 ): Promise<T> {
-  const url = `${API_URL}${endpoint}`;
+  const url = buildApiUrl(endpoint);
   const method = options?.method || 'GET';
   const startTime = performance.now();
+  const requestId = createRequestId();
 
-  log.api(method, endpoint);
+  log.api(method, endpoint, { requestId, url });
 
   try {
     const response = await fetch(url, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
+        'X-Client-Request-ID': requestId,
         ...options?.headers,
       },
     });
@@ -175,6 +216,7 @@ async function fetchPublicApi<T>(
       log.error(`API ${method} ${endpoint} failed`, {
         status: response.status,
         duration,
+        requestId,
         error: errorBody.detail || errorBody.message,
       });
       throw new ApiError(
@@ -187,6 +229,7 @@ async function fetchPublicApi<T>(
     log.debug(`API ${method} ${endpoint} completed`, {
       status: response.status,
       duration,
+      requestId,
     });
 
     return response.json();
@@ -197,11 +240,12 @@ async function fetchPublicApi<T>(
       throw error;
     }
     if (error instanceof TypeError) {
-      log.error(`API ${method} ${endpoint} network error`, { duration });
+      log.error(`API ${method} ${endpoint} network error`, { duration, requestId });
       throw new ApiError('Network error - is the backend running?', 0);
     }
     log.error(`API ${method} ${endpoint} unexpected error`, {
       duration,
+      requestId,
       error: String(error),
     });
     throw new ApiError(String(error), 500);
@@ -536,7 +580,8 @@ export async function listAnalyses(params?: {
   if (params?.limit) query.set('limit', String(params.limit));
   if (params?.offset) query.set('offset', String(params.offset));
 
-  return fetchApi<AnalysisListResponse>(`/api/analyses/list?${query.toString()}`);
+  const queryStr = query.toString();
+  return fetchApi<AnalysisListResponse>(`/api/analyses/list${queryStr ? `?${queryStr}` : ''}`);
 }
 
 export async function getAnalysisDetail(id: number): Promise<AnalysisDetailResponse> {

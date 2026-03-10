@@ -489,10 +489,18 @@ async def websocket_endpoint(websocket: WebSocket):
     user, selected_subprotocol = await validate_websocket_token(websocket)
 
     if not user:
-        log.warning("ws.auth.failed", reason="no_valid_token")
+        # ws.auth.failed is already logged with detail inside validate_websocket_token;
+        # log the close action here so the log trail is complete.
+        log.warning(
+            "ws.auth.rejected",
+            close_code=4001,
+            reason="no_valid_token",
+        )
         await websocket.close(code=4001, reason="Unauthorized")
         return
 
+    client = websocket.scope.get("client")
+    client_ip = f"{client[0]}:{client[1]}" if client else "unknown"
     session_id = user.sub
     await manager.connect(websocket, session_id, subprotocol=selected_subprotocol)
 
@@ -500,6 +508,8 @@ async def websocket_endpoint(websocket: WebSocket):
         "ws.connected",
         session_id=session_id,
         user_email=user.email if hasattr(user, 'email') else None,
+        client_ip=client_ip,
+        subprotocol=selected_subprotocol,
     )
 
     message_count = 0
@@ -650,12 +660,13 @@ async def websocket_endpoint(websocket: WebSocket):
                     msg_type=msg_type,
                 )
 
-    except WebSocketDisconnect:
+    except WebSocketDisconnect as exc:
         log.info(
             "ws.disconnected",
             session_id=session_id,
             message_count=message_count,
             reason="client_disconnect",
+            close_code=exc.code,
         )
         manager.disconnect(session_id)
     except Exception as e:

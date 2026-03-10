@@ -3,10 +3,17 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getSession } from 'next-auth/react';
 import { createLogger } from '@/lib/logger';
+import {
+  createAuthenticatedWebSocket,
+  resolveWebSocketEndpoint,
+} from '@/lib/websocket-auth';
 
 const log = createLogger('use-order-stream');
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8081';
+const STREAM_WS_URL = resolveWebSocketEndpoint(
+  process.env.NEXT_PUBLIC_WS_URL,
+  '/ws/stream'
+);
 
 export interface Order {
   order_id: string;
@@ -52,7 +59,7 @@ export function useOrderStream({ enabled = true }: UseOrderStreamOptions = {}): 
         return;
       }
 
-      const ws = new WebSocket(`${WS_URL}/ws/stream?token=${session.accessToken}`);
+      const ws = createAuthenticatedWebSocket(STREAM_WS_URL, session.accessToken);
 
       ws.onopen = () => {
         log.info('Order stream connected');

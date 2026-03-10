@@ -78,6 +78,75 @@ The Tradegent Agent UI provides a comprehensive trading dashboard with real-time
 |---------|-------------|---------|
 | Widget Manager | Show/hide dashboard widgets | localStorage |
 | Widget Ordering | Drag to reorder widgets | localStorage |
+
+---
+
+## 8. Analysis Display System
+
+The frontend renders stock and earnings analyses from `yaml_content` (JSONB) stored in `nexus.kb_stock_analyses` and `nexus.kb_earnings_analyses`. Because skill templates evolve, the display layer uses a **version-specific parser registry** so each schema version is handled by exactly one dedicated parser.
+
+### Parser Registry
+
+**Location:** `frontend/lib/parsers/`
+
+| File | Purpose |
+|------|---------|
+| `registry.ts` | Dispatch — resolves `(type, version)` → correct parser |
+| `types.ts` | `AnalysisParser` interface |
+| `utils.ts` | Shared helpers: `get()`, `normalizeGateResult()`, `normalizeRecommendation()`, transform functions |
+| `stock/v2.6.ts` | Stock schema v2.6 |
+| `stock/v2.7.ts` | Stock schema v2.7 (adds alert `tag` + `derivation`) |
+| `earnings/v2.3.ts` | Earnings schema v2.3 (phase1-7 structure) |
+| `earnings/v2.5.ts` | Earnings schema v2.5 (flat, `decision.*`, no scoring) |
+| `earnings/v2.6.ts` | Earnings schema v2.6 (flat + `scoring` section) |
+
+**Entry point:** `lib/analysis-transformer.ts` re-exports `parseAnalysis` and `hasFullAnalysisData` from the registry under the original names — all existing call-sites remain unchanged.
+
+### Version Resolution
+
+The registry resolves the parser in this order:
+
+```
+response.schema_version  →  extract major.minor
+  or yaml._meta.version
+
+response.analysis_type   →  "stock-analysis" | "earnings-analysis"
+  or yaml._meta.type
+  or yaml.analysis_type
+
+Registry key: "<type>:<major.minor>"   e.g. "stock-analysis:2.7"
+```
+
+If no exact match is found, the closest fallback for that type is used with a console warning.
+
+### YAML Field Paths Per Version
+
+**Stock analyses:**
+
+| Field | v2.6 path | v2.7 path |
+|-------|-----------|-----------|
+| recommendation | `yaml.recommendation` | `yaml.recommendation` |
+| confidence | `yaml.confidence.level` | `yaml.confidence.level` |
+| gate result | `yaml.do_nothing_gate.gate_result` | `yaml.do_nothing_gate.gate_result` |
+| alert tag | _(absent)_ | `yaml.alert_levels.price_alerts[].tag` |
+
+**Earnings analyses:**
+
+| Field | v2.3 path | v2.5 path | v2.6 path |
+|-------|-----------|-----------|----------|
+| recommendation | derived from `phase7_decision.recommendation.direction` + gate | `decision.recommendation` | `decision.recommendation` |
+| confidence | `phase7_decision.do_nothing_gate.confidence_above_60pct.actual` | `do_nothing_gate.confidence_actual` | `do_nothing_gate.confidence_actual` |
+| gate result | `phase7_decision.do_nothing_gate.gate_result` (`proceed_with_caution` → MARGINAL) | `do_nothing_gate.gate_result` | `do_nothing_gate.gate_result` |
+| scoring | _(absent)_ | _(absent)_ | `scoring.*_score` |
+
+### Adding a New Parser Version
+
+1. Create `lib/parsers/stock/vX.Y.ts` (or `earnings/vX.Y.ts`) exporting a function matching `AnalysisParser`.
+2. Add one line to `lib/parsers/registry.ts`:
+   ```ts
+   REGISTRY.set('stock-analysis:X.Y', stockParserVXY);
+   ```
+3. No other files need to change.
 | Layout Persistence | Save dashboard configuration | localStorage |
 
 **Available Widgets:**

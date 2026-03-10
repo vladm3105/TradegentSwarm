@@ -28,7 +28,8 @@ System design and technical foundations.
 | Document | Description |
 |----------|-------------|
 | [Overview](architecture/overview.md) | High-level system architecture |
-| [ADK Multi-Provider Orchestration](architecture/adk-multi-provider-orchestration.md) | ADK control plane, LiteLLM routing, config manager governance |
+| [LiteLLM Integration](architecture/litellm-integration.md) | Multi-provider LLM gateway, role routing, UCX integration |
+| [ADK Multi-Provider Orchestration](architecture/adk-multi-provider-orchestration.md) | ADK control plane, config manager governance |
 | [ADK Multi-Provider Orchestration SVG](architecture/adk-multi-provider-orchestration.svg) | End-to-end visual map for sections 1-21 and workflow charts |
 | [Skill-Database Mapping](architecture/skill-database-mapping.md) | Skill output to database field mapping |
 | [Database Schema](architecture/database-schema.md) | PostgreSQL and Neo4j schemas |

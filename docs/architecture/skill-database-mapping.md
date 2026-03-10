@@ -50,6 +50,13 @@ Skill Output (YAML)
 |-------|------------------|------------------|----------------|
 | stock-analysis | v2.7 | `analysis/stock/` | `nexus.kb_stock_analyses` |
 | earnings-analysis | v2.6 | `analysis/earnings/` | `nexus.kb_earnings_analyses` |
+
+> **Schema version history:** Multiple historical versions coexist in the database. The frontend parser registry handles all versions — see [UI_FEATURES — Analysis Display System](../../tradegent_ui/docs/UI_FEATURES.md#8-analysis-display-system).
+>
+> | Type | Versions in DB | Notes |
+> |------|---------------|-------|
+> | stock-analysis | 2.6 (40 rows), 2.7 (18 rows) | v2.7 adds alert `tag` + `derivation` |
+> | earnings-analysis | 2.3 (2 rows), 2.5 (14 rows), 2.6 (1 row) | v2.3 uses phase1-7 structure; v2.5+ uses flat `decision.*` structure |
 | research | v2.1 | `analysis/research/` | `nexus.kb_research_analyses` |
 | ticker-profile | v2.1 | `analysis/ticker-profiles/` | `nexus.kb_ticker_profiles` |
 | trade-journal | v2.1 | `trades/{YYYY}/{MM}/` | `nexus.kb_trade_journals` |

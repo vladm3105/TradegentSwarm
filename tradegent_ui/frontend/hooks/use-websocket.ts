@@ -1,20 +1,25 @@
 'use client';
 
 import { useEffect, useCallback, useRef } from 'react';
+import { signOut } from 'next-auth/react';
 import {
   TradegentWebSocket,
   getWebSocket,
+  getWebSocketIfExists,
   resetWebSocket,
-  type ConnectionState,
 } from '@/lib/websocket';
 import { useChatStore } from '@/stores/chat-store';
 import type { WSResponse } from '@/types/api';
 import { validateA2UIResponse } from '@/types/a2ui';
 import { logger } from '@/lib/logger';
 
+let sharedWebSocket: TradegentWebSocket | null = null;
+let activeWebSocketConsumers = 0;
+
 export function useWebSocket() {
   const wsRef = useRef<TradegentWebSocket | null>(null);
   const handleMessageRef = useRef<((data: WSResponse) => void) | null>(null);
+  const authRedirectInProgressRef = useRef(false);
   const {
     setConnected,
     setStreaming,
@@ -111,34 +116,52 @@ export function useWebSocket() {
     handleMessageRef.current?.(data);
   }, []);
 
+  const handleAuthError = useCallback(() => {
+    if (authRedirectInProgressRef.current) {
+      return;
+    }
+
+    authRedirectInProgressRef.current = true;
+    setConnected(false);
+    setStreaming(false);
+    logger.warn('WebSocket auth failed, redirecting user to login');
+
+    void signOut({ callbackUrl: '/login' });
+  }, [setConnected, setStreaming]);
+
   const connect = useCallback(() => {
-    if (wsRef.current) return;
+    if (!sharedWebSocket) {
+      sharedWebSocket = getWebSocket({
+        onMessage: handleMessage,
+        onConnect: () => {
+          authRedirectInProgressRef.current = false;
+          setConnected(true);
+          const sessionId = sharedWebSocket?.getSessionId();
+          if (sessionId) {
+            setSessionId(sessionId);
+          }
+        },
+        onDisconnect: () => {
+          setConnected(false);
+        },
+        onError: (error) => {
+          console.error('WebSocket error:', error);
+        },
+        onAuthError: handleAuthError,
+      });
+    }
 
-    // Reset singleton to ensure fresh instance with new callback
-    resetWebSocket();
+    wsRef.current = sharedWebSocket;
 
-    wsRef.current = getWebSocket({
-      onMessage: handleMessage,
-      onConnect: () => {
-        setConnected(true);
-        const sessionId = wsRef.current?.getSessionId();
-        if (sessionId) {
-          setSessionId(sessionId);
-        }
-      },
-      onDisconnect: () => {
-        setConnected(false);
-      },
-      onError: (error) => {
-        console.error('WebSocket error:', error);
-      },
-    });
-
-    wsRef.current.connect();
-  }, [handleMessage, setConnected, setSessionId]);
+    if (sharedWebSocket.getState() === 'disconnected') {
+      void sharedWebSocket.connect();
+    }
+  }, [handleAuthError, handleMessage, setConnected, setSessionId]);
 
   const disconnect = useCallback(() => {
+    sharedWebSocket?.disconnect();
     resetWebSocket();
+    sharedWebSocket = null;
     wsRef.current = null;
     setConnected(false);
   }, [setConnected]);
@@ -170,15 +193,55 @@ export function useWebSocket() {
     wsRef.current?.unsubscribeFromTask(taskId);
   }, []);
 
-  // Auto-connect on mount only
+  // Auto-connect on mount only.
+  // Uses a short defer to survive React StrictMode's double-mount:
+  // StrictMode mounts → runs effect → unmounts within the same tick →
+  // remounts. The 50 ms timer ensures the cleanup (decrements counter,
+  // disconnects) fires before the deferred connect runs on the final mount.
   useEffect(() => {
-    connect();
+    let cancelled = false;
+
+    activeWebSocketConsumers += 1;
+
+    const timer = setTimeout(() => {
+      if (!cancelled) {
+        connect();
+      }
+    }, 50);
+
     return () => {
-      disconnect();
+      cancelled = true;
+      clearTimeout(timer);
+      activeWebSocketConsumers = Math.max(0, activeWebSocketConsumers - 1);
+      if (activeWebSocketConsumers === 0) {
+        disconnect();
+      }
     };
     // Only run on mount/unmount, not on callback changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Reconnect when the browser tab regains focus or becomes visible.
+  // This handles two scenarios:
+  //   1. HMR hot-reload: module-level vars reset to null but effects don't re-run.
+  //      When the user clicks back into the tab, we recover automatically.
+  //   2. Long idle: OS sleep / network interruption can silently drop the WS.
+  useEffect(() => {
+    const handleVisible = () => {
+      const ws = getWebSocketIfExists();
+      // If the singleton is gone (HMR reset) or disconnected, reconnect.
+      if (!ws || ws.getState() === 'disconnected') {
+        connect();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisible);
+    window.addEventListener('focus', handleVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisible);
+      window.removeEventListener('focus', handleVisible);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connect]);
 
   return {
     connect,

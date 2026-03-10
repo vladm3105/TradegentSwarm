@@ -42,23 +42,23 @@ export function Providers({ children }: ProvidersProps) {
   }, []);
 
   // Always wrap with providers - SessionProvider handles SSR/SSG gracefully
-  // The mounted check is only for theme flash prevention
+  // The mounted check is only for theme flash prevention.
+  // IMPORTANT: {children} must always be rendered at the same position in the
+  // JSX tree so React reconciles them on remount rather than unmounting them.
+  // Switching between <div>{children}</div> and <>{children}<Toaster/></> would
+  // change the element type and force React to unmount all children (including
+  // ChatPanel and its useWebSocket effect), causing the WebSocket to disconnect
+  // and reconnect. Toaster and devtools are added as siblings instead.
   return (
     <SessionProvider>
       <QueryClientProvider client={queryClient}>
-        {!mounted ? (
-          <div className="min-h-screen bg-background">
-            {children}
-          </div>
-        ) : (
-          <>
-            {children}
-            <Toaster />
-            {process.env.NODE_ENV === 'development' && (
-              <ReactQueryDevtools initialIsOpen={false} />
-            )}
-          </>
-        )}
+        <>
+          {children}
+          {mounted && <Toaster />}
+          {mounted && process.env.NODE_ENV === 'development' && (
+            <ReactQueryDevtools initialIsOpen={false} />
+          )}
+        </>
       </QueryClientProvider>
     </SessionProvider>
   );

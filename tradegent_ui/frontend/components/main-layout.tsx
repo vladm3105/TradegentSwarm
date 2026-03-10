@@ -1,5 +1,6 @@
 'use client';
 
+import { usePathname } from 'next/navigation';
 import { Sidebar } from '@/components/sidebar';
 import { Header } from '@/components/header';
 import { ChatPanel } from '@/components/chat-panel';
@@ -13,11 +14,17 @@ interface MainLayoutProps {
 }
 
 export function MainLayout({ children }: MainLayoutProps) {
+  const pathname = usePathname();
   const { sidebarCollapsed, chatPanelOpen } = useUIStore();
+  const isAuthRoute = pathname === '/login' || pathname.startsWith('/verify-email');
 
   // Enable keyboard shortcuts
   useKeyboardShortcuts();
   useNavigationShortcuts();
+
+  if (isAuthRoute) {
+    return <div className="min-h-screen bg-background">{children}</div>;
+  }
 
   return (
     <div className="min-h-screen bg-background">

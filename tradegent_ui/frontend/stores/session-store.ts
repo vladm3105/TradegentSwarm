@@ -15,6 +15,7 @@ interface SessionState {
   // Actions
   setDefaultTicker: (ticker: string | null) => void;
   addRecentTicker: (ticker: string) => void;
+  clearRecentTickers: () => void;
   setDashboardTimeframe: (timeframe: '1d' | '7d' | '30d' | '90d') => void;
   setLastPage: (page: string) => void;
 }
@@ -37,6 +38,8 @@ export const useSessionStore = create<SessionState>()(
         const updated = [ticker, ...filtered].slice(0, 10); // Keep last 10
         set({ recentTickers: updated });
       },
+
+      clearRecentTickers: () => set({ recentTickers: [] }),
 
       setDashboardTimeframe: (timeframe) =>
         set({ dashboardTimeframe: timeframe }),

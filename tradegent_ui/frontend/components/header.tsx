@@ -8,6 +8,7 @@ import {
   Moon,
   Sun,
   Menu,
+  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { UserMenu } from '@/components/user-menu';
@@ -20,7 +21,7 @@ export function Header() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const { theme, setTheme, sidebarCollapsed, toggleSidebar } = useUIStore();
-  const { recentTickers, addRecentTicker } = useSessionStore();
+  const { recentTickers, addRecentTicker, clearRecentTickers } = useSessionStore();
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,6 +97,13 @@ export function Header() {
                   {ticker}
                 </button>
               ))}
+              <button
+                onClick={clearRecentTickers}
+                title="Clear recent tickers"
+                className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              >
+                <X className="h-3 w-3" />
+              </button>
             </div>
           )}
 

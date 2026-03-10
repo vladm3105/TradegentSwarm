@@ -472,15 +472,49 @@ async def validate_websocket_token(
 
     Query-string token transport is intentionally not supported.
     """
+    subprotocols = websocket.scope.get("subprotocols") or []
+    client = websocket.scope.get("client")
+    client_ip = f"{client[0]}:{client[1]}" if client else "unknown"
+
+    log.debug(
+        "ws.upgrade.received",
+        client_ip=client_ip,
+        subprotocols=subprotocols,
+        origin=dict(websocket.headers).get("origin", ""),
+        path=websocket.scope.get("path", ""),
+    )
+
     token, selected_subprotocol = _extract_websocket_token_from_subprotocol(websocket)
     if not token:
+        log.warning(
+            "ws.auth.no_token",
+            client_ip=client_ip,
+            subprotocols=subprotocols,
+            reason="no bearer token in subprotocols",
+        )
         return None, None
 
     try:
         if token.startswith("tg_"):
-            return await validate_api_key(token), selected_subprotocol
-        return await validate_token(token), selected_subprotocol
-    except HTTPException:
+            user = await validate_api_key(token)
+        else:
+            user = await validate_token(token)
+        log.debug(
+            "ws.auth.ok",
+            client_ip=client_ip,
+            user_email=user.email,
+            subprotocol=selected_subprotocol,
+        )
+        return user, selected_subprotocol
+    except HTTPException as exc:
+        log.warning(
+            "ws.auth.failed",
+            client_ip=client_ip,
+            reason=exc.detail,
+            status_code=exc.status_code,
+            token_prefix=token[:12] + "..." if len(token) > 12 else "(short)",
+            subprotocols=subprotocols,
+        )
         return None, None
 
 

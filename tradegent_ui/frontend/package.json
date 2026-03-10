@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3001",
+    "dev": "node server.js --dev",
     "build": "next build",
-    "start": "next start -p 3001",
+    "start": "node server.js",
     "lint": "next lint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -42,6 +42,7 @@
     "recharts": "^2.12.0",
     "remark-gfm": "^4.0.0",
     "tailwind-merge": "^2.6.0",
+    "ws": "^8.19.0",
     "zod": "^3.23.0",
     "zustand": "^4.5.0"
   },
@@ -58,6 +59,7 @@
     "autoprefixer": "^10.4.20",
     "eslint": "^8.57.0",
     "eslint-config-next": "14.2.22",
+    "http-proxy": "^1.18.1",
     "jsdom": "^28.1.0",
     "postcss": "^8.4.49",
     "prettier": "^3.3.0",

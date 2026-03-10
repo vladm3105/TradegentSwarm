@@ -139,15 +139,42 @@ Re-generate constraints after dependency updates:
 .venv/bin/pip freeze --exclude-editable | sort > requirements/constraints-adk.txt
 ```
 
-LiteLLM route configuration (Track E) is sourced from `tradegent/.env`:
+### LiteLLM Multi-Provider Gateway
+
+Tradegent uses **LiteLLM** for unified LLM access across providers. Configuration is in `tradegent/.env`:
 
 ```bash
-ADK_SUBAGENT_LLM_ENABLED=false
+# Provider API keys
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+OPENROUTER_API_KEY=sk-or-...
+
+# Default model
 LLM_MODEL=gpt-4o-mini
+
+# Role-based routing (ordered fallback chains)
+LITELLM_ROUTE_REASONING_PREMIUM=openai/gpt-4o
 LITELLM_ROUTE_REASONING_STANDARD=openrouter/openai/gpt-4o-mini,openai/gpt-4o-mini
+LITELLM_ROUTE_EXTRACTION_FAST=openai/gpt-4o-mini
+LITELLM_ROUTE_CRITIC_MODEL=openai/gpt-4o-mini
 LITELLM_ROUTE_SUMMARIZER_FAST=openai/gpt-4o-mini
-LITELLM_FALLBACK_MODELS=
+
+# Global fallback chain
+LITELLM_FALLBACK_MODELS=anthropic/claude-3-5-haiku-20241022
+
+# ADK sub-agent LLM control
+ADK_SUBAGENT_LLM_ENABLED=false
 ```
+
+**Supported providers**: OpenAI, Anthropic, Azure OpenAI, Google Gemini, OpenRouter, Ollama (local), Mistral
+
+**Local Ollama alternative** (free, slower):
+```bash
+LLM_MODEL=ollama/llama3
+LITELLM_ROUTE_REASONING_STANDARD=ollama/llama3
+```
+
+See [LiteLLM Integration](docs/architecture/litellm-integration.md) for full documentation
 
 ## Security
 

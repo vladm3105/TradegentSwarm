@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Wifi,
   WifiOff,
@@ -16,7 +16,8 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useChatStore } from '@/stores/chat-store';
-import { getWebSocket, type ConnectionState } from '@/lib/websocket';
+import { getWebSocket, getWebSocketIfExists, type ConnectionState } from '@/lib/websocket';
+import { getHealth } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 interface ConnectionStateConfig {
@@ -52,6 +53,7 @@ const CONNECTION_STATE_CONFIG: Record<ConnectionState, ConnectionStateConfig> = 
 };
 
 export function WebSocketStatus() {
+  const [isConnectingBackend, setIsConnectingBackend] = useState(false);
   const {
     connectionState,
     reconnectAttempts,
@@ -63,89 +65,91 @@ export function WebSocketStatus() {
     setLastError,
   } = useChatStore();
 
-  const wsRef = useRef(getWebSocket());
-  const reconnectAttemptsRef = useRef(0);
-
-  const handleConnect = useCallback(() => {
-    setConnectionState('connected');
-    setConnected(true);
-    setLastError(null);
-    reconnectAttemptsRef.current = 0;
-    setReconnectInfo(0, maxReconnectAttempts);
-  }, [setConnectionState, setConnected, setLastError, setReconnectInfo, maxReconnectAttempts]);
-
-  const handleDisconnect = useCallback(() => {
-    setConnectionState('disconnected');
-    setConnected(false);
-  }, [setConnectionState, setConnected]);
-
-  const handleError = useCallback((error: Error) => {
-    setLastError(error.message);
-  }, [setLastError]);
-
   useEffect(() => {
-    const ws = wsRef.current;
-
-    // Override WebSocket callbacks to update store
-    const originalOnConnect = ws['options'].onConnect;
-    const originalOnDisconnect = ws['options'].onDisconnect;
-    const originalOnError = ws['options'].onError;
-
-    ws['options'].onConnect = () => {
-      handleConnect();
-      originalOnConnect?.();
-    };
-
-    ws['options'].onDisconnect = () => {
-      handleDisconnect();
-      originalOnDisconnect?.();
-    };
-
-    ws['options'].onError = (error: Error) => {
-      handleError(error);
-      originalOnError?.(error);
-    };
-
-    // Set up polling to detect reconnect state
+    // Use getWebSocketIfExists() so that we never create the singleton here.
+    // WebSocketStatus mounts inside <Header>, which renders before <ChatPanel>
+    // (and therefore before use-websocket.ts sets real callbacks).  Creating the
+    // singleton here would produce a bare instance with no-op handlers — the root
+    // cause of the reconnect loop.  If the singleton doesn't exist yet, skip
+    // polling; store updates from use-websocket.ts's onConnect / onDisconnect
+    // callbacks will keep the UI in sync once ChatPanel mounts.
     const intervalId = setInterval(() => {
+      const ws = getWebSocketIfExists();
+      if (!ws) {
+        // Singleton was destroyed (HMR module reset or explicit resetWebSocket).
+        // Clear any stale 'reconnecting' state so the UI doesn't show a phantom
+        // retry counter indefinitely.
+        const storeState = useChatStore.getState().connectionState;
+        if (storeState !== 'disconnected') {
+          setConnectionState('disconnected');
+          setConnected(false);
+          setReconnectInfo(0, maxReconnectAttempts);
+        }
+        return;
+      }
+
       const state = ws.getState();
-      if (state !== connectionState) {
+      if (state !== useChatStore.getState().connectionState) {
         setConnectionState(state);
         setConnected(state === 'connected');
       }
 
       // Track reconnect attempts via internal state
       if (state === 'reconnecting') {
-        reconnectAttemptsRef.current++;
-        setReconnectInfo(reconnectAttemptsRef.current, maxReconnectAttempts);
+        const current = useChatStore.getState().reconnectAttempts;
+        setReconnectInfo(current + 1, maxReconnectAttempts);
       }
-    }, 500);
-
-    // Connect on mount
-    ws.connect();
+    }, 1000);
 
     return () => {
       clearInterval(intervalId);
     };
   }, [
-    connectionState,
-    handleConnect,
-    handleDisconnect,
-    handleError,
     setConnectionState,
     setConnected,
     setReconnectInfo,
     maxReconnectAttempts,
   ]);
 
-  const handleManualReconnect = () => {
-    reconnectAttemptsRef.current = 0;
+  const handleConnectBackend = async () => {
+    if (isConnectingBackend) {
+      return;
+    }
+
+    setIsConnectingBackend(true);
     setReconnectInfo(0, maxReconnectAttempts);
     setLastError(null);
-    wsRef.current.disconnect();
-    setTimeout(() => {
-      wsRef.current.connect();
-    }, 100);
+
+    // By the time the user clicks "Connect Backend", use-websocket.ts will have
+    // already called getWebSocket(options), so the singleton has real callbacks.
+    // Fall back to creating it if somehow called before ChatPanel mounts.
+    const ws = getWebSocket();
+    try {
+      // Verify backend API is reachable before opening a websocket.
+      await getHealth();
+
+      if (ws.getState() === 'connected') {
+        setConnectionState('connected');
+        setConnected(true);
+        return;
+      }
+
+      // refreshToken() disconnects (if needed), resets the reconnect-attempt
+      // counter to 0, then reconnects — preventing the counter exhaustion that
+      // makes manual reconnect silently fail after repeated auth retries.
+      await ws.refreshToken();
+
+      const nextState = ws.getState();
+      setConnectionState(nextState);
+      setConnected(nextState === 'connected');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setLastError(message);
+      setConnectionState('disconnected');
+      setConnected(false);
+    } finally {
+      setIsConnectingBackend(false);
+    }
   };
 
   const config = CONNECTION_STATE_CONFIG[connectionState];
@@ -196,10 +200,17 @@ export function WebSocketStatus() {
                 variant="outline"
                 size="sm"
                 className="mt-2 w-full text-xs"
-                onClick={handleManualReconnect}
+                onClick={() => {
+                  void handleConnectBackend();
+                }}
+                disabled={isConnectingBackend}
               >
-                <RefreshCw className="h-3 w-3 mr-1" />
-                Reconnect
+                {isConnectingBackend ? (
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3 w-3 mr-1" />
+                )}
+                Connect Backend
               </Button>
             )}
           </div>

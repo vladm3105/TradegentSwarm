@@ -1,5 +1,6 @@
 import NextAuth from 'next-auth';
 import Auth0 from 'next-auth/providers/auth0';
+import Google from 'next-auth/providers/google';
 import Credentials from 'next-auth/providers/credentials';
 import type { NextAuthConfig } from 'next-auth';
 import type { JWT } from 'next-auth/jwt';
@@ -19,9 +20,91 @@ const AUTH0_CLIENT_ID = process.env.AUTH0_CLIENT_ID;
 const AUTH0_CLIENT_SECRET = process.env.AUTH0_CLIENT_SECRET;
 const AUTH0_ISSUER = process.env.AUTH0_ISSUER_BASE_URL;
 const AUTH0_AUDIENCE = process.env.AUTH0_AUDIENCE || 'https://tradegent-api.local';
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET || process.env.AUTH_SECRET;
 
 // Check if Auth0 is configured
 const isAuth0Configured = !!(AUTH0_CLIENT_ID && AUTH0_CLIENT_SECRET && AUTH0_ISSUER);
+const isGoogleConfigured = !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
+
+const ADMIN_PERMISSIONS = [
+  'read:portfolio', 'write:portfolio',
+  'read:trades', 'write:trades',
+  'read:analyses', 'write:analyses',
+  'read:watchlist', 'write:watchlist',
+  'read:knowledge', 'write:knowledge',
+  'admin:users', 'admin:system', 'admin:settings',
+];
+
+const TRADER_PERMISSIONS = [
+  'read:portfolio', 'write:portfolio',
+  'read:trades', 'write:trades',
+  'read:analyses', 'write:analyses',
+  'read:watchlist', 'write:watchlist',
+  'read:knowledge', 'write:knowledge',
+];
+
+function toBase64Url(input: string | Uint8Array): string {
+  const bytes = typeof input === 'string' ? new TextEncoder().encode(input) : input;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+
+  const base64 = typeof btoa === 'function'
+    ? btoa(binary)
+    : Buffer.from(bytes).toString('base64');
+
+  return base64
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+}
+
+async function createBuiltinAccessToken(user: {
+  id: string;
+  subject?: string;
+  email?: string | null;
+  name?: string | null;
+  roles?: string[];
+  permissions?: string[];
+}): string {
+  if (!JWT_SECRET) {
+    throw new Error('JWT_SECRET is not configured for built-in auth token signing');
+  }
+
+  const userId = user.subject ?? (user.id === 'admin' ? 'builtin|admin' : 'builtin|demo');
+  const now = Math.floor(Date.now() / 1000);
+  const payload = {
+    sub: userId,
+    email: user.email ?? '',
+    name: user.name ?? '',
+    roles: user.roles ?? [],
+    permissions: user.permissions ?? [],
+    iat: now,
+    exp: now + 24 * 60 * 60,
+  };
+
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const encodedHeader = toBase64Url(JSON.stringify(header));
+  const encodedPayload = toBase64Url(JSON.stringify(payload));
+  const content = `${encodedHeader}.${encodedPayload}`;
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(JWT_SECRET),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const signature = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    new TextEncoder().encode(content)
+  );
+
+  return `${content}.${toBase64Url(new Uint8Array(signature))}`;
+}
 
 // Built-in account credentials from environment
 // Admin user is like PostgreSQL's postgres user - a superuser that always exists
@@ -48,14 +131,7 @@ const BUILTIN_USERS = [
     email: ADMIN_EMAIL,
     password: ADMIN_PASSWORD,
     roles: ['admin'],
-    permissions: [
-      'read:portfolio', 'write:portfolio',
-      'read:trades', 'write:trades',
-      'read:analyses', 'write:analyses',
-      'read:watchlist', 'write:watchlist',
-      'read:knowledge', 'write:knowledge',
-      'admin:users', 'admin:system', 'admin:settings',
-    ],
+    permissions: ADMIN_PERMISSIONS,
   },
   {
     id: 'demo',
@@ -63,15 +139,20 @@ const BUILTIN_USERS = [
     email: DEMO_EMAIL,
     password: DEMO_PASSWORD,
     roles: ['trader'],
-    permissions: [
-      'read:portfolio', 'write:portfolio',
-      'read:trades', 'write:trades',
-      'read:analyses', 'write:analyses',
-      'read:watchlist', 'write:watchlist',
-      'read:knowledge', 'write:knowledge',
-    ],
+    permissions: TRADER_PERMISSIONS,
   },
 ];
+
+function resolveDefaultAccessByEmail(email?: string | null): {
+  roles: string[];
+  permissions: string[];
+} {
+  if (email && email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+    return { roles: ['admin'], permissions: ADMIN_PERMISSIONS };
+  }
+
+  return { roles: ['trader'], permissions: TRADER_PERMISSIONS };
+}
 
 /**
  * Refresh an expired access token using Auth0
@@ -129,6 +210,16 @@ if (isAuth0Configured) {
           scope: 'openid profile email offline_access',
         },
       },
+    })
+  );
+}
+
+// Add Google provider if configured
+if (isGoogleConfigured) {
+  providers.push(
+    Google({
+      clientId: GOOGLE_CLIENT_ID!,
+      clientSecret: GOOGLE_CLIENT_SECRET!,
     })
   );
 }
@@ -223,10 +314,40 @@ export const authConfig: NextAuthConfig = {
           };
         }
 
+        // Google OAuth login (direct provider)
+        if (account.provider === 'google') {
+          const defaults = resolveDefaultAccessByEmail(user.email);
+          const subject = `google|${String(user.id)}`;
+          const builtinToken = await createBuiltinAccessToken({
+            id: String(user.id),
+            subject,
+            email: user.email,
+            name: user.name,
+            roles: defaults.roles,
+            permissions: defaults.permissions,
+          });
+
+          return {
+            ...token,
+            accessToken: builtinToken,
+            roles: defaults.roles,
+            permissions: defaults.permissions,
+            emailVerified: true,
+          };
+        }
+
         // Credentials login (demo)
+        const builtinToken = await createBuiltinAccessToken({
+          id: String(user.id),
+          email: user.email,
+          name: user.name,
+          roles: (user as { roles?: string[] }).roles || [],
+          permissions: (user as { permissions?: string[] }).permissions || [],
+        });
+
         return {
           ...token,
-          accessToken: `demo-token-${user.id}`,
+          accessToken: builtinToken,
           roles: (user as { roles?: string[] }).roles || [],
           permissions: (user as { permissions?: string[] }).permissions || [],
           emailVerified: true,
