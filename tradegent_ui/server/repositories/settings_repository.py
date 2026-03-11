@@ -29,9 +29,9 @@ def upsert_auth0_settings(domain: str, client_id: str, client_secret: str, audie
             conn.commit()
 
 
-def get_user_id_by_sub(sub: str) -> int:
+def get_user_id_by_sub(sub: str) -> Optional[int]:
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT id FROM nexus.users WHERE auth0_sub = %s", (sub,))
             row = cur.fetchone()
-    return int(row["id"]) if row else 1
+    return int(row["id"]) if row else None

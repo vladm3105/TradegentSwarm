@@ -152,27 +152,39 @@ def create_gdpr_deletion_request(user_id: int, user_email: str, processed_by: Op
     return int(row["id"])
 
 
-def delete_from_table(table: str, user_id: int) -> int:
-    """Delete rows by user_id from table in schema-qualified form (schema.table)."""
-    schema_name, table_name = table.split(".", 1)
-    query = sql.SQL("DELETE FROM {}.{} WHERE user_id = %s").format(
-        sql.Identifier(schema_name),
-        sql.Identifier(table_name),
-    )
+def execute_gdpr_deletion(
+    request_id: int,
+    user_id: int,
+    user_data_tables: list[str],
+) -> list[str]:
+    """Execute GDPR deletion in one DB transaction and return cleared table summary."""
+    tables_cleared: list[str] = []
     with get_db_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(query, (user_id,))
-            deleted = int(cur.rowcount)
-            conn.commit()
-    return deleted
+            for table in user_data_tables:
+                schema_name, table_name = table.split(".", 1)
+                query = sql.SQL("DELETE FROM {}.{} WHERE user_id = %s").format(
+                    sql.Identifier(schema_name),
+                    sql.Identifier(table_name),
+                )
+                cur.execute(query, (user_id,))
+                if cur.rowcount > 0:
+                    tables_cleared.append(f"{table}: {cur.rowcount}")
 
+            cur.execute("DELETE FROM nexus.users WHERE id = %s RETURNING id", (user_id,))
+            if not cur.fetchone():
+                raise ValueError("User not found during GDPR deletion")
 
-def delete_user(user_id: int) -> None:
-    """Delete user record."""
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("DELETE FROM nexus.users WHERE id = %s", (user_id,))
+            cur.execute(
+                """
+                UPDATE nexus.gdpr_deletion_requests
+                SET status = 'completed', processed_at = now(), tables_cleared = %s
+                WHERE id = %s
+                """,
+                (tables_cleared, request_id),
+            )
             conn.commit()
+    return tables_cleared
 
 
 def mark_gdpr_request_completed(request_id: int, tables_cleared: list[str]) -> None:

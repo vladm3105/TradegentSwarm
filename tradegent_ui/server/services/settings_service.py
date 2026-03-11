@@ -1,6 +1,7 @@
 """Settings service for Auth0 config persistence and audit helper actions."""
 
 from pathlib import Path
+from fastapi import HTTPException
 
 from ..repositories import settings_repository
 
@@ -14,7 +15,10 @@ def persist_auth0_config(domain: str, client_id: str, client_secret: str, audien
 
 
 def get_user_id(sub: str) -> int:
-    return settings_repository.get_user_id_by_sub(sub)
+    user_id = settings_repository.get_user_id_by_sub(sub)
+    if user_id is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user_id
 
 
 def update_env_file(env_path: Path, updates: dict[str, str]) -> None:

@@ -128,18 +128,12 @@ async def delete_user_data(user_id: int, user: UserClaims) -> dict[str, Any]:
         processed_by=admin_user_id,
     )
 
-    tables_cleared: list[str] = []
     try:
-        for table in USER_DATA_TABLES:
-            try:
-                deleted = admin_repository.delete_from_table(table, user_id)
-                if deleted > 0:
-                    tables_cleared.append(f"{table}: {deleted}")
-            except Exception as e:
-                log.warning("Could not clear table", table=table, error=str(e))
-
-        admin_repository.delete_user(user_id)
-        admin_repository.mark_gdpr_request_completed(request_id, tables_cleared)
+        tables_cleared = admin_repository.execute_gdpr_deletion(
+            request_id=request_id,
+            user_id=user_id,
+            user_data_tables=USER_DATA_TABLES,
+        )
         log.info("User data deleted", user_id=user_id, tables=len(tables_cleared))
     except Exception as e:
         admin_repository.mark_gdpr_request_failed(request_id, str(e))

@@ -1,6 +1,7 @@
 """Sessions repository with all SQL access for chat sessions and messages."""
 
 from typing import Any, Optional, cast
+from psycopg.types.json import Jsonb
 
 from ..database import get_db_connection
 
@@ -156,7 +157,7 @@ def upsert_messages(session_db_id: int, messages: list[dict]) -> None:
                         msg["content"],
                         msg["status"],
                         msg["error"],
-                        msg["a2ui"],
+                        Jsonb(msg["a2ui"]) if msg["a2ui"] is not None else None,
                         msg["task_id"],
                     ),
                 )
