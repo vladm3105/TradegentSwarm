@@ -26,6 +26,19 @@ python orchestrator.py analyze MSFT --type stock
 
 See [Getting Started](docs/getting-started.md) for detailed setup instructions.
 
+### Start Tradegent UI (Backend + Frontend)
+
+Use the helper script to avoid partial startup (frontend up, backend down):
+
+```bash
+./scripts/start_tradegent_ui.sh
+```
+
+The script ensures:
+- AGUI backend is healthy on `:8081`
+- Frontend is listening on `:3001`
+- Existing running services are reused (not duplicated)
+
 ## Architecture
 
 ```
@@ -53,11 +66,16 @@ See [Getting Started](docs/getting-started.md) for detailed setup instructions.
 ```
 TradegentSwarm/
 ├── tradegent/                 # Platform code
-│   ├── orchestrator.py        # CLI entry point
+│   ├── orchestrator.py        # CLI entry point + pipeline engine
 │   ├── service.py             # Long-running daemon
-│   ├── rag/                   # RAG module (pgvector)
-│   ├── graph/                 # Graph module (Neo4j)
+│   ├── rag/                   # RAG module (pgvector, MCP server)
+│   ├── graph/                 # Graph module (Neo4j, MCP server)
 │   └── docker-compose.yml     # Infrastructure
+│
+├── tradegent_ui/              # Agent UI (FastAPI + Next.js)
+│   ├── server/                # FastAPI backend — port 8081
+│   ├── frontend/              # Next.js 14 frontend — port 3001
+│   └── db/migrations/         # Auth schema migrations
 │
 ├── tradegent_knowledge/       # Knowledge base (private repo)
 │   ├── skills/                # Skill definitions
@@ -71,18 +89,77 @@ TradegentSwarm/
 └── .claude/skills/            # Claude Code skills
 ```
 
+## Communication Architecture
+
+Tradegent uses a **unified message envelope** across all client-server communication (REST and WebSocket), enabling consistent handling, error reporting, and request correlation:
+
+```typescript
+// All messages use TradegentMessage envelope
+interface TradegentMessage {
+  type: 'request' | 'response' | 'subscription' | 'event' | 'error';
+  action: string;           // 'patch_schedule', 'subscribe_prices', etc.
+  request_id?: string;      // UUID for correlation
+  payload?: any;            // Action-specific data
+  timestamp?: number;       // Message creation time
+  error?: TradegentError;   // If type='error'
+}
+```
+
+**Transport Selection:**
+- **REST**: User-initiated actions (create, update, read), configuration
+- **WebSocket**: Real-time streams (prices, P&L, order fills, alerts)
+
+### Transport Decision Table
+
+| Surface | Primary Transport | Secondary | Notes |
+|---------|-------------------|-----------|-------|
+| A2UI command/query actions | REST | WebSocket (events only) | Keep request-response on REST; use WS for progress and live state changes |
+| Grafana-style dashboards | REST | WebSocket (refresh hints) | Pull metrics/query APIs via REST; add WS only for active live updates |
+| Neo4j graph exploration | REST | WebSocket (incremental updates) | Use REST for graph query/layout payloads; WS only for live graph deltas |
+| Market/portfolio/order streams | WebSocket | REST (fallback snapshots) | WS is the default for high-frequency updates |
+
+Policy:
+- Keep exactly two primary browser interaction gates: REST + WebSocket
+- Do not adopt WS-only architecture
+- Add SSE only for one-way high-fanout notifications when WS overhead is proven by metrics
+
+**Key Benefits:**
+- ✅ Single error format, codes, and handling across both transports
+- ✅ Request-response correlation via `request_id` for debugging
+- ✅ Unified logging and monitoring
+- ✅ Type-safe frontend/backend contract
+
+**Quick Reference:**
+```typescript
+// Frontend: make request-response call
+const schedule = await client.request('patch_schedule', { id: 1 });
+
+// Frontend: subscribe to push stream
+client.subscribe('subscribe_prices', { tickers: ['NVDA'] }, (event) => { ... });
+
+// Backend: return response
+return wrap_response({ schedule_id: 1, ... }, action='patch_schedule');
+
+// Backend: return error
+return error_to_response(action='patch_schedule', code='VALIDATION_ERROR', message='...');
+```
+
+See [Unified Messages Architecture](docs/architecture/UNIFIED_MESSAGES.md) and [Communication Guide](docs/COMMUNICATION_GUIDE.md) for details.
+
 ## Documentation
 
 | Section | Contents |
 |---------|----------|
 | [Getting Started](docs/getting-started.md) | Installation and first analysis |
+| [Communication Guide](docs/COMMUNICATION_GUIDE.md) | Client-server protocol reference |
+| [Unified Messages](docs/architecture/UNIFIED_MESSAGES.md) | Message envelope specification |
 | [Architecture](docs/architecture/overview.md) | System design, RAG, Graph |
 | [User Guide](docs/user-guide/cli-reference.md) | CLI, skills, workflows |
 | [Operations](docs/operations/deployment.md) | Deployment, monitoring, troubleshooting |
 
 ## Key Features
 
-### Trading Skills (v2.4)
+### Trading Skills (v2.7)
 - **Stock Analysis**: 13-phase framework with bias countermeasures
 - **Earnings Analysis**: Pre-earnings IV and catalyst analysis
 - **Do Nothing Gate**: EV >5%, Confidence >60%, R:R >2:1
@@ -101,10 +178,12 @@ TradegentSwarm/
 
 | Component | Purpose | Port |
 |-----------|---------|------|
-| PostgreSQL | RAG embeddings | 5433 |
+| PostgreSQL | Config, KB tables, pgvector RAG | 5433 |
 | Neo4j | Knowledge graph | 7688 |
-| IB Gateway | Paper trading | 4002 |
-| IB MCP | Market data API | 8100 |
+| IB Gateway | Paper trading (TWS API) | 4002 |
+| IB MCP | Market data / order API | 8100 |
+| tradegent_ui server | Agent UI backend (FastAPI) | 8081 |
+| tradegent_ui frontend | Agent UI (Next.js) | 3001 |
 
 ## Prerequisites
 

@@ -36,7 +36,7 @@ interface AdminUser {
   auth0_sub: string;
   email: string;
   name: string | null;
-  picture: string | null;
+  picture?: string | null;
   is_active: boolean;
   is_admin: boolean;
   roles: string[];

@@ -29,6 +29,16 @@ Agent-driven user interface for the Tradegent trading platform. Natural language
 
 ## Quick Start
 
+### One-command startup (recommended)
+
+From repository root, start backend + frontend together:
+
+```bash
+./scripts/start_tradegent_ui.sh
+```
+
+This prevents the common reconnect loop caused by frontend running while backend is down.
+
 ### 1. Configure Environment
 
 ```bash
@@ -370,6 +380,21 @@ Notes:
 | `/api/dashboard/service-health` | GET | Yes | Service health status |
 | `/api/dashboard/watchlist-summary` | GET | Yes | Watchlist summary |
 
+**Watchlist Endpoints:**
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/api/watchlists` | GET | Yes | List named watchlists (manual/scanner/auto) with entry counts |
+| `/api/watchlists` | POST | Yes | Create manual watchlist |
+| `/api/watchlists/{id}` | PATCH | Yes | Update watchlist metadata (name, description, color, pinned) |
+| `/api/watchlists/{id}` | DELETE | Yes | Delete empty manual watchlist |
+| `/api/watchlist/list` | GET | Yes | List watchlist entries (supports `watchlist_id` filter) |
+| `/api/watchlist/detail/{id}` | GET | Yes | Get single watchlist entry details |
+| `/api/watchlist/stats` | GET | Yes | Get watchlist stats (supports `watchlist_id` filter) |
+
+Notes:
+- `watchlist_source_type` values are `manual`, `scanner`, or `auto`.
+- The default auto-generated list is `Analysis Signals`.
+
 > **Note:** Dashboard endpoints return real data from PostgreSQL BI views. See [Dashboard Data Source](#dashboard-data-source) section below.
 
 ### WebSocket
@@ -520,14 +545,14 @@ UPDATE nexus.settings SET value = 'true' WHERE section = 'skills' AND key = 'svg
 | `DEMO_EMAIL` | demo@tradegent.local | Demo user email |
 | `DEMO_PASSWORD` | - | Demo user password |
 
-**Auth0 Settings (Optional):**
+**Auth0 Settings (Optional — NextAuth v5 provider):**
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `NEXT_PUBLIC_AUTH0_CONFIGURED` | false | Auth0 enabled flag |
 | `AUTH0_CLIENT_ID` | - | Auth0 client ID |
 | `AUTH0_CLIENT_SECRET` | - | Auth0 client secret |
-| `AUTH0_ISSUER_BASE_URL` | - | Auth0 issuer URL |
-| `AUTH0_AUDIENCE` | - | Auth0 API audience |
+| `AUTH0_DOMAIN` | - | Auth0 tenant domain (e.g., `dev-xxx.us.auth0.com`) |
+| `AUTH0_AUDIENCE` | https://tradegent-api.local | Auth0 API audience |
 
 ## Database Schema
 
@@ -671,7 +696,7 @@ tradegent_ui/
 │       ├── users.py           # User endpoints (/api/users/*)
 │       └── settings.py        # Settings endpoints (/api/settings/*)
 │
-├── frontend/                   # Next.js 14 application
+├── frontend/                   # Next.js 14 application (TypeScript, strict)
 │   ├── app/
 │   │   ├── login/page.tsx     # Login page
 │   │   ├── verify-email/page.tsx
@@ -682,9 +707,13 @@ tradegent_ui/
 │   ├── components/            # React components
 │   ├── hooks/                 # Custom React hooks
 │   ├── lib/
-│   │   ├── auth.ts            # NextAuth configuration
-│   │   ├── api.ts             # API client with auth headers
-│   │   └── websocket.ts       # WebSocket with token
+│   │   ├── auth.ts            # NextAuth v5 (built-in credentials + Auth0)
+│   │   ├── api.ts             # Typed REST client (UserProfile, AdminUser, ApiKey)
+│   │   ├── messages.ts        # TradegentMessage envelope types
+│   │   ├── unified-client.ts  # Transport-agnostic REST + WS client facade
+│   │   ├── websocket.ts       # Low-level WebSocket client
+│   │   ├── websocket-auth.ts  # Auth-aware WebSocket helpers
+│   │   └── logger.ts          # Structured browser logger
 │   ├── stores/                # Zustand state management
 │   ├── types/                 # TypeScript types
 │   ├── .env.local             # Frontend environment variables

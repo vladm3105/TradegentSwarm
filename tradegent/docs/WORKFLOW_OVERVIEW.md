@@ -296,6 +296,11 @@ User request         ─┘    Daily review     ├──▶ invalidated → arc
                                             └──▶ expired → archive
 ```
 
+Named watchlists group entries by source:
+- `source_type=scanner` lists are created from scanner name
+- `source_type=auto` list is used for analysis WATCH recommendations (`Analysis Signals`)
+- `source_type=manual` lists are created by users in UI
+
 ### 5.2 Required Fields
 
 | Field | Description |
@@ -835,6 +840,7 @@ All 16 skills organized by workflow phase.
 | `nexus.service_status` | Daemon heartbeat |
 | `nexus.audit_log` | Action audit trail |
 | `nexus.trades` | Trade journal entries |
+| `nexus.watchlists` | Named watchlist containers (manual/scanner/auto) |
 | `nexus.watchlist` | Pending trade triggers |
 | `nexus.task_queue` | Async work queue |
 | `nexus.analysis_lineage` | Analysis chain tracking |

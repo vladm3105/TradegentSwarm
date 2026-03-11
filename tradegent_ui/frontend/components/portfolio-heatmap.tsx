@@ -7,7 +7,6 @@ import { getSession } from 'next-auth/react';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('portfolio-heatmap');
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
 
 interface HeatmapEntry {
   ticker: string;
@@ -24,7 +23,9 @@ async function fetchWithAuth<T>(endpoint: string): Promise<T> {
   if (session?.accessToken) {
     headers['Authorization'] = `Bearer ${session.accessToken}`;
   }
-  const response = await fetch(`${API_URL}${endpoint}`, { headers });
+
+  const url = `/api/orchestrator?path=${encodeURIComponent(endpoint)}`;
+  const response = await fetch(url, { headers });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return response.json();
 }

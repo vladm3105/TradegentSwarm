@@ -69,7 +69,7 @@ async function createBuiltinAccessToken(user: {
   name?: string | null;
   roles?: string[];
   permissions?: string[];
-}): string {
+}): Promise<string> {
   if (!JWT_SECRET) {
     throw new Error('JWT_SECRET is not configured for built-in auth token signing');
   }
@@ -377,7 +377,10 @@ export const authConfig: NextAuthConfig = {
         session.user.id = token.sub!;
         session.user.roles = (token.roles as string[]) || [];
         session.user.permissions = (token.permissions as string[]) || [];
-        session.user.emailVerified = token.emailVerified as boolean;
+        // NextAuth v5 types emailVerified as a complex intersection (Date & bool);
+        // cast through unknown to set Date | null without triggering adapter type errors.
+        (session.user as unknown as Record<string, unknown>).emailVerified =
+          token.emailVerified ? new Date() : null;
       }
 
       return session;

@@ -15,8 +15,6 @@ import { getSession } from 'next-auth/react';
 
 const log = createLogger('notification-center');
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
-
 interface Notification {
   id: number;
   type: string;
@@ -36,7 +34,9 @@ async function fetchWithAuth<T>(endpoint: string, options?: RequestInit): Promis
     headers['Authorization'] = `Bearer ${session.accessToken}`;
   }
 
-  const response = await fetch(`${API_URL}${endpoint}`, {
+  const url = `/api/orchestrator?path=${encodeURIComponent(endpoint)}`;
+
+  const response = await fetch(url, {
     ...options,
     headers: { ...headers, ...options?.headers },
   });

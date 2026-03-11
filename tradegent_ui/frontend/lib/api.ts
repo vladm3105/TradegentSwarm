@@ -24,6 +24,24 @@ export type {
 };
 import { createLogger } from '@/lib/logger';
 
+/**
+ * Legacy API client module.
+ *
+ * ⚠️ MIGRATION NOTICE:
+ * New code should use the unified TradegentClient (lib/unified-client.ts) instead.
+ *
+ * The unified client provides:
+ * - Consistent message envelope across REST and WebSocket
+ * - Unified error handling with standard code/message format
+ * - Request correlation via request_id for debugging
+ * - Type-safe request/response via TradegentMessage
+ *
+ * See docs/COMMUNICATION_GUIDE.md for migration examples.
+ *
+ * This module is retained for backward compatibility with existing code.
+ * It will be deprecated after all routes transition to the unified envelope.
+ */
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
 const log = createLogger('api');
 let sessionLookupCount = 0;
@@ -314,7 +332,16 @@ export interface UserProfile {
   id: number;
   email: string;
   name: string;
+  /** Avatar URL from OAuth provider; null if not set */
   picture?: string;
+  /** IANA timezone identifier (e.g., 'America/New_York') */
+  timezone?: string;
+  /** UI colour theme ('light' | 'dark' | 'system') */
+  theme?: string;
+  /** Whether push/email notifications are enabled */
+  notifications_enabled?: boolean;
+  /** Default analysis type shown on the analysis page */
+  default_analysis_type?: string;
   roles: string[];
   permissions: string[];
   ib_account_id?: string;
@@ -381,7 +408,7 @@ export interface ApiKey {
   key_prefix: string;
   name: string;
   permissions: string[];
-  last_used_at?: string;
+  last_used_at?: string | null;
   expires_at?: string;
   created_at: string;
 }
@@ -418,11 +445,11 @@ export interface AdminUser {
   auth0_sub: string;
   email: string;
   name: string;
-  picture?: string;
+  picture?: string | null;
   is_active: boolean;
   is_admin: boolean;
   roles: string[];
-  last_login_at?: string;
+  last_login_at: string | null;
   created_at: string;
 }
 
@@ -766,6 +793,61 @@ export async function getWatchlistStats(watchlistId?: number): Promise<Watchlist
   return fetchApi<WatchlistStats>(`/api/watchlist/stats${query}`);
 }
 
+// Schedules API
+export interface Schedule {
+  id: number;
+  name: string;
+  task_type: string;
+  frequency: string;
+  parameters?: Record<string, unknown> | null;
+  is_enabled: boolean;
+  next_run_at: string | null;
+  last_run_at: string | null;
+  last_run_status: string | null;
+}
+
+export interface ScheduleRun {
+  id: number;
+  started_at: string | null;
+  completed_at: string | null;
+  status: string;
+  duration_seconds: number | null;
+}
+
+export interface ScheduleHistoryResponse {
+  schedule_id: number;
+  schedule_name: string;
+  runs: ScheduleRun[];
+}
+
+export async function listSchedules(): Promise<Schedule[]> {
+  return fetchApi<Schedule[]>('/api/schedules');
+}
+
+export async function updateSchedule(
+  scheduleId: number,
+  body: { is_enabled?: boolean; frequency?: string; time_of_day?: string; day_of_week?: number; interval_minutes?: number }
+): Promise<{ success: boolean; schedule_id: number }> {
+  return fetchApi<{ success: boolean; schedule_id: number }>(`/api/schedules/${scheduleId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
+export async function runScheduleNow(scheduleId: number): Promise<{ success: boolean; message: string }> {
+  return fetchApi<{ success: boolean; message: string }>(`/api/schedules/${scheduleId}/run`, {
+    method: 'POST',
+  });
+}
+
+export async function getScheduleHistory(
+  scheduleId: number,
+  limit?: number
+): Promise<ScheduleHistoryResponse> {
+  const query = limit ? `?limit=${limit}` : '';
+  return fetchApi<ScheduleHistoryResponse>(`/api/schedules/history/${scheduleId}${query}`);
+}
+
 // Scanners API
 export interface ScannerConfig {
   id: number;
@@ -1019,6 +1101,12 @@ export const api = {
     list: listWatchlist,
     detail: getWatchlistDetail,
     stats: getWatchlistStats,
+  },
+  schedules: {
+    list: listSchedules,
+    update: updateSchedule,
+    runNow: runScheduleNow,
+    history: getScheduleHistory,
   },
   scanners: {
     list: listScanners,

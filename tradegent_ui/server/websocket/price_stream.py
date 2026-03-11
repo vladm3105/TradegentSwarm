@@ -1,4 +1,29 @@
-"""Real-time price streaming via WebSocket."""
+"""Real-time price streaming via WebSocket.
+
+Unified Messages Pattern:
+This module handles the /ws/stream endpoint which uses the TradegentMessage envelope.
+
+Protocol:
+1. Client sends TradegentSubscription:
+   {
+     "type": "subscription",
+     "action": "subscribe_prices",
+     "request_id": "uuid",
+     "payload": {"tickers": ["NVDA", "AAPL"]},
+     "timestamp": 1694520000000
+   }
+
+2. Server responds with TradegentEvent messages:
+   {
+     "type": "event",
+     "action": "subscribe_prices",
+     "request_id": "uuid",  // Same as subscription
+     "payload": {"ticker": "NVDA", "bid": 950.25, "ask": 950.30},
+     "timestamp": 1694520001000
+   }
+
+See docs/architecture/UNIFIED_MESSAGES.md for full protocol specification.
+"""
 import asyncio
 import structlog
 from typing import Set

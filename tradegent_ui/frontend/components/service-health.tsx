@@ -13,8 +13,6 @@ import { createLogger } from '@/lib/logger';
 
 const log = createLogger('service-health');
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
-
 interface ServiceHealth {
   status: 'healthy' | 'degraded' | 'unhealthy';
   mcp_servers: {
@@ -32,7 +30,7 @@ export function ServiceHealth() {
   useEffect(() => {
     async function checkHealth() {
       try {
-        const response = await fetch(`${API_URL}/health`);
+        const response = await fetch('/api/orchestrator?path=%2Fhealth');
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }

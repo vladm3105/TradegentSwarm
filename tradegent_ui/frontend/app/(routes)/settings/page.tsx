@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Settings,
   Server,
+  Calendar,
   Palette,
   Bell,
   Database,
@@ -32,6 +33,7 @@ import { useUIStore } from '@/stores/ui-store';
 import { cn } from '@/lib/utils';
 import { mockServices } from '@/lib/mock-data';
 import { api } from '@/lib/api';
+import { ScheduleManager } from '@/components/schedule-manager';
 
 interface IBAccountSettings {
   ib_account_id: string | null;
@@ -44,8 +46,8 @@ interface ApiKey {
   key_prefix: string;
   name: string;
   permissions: string[];
-  last_used_at: string | null;
-  expires_at: string | null;
+  last_used_at?: string | null;
+  expires_at?: string | null;
   created_at: string;
 }
 
@@ -240,7 +242,7 @@ export default function SettingsPage() {
       setCreatingKey(true);
       const response = await api.apiKeys.create({
         name: newKeyName,
-        expires_in_days: newKeyExpires ? parseInt(newKeyExpires) : null,
+        expires_in_days: newKeyExpires ? parseInt(newKeyExpires) : undefined,
       });
       setNewlyCreatedKey(response.key);
       setShowNewKey(true);
@@ -327,6 +329,10 @@ export default function SettingsPage() {
           <TabsTrigger value="services">
             <Server className="h-4 w-4 mr-2" />
             Services
+          </TabsTrigger>
+          <TabsTrigger value="schedules">
+            <Calendar className="h-4 w-4 mr-2" />
+            Schedules
           </TabsTrigger>
           <TabsTrigger value="notifications">
             <Bell className="h-4 w-4 mr-2" />
@@ -735,6 +741,11 @@ export default function SettingsPage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Schedules Tab */}
+        <TabsContent value="schedules" className="mt-6 space-y-4">
+          <ScheduleManager />
         </TabsContent>
 
         {/* Auth0 Configuration Tab (Admin Only) */}

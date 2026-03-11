@@ -20,7 +20,6 @@ import { getSession } from 'next-auth/react';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('daily-summary');
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
 
 interface DailySummary {
   date: string;
@@ -60,7 +59,9 @@ async function fetchWithAuth<T>(endpoint: string): Promise<T> {
     headers['Authorization'] = `Bearer ${session.accessToken}`;
   }
 
-  const response = await fetch(`${API_URL}${endpoint}`, { headers });
+  const url = `/api/orchestrator?path=${encodeURIComponent(endpoint)}`;
+
+  const response = await fetch(url, { headers });
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));

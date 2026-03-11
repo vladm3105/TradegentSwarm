@@ -4,44 +4,19 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, Play, Pause, Clock, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
-import { getSession } from 'next-auth/react';
+import { Calendar, Play, Pause, Clock, CheckCircle, RefreshCw } from 'lucide-react';
 import { createLogger } from '@/lib/logger';
+import {
+  listSchedules,
+  updateSchedule,
+  runScheduleNow,
+  getScheduleHistory,
+  type Schedule,
+  type ScheduleRun,
+  type ScheduleHistoryResponse,
+} from '@/lib/api';
 
 const log = createLogger('schedule-manager');
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
-
-interface Schedule {
-  id: number;
-  name: string;
-  task_type: string;
-  frequency: string;
-  parameters: Record<string, unknown> | null;
-  is_enabled: boolean;
-  next_run_at: string | null;
-  last_run_at: string | null;
-  last_run_status: string | null;
-}
-
-async function fetchWithAuth<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const session = await getSession();
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (session?.accessToken) {
-    headers['Authorization'] = `Bearer ${session.accessToken}`;
-  }
-
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    ...options,
-    headers: { ...headers, ...options?.headers },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail || `HTTP ${response.status}`);
-  }
-
-  return response.json();
-}
 
 function formatRelativeTime(dateString: string | null): string {
   if (!dateString) return 'Never';
@@ -77,11 +52,15 @@ export function ScheduleManager() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<number | null>(null);
+  const [expandedScheduleId, setExpandedScheduleId] = useState<number | null>(null);
+  const [historyByScheduleId, setHistoryByScheduleId] = useState<Record<number, ScheduleRun[]>>({});
+  const [historyLoadingForId, setHistoryLoadingForId] = useState<number | null>(null);
+  const [historyErrorById, setHistoryErrorById] = useState<Record<number, string>>({});
 
   async function loadSchedules() {
     try {
       setLoading(true);
-      const data = await fetchWithAuth<Schedule[]>('/api/schedules');
+      const data = await listSchedules();
       setSchedules(data);
       setError(null);
     } catch (e) {
@@ -99,10 +78,7 @@ export function ScheduleManager() {
   async function toggleSchedule(id: number, currentEnabled: boolean) {
     setActionLoading(id);
     try {
-      await fetchWithAuth(`/api/schedules/${id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ is_enabled: !currentEnabled }),
-      });
+      await updateSchedule(id, { is_enabled: !currentEnabled });
       await loadSchedules();
       log.action('schedule_toggled', { id, enabled: !currentEnabled });
     } catch (e) {
@@ -115,7 +91,7 @@ export function ScheduleManager() {
   async function runNow(id: number) {
     setActionLoading(id);
     try {
-      await fetchWithAuth(`/api/schedules/${id}/run`, { method: 'POST' });
+      await runScheduleNow(id);
       await loadSchedules();
       log.action('schedule_run_triggered', { id });
     } catch (e) {
@@ -123,6 +99,60 @@ export function ScheduleManager() {
     } finally {
       setActionLoading(null);
     }
+  }
+
+  async function loadHistory(scheduleId: number) {
+    try {
+      setHistoryLoadingForId(scheduleId);
+      setHistoryErrorById((prev) => {
+        const copy = { ...prev };
+        delete copy[scheduleId];
+        return copy;
+      });
+
+      const data = await getScheduleHistory(scheduleId);
+      setHistoryByScheduleId((prev) => ({
+        ...prev,
+        [scheduleId]: data.runs,
+      }));
+    } catch (e) {
+      log.error('Failed to load schedule history', { error: String(e), scheduleId });
+      setHistoryErrorById((prev) => ({
+        ...prev,
+        [scheduleId]: String(e),
+      }));
+    } finally {
+      setHistoryLoadingForId(null);
+    }
+  }
+
+  async function toggleHistory(scheduleId: number) {
+    if (expandedScheduleId === scheduleId) {
+      setExpandedScheduleId(null);
+      return;
+    }
+
+    setExpandedScheduleId(scheduleId);
+    if (historyByScheduleId[scheduleId] === undefined) {
+      await loadHistory(scheduleId);
+    }
+  }
+
+  function formatDateTime(value: string | null): string {
+    if (!value) {
+      return 'n/a';
+    }
+    return new Date(value).toLocaleString();
+  }
+
+  function formatDuration(seconds: number | null): string {
+    if (seconds == null) {
+      return 'n/a';
+    }
+    if (seconds < 60) {
+      return `${Math.round(seconds)}s`;
+    }
+    return `${Math.round(seconds / 60)}m`;
   }
 
   if (loading) {
@@ -195,6 +225,20 @@ export function ScheduleManager() {
                       type="button"
                       variant="ghost"
                       size="sm"
+                      onClick={() => toggleHistory(schedule.id)}
+                      disabled={historyLoadingForId === schedule.id}
+                      title="Show run history"
+                    >
+                      {historyLoadingForId === schedule.id ? (
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Clock className="h-4 w-4" />
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
                       onClick={() => runNow(schedule.id)}
                       disabled={!schedule.is_enabled || actionLoading === schedule.id}
                       title="Run now"
@@ -217,6 +261,37 @@ export function ScheduleManager() {
                     </Button>
                   </div>
                 </div>
+
+                {expandedScheduleId === schedule.id && (
+                  <div className="mt-3 border-t pt-3">
+                    {historyErrorById[schedule.id] ? (
+                      <div className="text-xs text-red-500">
+                        Failed to load history: {historyErrorById[schedule.id]}
+                      </div>
+                    ) : historyLoadingForId === schedule.id ? (
+                      <div className="text-xs text-muted-foreground">Loading history...</div>
+                    ) : (historyByScheduleId[schedule.id]?.length ?? 0) === 0 ? (
+                      <div className="text-xs text-muted-foreground">No recent runs found.</div>
+                    ) : (
+                      <div className="space-y-2">
+                        {(historyByScheduleId[schedule.id] ?? []).slice(0, 5).map((run) => (
+                          <div key={run.id} className="rounded-md border p-2 text-xs">
+                            <div className="flex items-center justify-between gap-2">
+                              <Badge className={statusColors[run.status] || 'bg-gray-500'}>
+                                {run.status}
+                              </Badge>
+                              <span className="text-muted-foreground">{formatDuration(run.duration_seconds)}</span>
+                            </div>
+                            <div className="mt-1 text-muted-foreground">
+                              <div>Started: {formatDateTime(run.started_at)}</div>
+                              <div>Completed: {formatDateTime(run.completed_at)}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>

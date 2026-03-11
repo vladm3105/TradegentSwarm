@@ -50,6 +50,35 @@ CREATE TABLE nexus.stocks (
 | `next_earnings_date` | DATE | Triggers pre-earnings |
 | `tags` | TEXT[] | Categories (ai, tech, etc.) |
 
+#### `nexus.watchlists`
+
+Named watchlist containers used by UI and orchestration routing.
+
+```sql
+CREATE TABLE nexus.watchlists (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    source_type VARCHAR(20) NOT NULL,
+    source_ref VARCHAR(200),
+    color VARCHAR(20),
+    is_default BOOLEAN DEFAULT false,
+    is_pinned BOOLEAN DEFAULT false,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | SERIAL | Watchlist container ID (PK) |
+| `name` | VARCHAR(100) | Display name |
+| `source_type` | VARCHAR(20) | `manual`, `scanner`, or `auto` |
+| `source_ref` | VARCHAR(200) | Source identifier (for example scanner code) |
+| `is_default` | BOOLEAN | Marks system/default list |
+
+`nexus.watchlist.watchlist_id` references `nexus.watchlists(id)` with `ON DELETE SET NULL`.
+
 #### `nexus.settings`
 
 System configuration key-value store.

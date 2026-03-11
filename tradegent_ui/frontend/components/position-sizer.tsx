@@ -10,7 +10,6 @@ import { getSession } from 'next-auth/react';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('position-sizer');
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
 
 interface PositionSizeResult {
   position_size: number;
@@ -32,7 +31,9 @@ async function calculateSize(params: {
     headers['Authorization'] = `Bearer ${session.accessToken}`;
   }
 
-  const response = await fetch(`${API_URL}/api/analytics/position-size`, {
+  const url = '/api/orchestrator?path=%2Fapi%2Fanalytics%2Fposition-size';
+
+  const response = await fetch(url, {
     method: 'POST',
     headers,
     body: JSON.stringify(params),

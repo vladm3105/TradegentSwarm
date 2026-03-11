@@ -10,7 +10,6 @@ import { getSession } from 'next-auth/react';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('open-orders');
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
 
 interface Order {
   order_id: string;
@@ -33,7 +32,9 @@ async function fetchWithAuth<T>(endpoint: string, options?: RequestInit): Promis
     headers['Authorization'] = `Bearer ${session.accessToken}`;
   }
 
-  const response = await fetch(`${API_URL}${endpoint}`, {
+  const url = `/api/orchestrator?path=${encodeURIComponent(endpoint)}`;
+
+  const response = await fetch(url, {
     ...options,
     headers: { ...headers, ...options?.headers },
   });

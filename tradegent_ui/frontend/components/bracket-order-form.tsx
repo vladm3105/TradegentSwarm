@@ -10,7 +10,6 @@ import { getSession } from 'next-auth/react';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('bracket-order-form');
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
 
 interface BracketOrderResult {
   success: boolean;
@@ -35,7 +34,9 @@ async function placeBracketOrder(params: {
     headers['Authorization'] = `Bearer ${session.accessToken}`;
   }
 
-  const response = await fetch(`${API_URL}/api/orders/bracket`, {
+  const url = '/api/orchestrator?path=%2Fapi%2Forders%2Fbracket';
+
+  const response = await fetch(url, {
     method: 'POST',
     headers,
     body: JSON.stringify(params),
