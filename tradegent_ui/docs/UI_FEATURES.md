@@ -12,10 +12,10 @@ The Tradegent Agent UI provides a comprehensive trading dashboard with real-time
 
 | Feature | Description | API Endpoint |
 |---------|-------------|--------------|
-| Trading Mode | Switch between dry-run, paper, analysis-only | `POST /api/automation/trading-mode` |
-| Circuit Breaker | Auto-halt trading on loss thresholds | `GET/POST /api/automation/circuit-breaker` |
-| Auto-Execute Toggle | Enable/disable automated order placement | `POST /api/automation/auto-execute` |
-| Max Daily Loss | Configure daily loss limit | `POST /api/automation/settings` |
+| Automation Status | Current mode, pause state, circuit-breaker state | `GET /api/automation/status` |
+| Trading Mode | Switch between dry-run, paper, live (with confirmation for live) | `POST /api/automation/mode` |
+| Pause/Resume | Pause or resume automated trading | `POST /api/automation/pause`, `POST /api/automation/resume` |
+| Circuit Breaker | View, update, and reset breaker state | `GET/PUT /api/automation/circuit-breaker/settings`, `POST /api/automation/circuit-breaker/reset` |
 
 **Circuit Breaker Triggers:**
 - Daily loss exceeds threshold
@@ -78,6 +78,34 @@ The Tradegent Agent UI provides a comprehensive trading dashboard with real-time
 |---------|-------------|---------|
 | Widget Manager | Show/hide dashboard widgets | localStorage |
 | Widget Ordering | Drag to reorder widgets | localStorage |
+
+### Backend API Architecture
+
+As of March 2026, the Agent UI API backend follows a strict layering model:
+
+```
+Route -> Service -> Repository -> Database
+```
+
+#### Layer responsibilities
+
+| Layer | Responsibility |
+|-------|----------------|
+| Routes (`server/routes/`) | Request/response contracts, dependency injection, delegation |
+| Services (`server/services/`) | Validation, business rules, orchestration, response shaping |
+| Repositories (`server/repositories/`) | SQL and persistence access only |
+
+#### Migration status
+
+- Core API slices have been migrated to the layered pattern:
+  - admin, alerts, auth, automation, notifications, scanners, sessions, settings, trades, users, watchlist
+- Route-level direct SQL access was removed from migrated routes.
+
+#### Hardening updates (March 11, 2026)
+
+- GDPR delete path: all-or-nothing transactional execution.
+- Session message persistence: explicit JSONB-safe adaptation for `a2ui` payloads.
+- Settings actions: no fallback audit-user assignment when principal resolution fails.
 
 ---
 
@@ -233,4 +261,5 @@ NEXT_PUBLIC_WS_URL=ws://localhost:8081
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.1 | 2026-03-11 | Documented Route -> Service -> Repository backend architecture, corrected automation endpoint references, and recorded post-migration hardening updates |
 | 1.0 | 2026-03-05 | Initial IPLAN-002 implementation |

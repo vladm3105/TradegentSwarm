@@ -242,6 +242,38 @@ To support a new schema version: add `lib/parsers/<type>/vX.Y.ts` and one `REGIS
 
 See [UI_FEATURES — Analysis Display System](../../tradegent_ui/docs/UI_FEATURES.md#8-analysis-display-system) for field-path mappings per version.
 
+### Agent UI API Layering (IPLAN-013, March 2026)
+
+The Agent UI backend now uses a strict API layering model:
+
+```
+Route handler -> Service -> Repository -> PostgreSQL
+```
+
+#### What changed
+
+- Route modules in `tradegent_ui/server/routes/` now delegate business logic to service modules.
+- Service modules in `tradegent_ui/server/services/` implement validation, orchestration, and response shaping.
+- Repository modules in `tradegent_ui/server/repositories/` own SQL execution.
+- Route-level direct DB access patterns were removed from the migrated endpoints.
+
+#### Why it matters
+
+- Reduces route complexity and centralizes business logic.
+- Makes SQL boundaries explicit for testing and review.
+- Improves maintainability for future endpoint changes.
+- Enables focused unit testing at service/repository boundaries.
+
+#### Post-migration hardening (March 11, 2026)
+
+- GDPR delete flow was hardened to execute in a single transaction for all-or-nothing behavior.
+- Session message persistence now wraps `a2ui` payloads as JSONB-compatible values.
+- Settings audit attribution no longer falls back to a synthetic user id.
+
+#### Validation scope
+
+- Service and route-integration test suite for migrated API slices passed after the refactor and hardening patches.
+
 ---
 
 ## MCP Server Integration

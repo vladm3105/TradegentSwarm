@@ -28,6 +28,7 @@ System design and technical foundations.
 | Document | Description |
 |----------|-------------|
 | [Overview](architecture/overview.md) | High-level system architecture |
+| [Agent UI API Layering](architecture/overview.md#agent-ui-api-layering-iplan-013-march-2026) | Route -> Service -> Repository architecture for Agent UI APIs |
 | [LiteLLM Integration](architecture/litellm-integration.md) | Multi-provider LLM gateway, role routing, UCX integration |
 | [ADK Multi-Provider Orchestration](architecture/adk-multi-provider-orchestration.md) | ADK control plane, config manager governance |
 | [ADK Multi-Provider Orchestration SVG](architecture/adk-multi-provider-orchestration.svg) | End-to-end visual map for sections 1-21 and workflow charts |
