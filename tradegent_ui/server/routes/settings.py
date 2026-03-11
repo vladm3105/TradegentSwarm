@@ -8,8 +8,8 @@ from typing import Optional
 
 from ..auth import get_current_user, UserClaims, require_admin
 from ..audit import log_action
-from ..database import get_db_connection
 from ..config import get_settings
+from ..services import settings_service
 
 log = structlog.get_logger()
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -107,27 +107,12 @@ async def update_auth0_config(
             detail="Invalid Auth0 domain format (e.g., your-tenant.auth0.com)"
         )
 
-    # Store in database for persistence
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            # Upsert settings
-            settings_to_save = [
-                ("auth0", "domain", request.auth0_domain),
-                ("auth0", "client_id", request.auth0_client_id),
-                ("auth0", "client_secret", request.auth0_client_secret),
-                ("auth0", "audience", request.auth0_audience or "https://tradegent-api.local"),
-            ]
-
-            for section, key, value in settings_to_save:
-                cur.execute("""
-                    INSERT INTO nexus.settings (section, key, value)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (section, key) DO UPDATE SET
-                        value = EXCLUDED.value,
-                        updated_at = now()
-                """, (section, key, value))
-
-            conn.commit()
+    settings_service.persist_auth0_config(
+        domain=request.auth0_domain,
+        client_id=request.auth0_client_id,
+        client_secret=request.auth0_client_secret,
+        audience=request.auth0_audience or "https://tradegent-api.local",
+    )
 
     # Update the .env file for the server
     env_path = Path(__file__).parent.parent / ".env"
@@ -158,7 +143,7 @@ async def update_auth0_config(
 
     # Log the action
     await log_action(
-        await _get_user_id(user.sub),
+        settings_service.get_user_id(user.sub),
         "settings.update_auth0",
         details={"domain": request.auth0_domain},
         request=req,
@@ -185,64 +170,7 @@ async def update_auth0_config(
 
 def _update_env_file(env_path: Path, updates: dict[str, str]) -> None:
     """Update key=value pairs in an .env file."""
-    if not env_path.exists():
-        # Create new file
-        with open(env_path, "w") as f:
-            for key, value in updates.items():
-                f.write(f"{key}={value}\n")
-        return
-
-    # Read existing content
-    with open(env_path, "r") as f:
-        lines = f.readlines()
-
-    # Track which keys we've updated
-    updated_keys = set()
-
-    # Update existing lines
-    new_lines = []
-    for line in lines:
-        # Skip comments and empty lines
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            new_lines.append(line)
-            continue
-
-        # Check if this line has a key we need to update
-        if "=" in line:
-            key = line.split("=")[0].strip()
-            if key in updates:
-                # Check if line is commented out
-                if line.lstrip().startswith("#"):
-                    # Uncomment and update
-                    new_lines.append(f"{key}={updates[key]}\n")
-                else:
-                    new_lines.append(f"{key}={updates[key]}\n")
-                updated_keys.add(key)
-                continue
-
-        new_lines.append(line)
-
-    # Add any keys that weren't in the file
-    for key, value in updates.items():
-        if key not in updated_keys:
-            new_lines.append(f"{key}={value}\n")
-
-    # Write back
-    with open(env_path, "w") as f:
-        f.writelines(new_lines)
-
-
-async def _get_user_id(sub: str) -> int:
-    """Get user ID from auth0 sub."""
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id FROM nexus.users WHERE auth0_sub = %s",
-                (sub,)
-            )
-            row = cur.fetchone()
-            return row["id"] if row else 1  # Default to admin user
+    settings_service.update_env_file(env_path, updates)
 
 
 @router.post("/restart-server")
@@ -257,7 +185,7 @@ async def restart_server(
     The actual restart should be handled by the process manager (systemd, docker, etc).
     """
     await log_action(
-        await _get_user_id(user.sub),
+        settings_service.get_user_id(user.sub),
         "settings.restart_requested",
         request=req,
     )

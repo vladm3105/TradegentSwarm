@@ -11,7 +11,7 @@ from ..auth import (
     get_db_user_id,
 )
 from ..audit import log_action, log_login
-from ..database import get_db_connection
+from ..services import auth_service
 
 log = structlog.get_logger()
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -49,46 +49,8 @@ async def get_current_user_profile(
 
     Returns user profile with roles, permissions, and preferences.
     """
-    # Get database user
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT u.*, nexus.get_user_roles(u.id) as roles,
-                       nexus.get_user_permissions(u.id) as permissions
-                FROM nexus.users u
-                WHERE u.auth0_sub = %s
-            """, (user.sub,))
-
-            row = cur.fetchone()
-
-            if not row:
-                # User not synced yet, sync from claims
-                user_id = await sync_user_from_auth0(user)
-                cur.execute("""
-                    SELECT u.*, nexus.get_user_roles(u.id) as roles,
-                           nexus.get_user_permissions(u.id) as permissions
-                    FROM nexus.users u
-                    WHERE u.id = %s
-                """, (user_id,))
-                row = cur.fetchone()
-
-            # Check onboarding status
-            preferences = row["preferences"] or {}
-            requires_onboarding = not preferences.get("onboarding_completed", False)
-
-            return UserProfile(
-                id=row["id"],
-                auth0_sub=row["auth0_sub"],
-                email=row["email"],
-                name=row["name"],
-                picture=row["picture"],
-                roles=row["roles"] or [],
-                permissions=row["permissions"] or [],
-                ib_account_id=row["ib_account_id"],
-                ib_trading_mode=row["ib_trading_mode"],
-                preferences=preferences,
-                requires_onboarding=requires_onboarding,
-            )
+    profile = await auth_service.get_current_user_profile(user)
+    return UserProfile(**profile)
 
 
 @router.post("/sync-user")
@@ -153,22 +115,7 @@ async def complete_onboarding(
     user: UserClaims = Depends(get_current_user),
 ) -> dict:
     """Mark onboarding as complete for current user."""
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                UPDATE nexus.users
-                SET preferences = preferences || '{"onboarding_completed": true}'::jsonb,
-                    updated_at = now()
-                WHERE auth0_sub = %s
-                RETURNING id
-            """, (user.sub,))
-
-            row = cur.fetchone()
-            if not row:
-                raise HTTPException(status_code=404, detail="User not found")
-
-            conn.commit()
-            return {"success": True}
+    return await auth_service.complete_onboarding(user)
 
 
 class CheckPermissionRequest(BaseModel):

@@ -3,11 +3,10 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Literal, Optional
 from datetime import datetime
-import json
 import structlog
 
 from ..auth import get_current_user, UserClaims
-from ..database import get_db_connection
+from ..services import alerts_service
 
 log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/api/alerts", tags=["alerts"])
@@ -42,21 +41,7 @@ async def list_alerts(
     user: UserClaims = Depends(get_current_user),
 ) -> list[AlertResponse]:
     """List user alerts."""
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            if active_only:
-                cur.execute("""
-                    SELECT * FROM nexus.alerts
-                    WHERE user_id = %s AND is_active = true
-                    ORDER BY created_at DESC
-                """, (user.sub,))
-            else:
-                cur.execute("""
-                    SELECT * FROM nexus.alerts
-                    WHERE user_id = %s
-                    ORDER BY created_at DESC
-                """, (user.sub,))
-            rows = cur.fetchall()
+    rows = alerts_service.list_alerts(user_id=user.sub, active_only=active_only)
 
     return [AlertResponse(
         id=r['id'],
@@ -76,22 +61,12 @@ async def create_alert(
     user: UserClaims = Depends(get_current_user),
 ) -> AlertResponse:
     """Create a new alert."""
-    # Validate ticker required for price/stop/target alerts
-    if body.alert_type in ('price', 'stop', 'target') and not body.ticker:
-        raise HTTPException(400, f"{body.alert_type} alert requires a ticker")
-
-    # Convert condition to JSON string for JSONB column
-    condition_json = json.dumps(body.condition.model_dump())
-
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO nexus.alerts (user_id, alert_type, ticker, condition)
-                VALUES (%s, %s, %s, %s::jsonb)
-                RETURNING *
-            """, (user.sub, body.alert_type, body.ticker, condition_json))
-            row = cur.fetchone()
-            conn.commit()
+    row = alerts_service.create_alert(
+        user_id=user.sub,
+        alert_type=body.alert_type,
+        ticker=body.ticker,
+        condition=body.condition.model_dump(),
+    )
 
     log.info("alert.created", alert_id=row['id'], alert_type=body.alert_type, ticker=body.ticker)
 
@@ -113,21 +88,10 @@ async def delete_alert(
     user: UserClaims = Depends(get_current_user),
 ):
     """Delete an alert."""
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                DELETE FROM nexus.alerts
-                WHERE id = %s AND user_id = %s
-                RETURNING id
-            """, (alert_id, user.sub))
-            row = cur.fetchone()
-            conn.commit()
-
-    if not row:
-        raise HTTPException(404, "Alert not found")
+    result = alerts_service.delete_alert(alert_id=alert_id, user_id=user.sub)
 
     log.info("alert.deleted", alert_id=alert_id)
-    return {"success": True}
+    return result
 
 
 @router.patch("/{alert_id}/toggle")
@@ -136,18 +100,4 @@ async def toggle_alert(
     user: UserClaims = Depends(get_current_user),
 ):
     """Toggle alert active status."""
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                UPDATE nexus.alerts
-                SET is_active = NOT is_active, updated_at = NOW()
-                WHERE id = %s AND user_id = %s
-                RETURNING is_active
-            """, (alert_id, user.sub))
-            row = cur.fetchone()
-            conn.commit()
-
-    if not row:
-        raise HTTPException(404, "Alert not found")
-
-    return {"success": True, "is_active": row['is_active']}
+    return alerts_service.toggle_alert(alert_id=alert_id, user_id=user.sub)
