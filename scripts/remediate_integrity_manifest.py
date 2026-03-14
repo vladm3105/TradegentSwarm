@@ -109,6 +109,68 @@ def _compute_rr_from_key_levels(doc: dict[str, Any]) -> float | None:
     return round(abs(rr), 4)
 
 
+def _compute_ev_from_probabilities_and_key_levels(doc: dict[str, Any]) -> float | None:
+    """Derive expected value % from scenario probabilities and key levels.
+
+    Formula:
+    - bull_move_pct = (target_1 - entry) / entry * 100
+    - bear_move_pct = (entry - stop) / entry * 100
+    - ev_pct = p_bull * bull_move_pct + p_bear * (-bear_move_pct)
+
+    Supports probabilities expressed as fractions summing to ~1.0 or percentages
+    summing to ~100.
+    """
+    scenarios = doc.get("scenarios")
+    summary = doc.get("summary")
+    if not isinstance(scenarios, dict) or not isinstance(summary, dict):
+        return None
+
+    key_levels = summary.get("key_levels")
+    if not isinstance(key_levels, dict):
+        return None
+
+    entry = _to_float(key_levels.get("entry"))
+    stop = _to_float(key_levels.get("stop"))
+    target_1 = _to_float(key_levels.get("target_1"))
+
+    if entry is None or stop is None or target_1 is None:
+        return None
+    if entry <= 0 or stop <= 0 or target_1 <= 0:
+        return None
+
+    scenario_order = ["strong_bull", "base_bull", "base_bear", "strong_bear"]
+    probs: list[float] = []
+    for name in scenario_order:
+        scenario = scenarios.get(name)
+        if not isinstance(scenario, dict):
+            return None
+        prob = _to_float(scenario.get("probability"))
+        if prob is None:
+            return None
+        probs.append(prob)
+
+    p_sum = sum(probs)
+    # Common historical format stores probabilities as fractions summing to 1.0.
+    if 0.99 <= p_sum <= 1.01:
+        probs = [p * 100.0 for p in probs]
+        p_sum = sum(probs)
+
+    if not (99.0 <= p_sum <= 101.0):
+        return None
+
+    p_strong_bull, p_base_bull, p_base_bear, p_strong_bear = probs
+    p_bull = (p_strong_bull + p_base_bull) / 100.0
+    p_bear = (p_base_bear + p_strong_bear) / 100.0
+
+    bull_move_pct = ((target_1 - entry) / entry) * 100.0
+    bear_move_pct = ((entry - stop) / entry) * 100.0
+
+    ev_pct = (p_bull * bull_move_pct) + (p_bear * (-bear_move_pct))
+    if math.isnan(ev_pct) or math.isinf(ev_pct):
+        return None
+    return round(ev_pct, 4)
+
+
 def _recompute_gate_fields(gate: dict[str, Any], changed_fields: list[str]) -> None:
     ev_threshold = _to_float(gate.get("ev_threshold"))
     ev_actual = _to_float(gate.get("ev_actual"))
@@ -175,6 +237,11 @@ def _apply_safe_repairs(doc: dict[str, Any], requested_reasons: set[str]) -> lis
             if expected_value is not None:
                 gate["ev_actual"] = round(expected_value, 4)
                 changed_fields.append("do_nothing_gate.ev_actual")
+            else:
+                derived_ev = _compute_ev_from_probabilities_and_key_levels(doc)
+                if derived_ev is not None:
+                    gate["ev_actual"] = derived_ev
+                    changed_fields.append("do_nothing_gate.ev_actual")
 
     if "missing_confidence_actual" in requested_reasons and _to_float(gate.get("confidence_actual")) is None:
         recommendation = doc.get("recommendation")
