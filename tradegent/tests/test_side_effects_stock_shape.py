@@ -63,6 +63,8 @@ def test_write_stock_analysis_yaml_has_validator_critical_structure() -> None:
     alerts = data["alert_levels"]["price_alerts"]
     assert alerts and isinstance(alerts[0].get("derivation"), dict)
     assert len(str(alerts[0].get("significance", ""))) >= 100
+    assert isinstance(data.get("rationale"), str)
+    assert data["rationale"].strip()
 
     runtime = data.get("adk_runtime")
     assert isinstance(runtime, dict)
@@ -123,6 +125,67 @@ def test_write_earnings_analysis_yaml_has_scoring_and_gate_fields() -> None:
     assert len(data["bear_case_analysis"]["arguments"]) >= 3
 
     # Cleanup test artifact.
+    file_path.unlink(missing_ok=True)
+
+
+def test_write_stock_analysis_yaml_uses_decision_probability_confidence() -> None:
+    result = write_analysis_yaml(
+        run_id="run-stock-confidence-fallback-1",
+        ticker="MSFT",
+        analysis_type="stock",
+        skill_name="stock-analysis",
+        payload={
+            "recommendation": {"action": "WATCH"},
+            "decision": {"confidence_pct": 73},
+            "probability": {"confidence_pct": 68},
+            "summary": {
+                "narrative": (
+                    "Confidence fallback test narrative with sufficient detail to ensure "
+                    "the output remains valid under strict schema checks."
+                )
+            },
+        },
+    )
+
+    assert result["success"] is True
+    file_path = Path(result["file_path"])
+    data = yaml.safe_load(file_path.read_text(encoding="utf-8"))
+
+    assert data["recommendation"]["confidence"] == 73
+    assert data["do_nothing_gate"]["confidence_actual"] == 73
+
+    file_path.unlink(missing_ok=True)
+
+
+def test_write_stock_analysis_yaml_derives_confidence_from_scores() -> None:
+    result = write_analysis_yaml(
+        run_id="run-stock-confidence-scores-1",
+        ticker="MSFT",
+        analysis_type="stock",
+        skill_name="stock-analysis",
+        payload={
+            "recommendation": {"action": "WATCH"},
+            "catalyst": {"catalyst_score": 7},
+            "market_environment": {"environment_score": 6},
+            "technical": {"technical_score": 5},
+            "fundamentals": {"fundamental_score": 7},
+            "sentiment": {"sentiment_score": 6},
+            "summary": {
+                "narrative": (
+                    "Confidence score-derivation test narrative with enough detail to satisfy "
+                    "schema expectations and keep generated structure stable."
+                )
+            },
+        },
+    )
+
+    assert result["success"] is True
+    file_path = Path(result["file_path"])
+    data = yaml.safe_load(file_path.read_text(encoding="utf-8"))
+
+    assert data["recommendation"]["confidence"] == 62
+    assert data["do_nothing_gate"]["confidence_actual"] == 62
+
     file_path.unlink(missing_ok=True)
 
 

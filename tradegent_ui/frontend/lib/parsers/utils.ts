@@ -86,6 +86,45 @@ export function transformArguments(
   });
 }
 
+export function resolveCaseStrength(
+  section: Record<string, unknown> | undefined,
+  defaultValue = 5
+): number {
+  const clamp = (value: number): number => {
+    const bounded = Math.max(1, Math.min(10, value));
+    return Math.round(bounded * 10) / 10;
+  };
+
+  const args = Array.isArray(section?.arguments) ? section.arguments : [];
+  const scores = args
+    .map((item) => Number((item as Record<string, unknown>)?.score))
+    .filter((score) => Number.isFinite(score) && score > 0);
+
+  const averageScore = scores.length > 0
+    ? scores.reduce((sum, score) => sum + score, 0) / scores.length
+    : null;
+
+  const rawStrength = section?.strength;
+  if (rawStrength === undefined || rawStrength === null || rawStrength === '') {
+    return averageScore !== null ? clamp(averageScore) : defaultValue;
+  }
+
+  const parsed = Number(rawStrength);
+  if (!Number.isFinite(parsed)) {
+    return averageScore !== null ? clamp(averageScore) : defaultValue;
+  }
+
+  if (parsed >= 1 && parsed <= 10) {
+    return clamp(parsed);
+  }
+
+  if (averageScore !== null) {
+    return clamp(averageScore);
+  }
+
+  return clamp(parsed);
+}
+
 export function transformPeers(
   peers: unknown
 ): Array<{

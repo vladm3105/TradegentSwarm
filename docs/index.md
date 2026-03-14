@@ -17,6 +17,22 @@ AI-driven trading platform using Claude Code CLI, Interactive Brokers, and a hyb
 
 ---
 
+## Recent Updates (2026-03-14)
+
+- Confidence fallback behavior updated: if confidence is missing or cannot be calculated, output is `0` (obsolete `50` baseline removed).
+- Stock v2.7 case-strength validation documented and enforced for:
+  - `bull_case_analysis.strength`
+  - `base_case_analysis.strength`
+  - `bear_case_analysis.strength`
+  with required range `[1, 10]`.
+- Related docs updated:
+  - [Skills Guide](user-guide/skills-guide.md)
+  - [Analysis Workflow](user-guide/analysis-workflow.md)
+  - [Skill-Database Mapping](architecture/skill-database-mapping.md)
+  - [Troubleshooting](operations/troubleshooting.md)
+
+---
+
 ## Documentation Map
 
 ### Getting Started

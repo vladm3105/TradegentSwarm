@@ -251,12 +251,46 @@ sudo systemctl stop tradegent
 | `PG_DB` | Database name |
 | `PG_HOST` | PostgreSQL host |
 | `PG_PORT` | PostgreSQL port |
+| `TRADEGENT_TIMEZONE` | Pipeline/application timezone (example: `America/New_York`) |
+| `PG_TIMEZONE` | PostgreSQL session timezone (defaults to `TRADEGENT_TIMEZONE`) |
 | `NEO4J_URI` | Neo4j bolt URI |
 | `NEO4J_USER` | Neo4j user |
 | `NEO4J_PASS` | Neo4j password |
 | `IB_USER` | IB username |
 | `IB_PASS` | IB password |
 | `OPENAI_API_KEY` | OpenAI API key |
+
+### Timezone Synchronization
+
+Set both variables in `tradegent/.env`:
+
+```bash
+TRADEGENT_TIMEZONE=America/New_York
+PG_TIMEZONE=America/New_York
+```
+
+Verify runtime and DB session timezone:
+
+```bash
+cd tradegent
+python - <<'PY'
+import sys
+sys.path.insert(0, '.')
+from timezone_config import get_tradegent_timezone_name
+from db_layer import NexusDB
+
+print('runtime_tz', get_tradegent_timezone_name())
+db = NexusDB().connect()
+try:
+  with db._conn.cursor() as cur:
+    cur.execute("SELECT current_setting('TimeZone') AS tz")
+    print('db_session_tz', cur.fetchone()['tz'])
+finally:
+  db.close()
+PY
+```
+
+If you change timezone values, restart long-running services (`tradegent`, `tradegent-ib-mcp`) to apply environment updates.
 
 ### Optional
 

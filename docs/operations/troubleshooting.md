@@ -204,6 +204,56 @@ sudo systemctl status tradegent tradegent-ib-mcp
    docker compose restart ib-gateway
    ```
 
+### Timezone Mismatch Between Pipeline and Database
+
+**Symptoms:**
+- Analysis timestamps appear shifted between YAML files and DB rows
+- Application shows ET while DB session reports UTC (or another timezone)
+- Daily windows/scheduling appear inconsistent around market open/close
+
+**Cause:**
+- `TRADEGENT_TIMEZONE` and `PG_TIMEZONE` are unset or set to different values
+- Services still running with old environment values after `.env` update
+
+**Solutions:**
+
+1. Check timezone env values:
+   ```bash
+   grep -n '^TRADEGENT_TIMEZONE=\|^PG_TIMEZONE=' tradegent/.env
+   ```
+
+1. Verify DB session timezone from runtime:
+   ```bash
+   cd tradegent
+   python - <<'PY'
+import sys
+sys.path.insert(0, '.')
+from timezone_config import get_tradegent_timezone_name
+from db_layer import NexusDB
+
+print('runtime_tz', get_tradegent_timezone_name())
+db = NexusDB().connect()
+try:
+    with db._conn.cursor() as cur:
+        cur.execute("SELECT current_setting('TimeZone') AS tz")
+        print('db_session_tz', cur.fetchone()['tz'])
+finally:
+    db.close()
+PY
+   ```
+
+1. Synchronize values (recommended):
+   ```bash
+   # tradegent/.env
+   TRADEGENT_TIMEZONE=America/New_York
+   PG_TIMEZONE=America/New_York
+   ```
+
+1. Restart services to apply env changes:
+   ```bash
+   sudo systemctl restart tradegent tradegent-ib-mcp
+   ```
+
 ---
 
 ## RAG Issues
@@ -243,6 +293,67 @@ sudo systemctl status tradegent tradegent-ib-mcp
 - Market-data gate behavior is controlled by:
    - `ADK_MARKET_DATA_GATES_ENABLED`
    - `ADK_MARKET_DATA_GATES_BLOCKING`
+
+### Stock Analysis Fails Validation with Missing Case Strength
+
+**Symptoms:**
+- Validator reports:
+  - `bull_case_analysis.strength is required and must be between 1 and 10`
+  - `base_case_analysis.strength is required and must be between 1 and 10`
+  - `bear_case_analysis.strength is required and must be between 1 and 10`
+
+**Cause:**
+- Historical ADK stock document synthesis did not include case-strength fields in the final output document.
+
+**Fix status:**
+- Runtime synthesis now emits:
+  - `bull_case_analysis.strength`
+  - `base_case_analysis.strength`
+  - `bear_case_analysis.strength`
+
+**Validation steps:**
+
+1. Run fresh stock analysis:
+   ```bash
+   cd tradegent
+   python tradegent.py analyze MSFT --type stock
+   ```
+
+2. Validate produced YAML:
+   ```bash
+   cd ..
+   python scripts/validate_analysis.py tradegent_knowledge/knowledge/analysis/stock/<FILE>.yaml
+   ```
+
+3. Confirm fields exist:
+   ```bash
+   yq '.bull_case_analysis.strength, .base_case_analysis.strength, .bear_case_analysis.strength' tradegent_knowledge/knowledge/analysis/stock/<FILE>.yaml
+   ```
+
+### Confidence Is 0 in Analysis Output
+
+**Symptoms:**
+- Analysis YAML contains:
+  - `do_nothing_gate.confidence_actual: 0`
+  - `recommendation.confidence: 0`
+
+**Cause:**
+- Runtime no longer uses the obsolete baseline fallback of `50` when confidence is missing.
+- If confidence is not calculated from model/runtime data, it is set to `0`.
+
+**Validation steps:**
+
+1. Check confidence fields:
+   ```bash
+   yq '.do_nothing_gate.confidence_actual, .recommendation.confidence' tradegent_knowledge/knowledge/analysis/stock/<FILE>.yaml
+   ```
+
+2. Check synthesis note in analysis markdown:
+   ```bash
+   grep -n "Original confidence\|Adjusted confidence" tradegent/analyses/<FILE>.md
+   ```
+
+3. Confirm latest runtime behavior by running a fresh analysis and re-validating the new artifact.
 
 ### Dimension Mismatch Error
 

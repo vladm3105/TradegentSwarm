@@ -180,6 +180,16 @@ Must pass ALL checks:
 | WATCH | Add to watchlist |
 | SKIP | No action |
 
+Confidence output rules:
+- Use calculated/model confidence when available.
+- If confidence is missing or cannot be calculated, confidence is set to `0`.
+- The previous baseline fallback value of `50` is obsolete.
+
+Stock-analysis validation rules (v2.7):
+- `bull_case_analysis.strength` is required in `[1, 10]`
+- `base_case_analysis.strength` is required in `[1, 10]`
+- `bear_case_analysis.strength` is required in `[1, 10]`
+
 ---
 
 ## Post-Analysis Indexing

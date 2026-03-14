@@ -36,6 +36,7 @@ from enum import Enum
 from pathlib import Path
 
 from dotenv import load_dotenv
+from timezone_config import now_tradegent
 
 # Load .env file
 _env_path = Path(__file__).parent / ".env"
@@ -489,12 +490,8 @@ def check_ib_gateway_docker() -> ServiceStatus:
 
 def check_market_status() -> ServiceStatus:
     """Check if markets are open."""
-    from datetime import datetime
-    import pytz
-
     try:
-        et = pytz.timezone("America/New_York")
-        now = datetime.now(et)
+        now = now_tradegent()
 
         # Check if weekend
         if now.weekday() >= 5:

@@ -21,6 +21,7 @@ import {
   normalizeGateResult,
   transformScenario,
   transformArguments,
+  resolveCaseStrength,
   transformPeers,
   transformPriceAlerts,
   transformEventAlerts,
@@ -55,6 +56,46 @@ export function stockParserV27(response: AnalysisDetailResponse): AnalysisDetail
   const altStrategies  = (yaml.alternative_strategies as Record<string, unknown>) ?? {};
   const metaLearning   = (yaml.meta_learning        as Record<string, unknown>) ?? {};
   const newsCheck      = (yaml.news_age_check       as Record<string, unknown>) ?? {};
+
+  const weightedTotalScore = Number(get(scoring, 'weighted_total', 0));
+  let derivedConfidenceLevel = 0;
+  if (Number.isFinite(weightedTotalScore) && weightedTotalScore > 0) {
+    derivedConfidenceLevel = Math.round(weightedTotalScore * 10);
+  } else {
+    const scoreCandidates = [
+      Number(get(catalyst, 'catalyst_score', 0)),
+      Number(get(market, 'environment_score', 0)),
+      Number(get(yaml, 'technical.technical_score', 0)),
+      Number(get(yaml, 'fundamentals.fundamental_score', 0)),
+      Number(get(yaml, 'sentiment.sentiment_score', 0)),
+    ].filter((score) => Number.isFinite(score) && score > 0);
+
+    if (scoreCandidates.length >= 3) {
+      const averageScore = scoreCandidates.reduce((sum, score) => sum + score, 0) / scoreCandidates.length;
+      derivedConfidenceLevel = Math.round(averageScore * 10);
+    }
+  }
+  derivedConfidenceLevel = Math.max(0, Math.min(100, derivedConfidenceLevel));
+
+  const reportedConfidenceLevel = Number(
+    get(confidence, 'level', response.confidence ?? Number(gate.confidence_actual) ?? 0)
+  );
+  const resolvedConfidenceLevel =
+    Number.isFinite(reportedConfidenceLevel) && reportedConfidenceLevel > 0
+      ? reportedConfidenceLevel
+      : derivedConfidenceLevel;
+
+  const parsedRationale = String(
+    yaml.rationale
+      || get(yaml, 'summary.narrative', '')
+      || get(yaml, 'summary.thesis', '')
+      || get(gate, 'edge_description', '')
+      || ''
+  );
+  const confidenceRationale = String(
+    get(confidence, 'rationale', '')
+      || parsedRationale
+  );
 
   return {
     _meta: {
@@ -120,21 +161,21 @@ export function stockParserV27(response: AnalysisDetailResponse): AnalysisDetail
     },
 
     bull_case_analysis: {
-      strength:           get(bullCase, 'strength', 5),
+      strength:           resolveCaseStrength(bullCase),
       arguments:          transformArguments(bullCase.arguments),
       summary:            get(bullCase, 'summary', ''),
       strongest_argument: get(bullCase, 'strongest_argument', ''),
     },
 
     base_case_analysis: {
-      strength:           get(baseCase, 'strength', 5),
+      strength:           resolveCaseStrength(baseCase),
       arguments:          transformArguments(baseCase.arguments),
       summary:            get(baseCase, 'summary', ''),
       strongest_argument: get(baseCase, 'strongest_argument', ''),
     },
 
     bear_case_analysis: {
-      strength:           get(bearCase, 'strength', 5),
+      strength:           resolveCaseStrength(bearCase),
       arguments:          transformArguments(bearCase.arguments),
       summary:            get(bearCase, 'summary', ''),
       strongest_argument: get(bearCase, 'strongest_argument', ''),
@@ -253,12 +294,12 @@ export function stockParserV27(response: AnalysisDetailResponse): AnalysisDetail
     },
 
     confidence: {
-      level: get(confidence, 'level', response.confidence ?? Number(gate.confidence_actual) ?? 0),
-      rationale: get(confidence, 'rationale', ''),
+      level: resolvedConfidenceLevel,
+      rationale: confidenceRationale,
     },
 
     recommendation: normalizeRecommendation(response.recommendation ?? yaml.recommendation),
-    rationale: String(yaml.rationale || ''),
+    rationale: parsedRationale,
 
     pass_reasoning: passReasoning.applicable
       ? {

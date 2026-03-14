@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 from typing import Any
@@ -28,7 +29,9 @@ _STOCK_TOP_LEVEL_KEYS = {
     "market_environment",
     "summary",
     "bull_case_analysis",
+    "base_case_analysis",
     "bear_case_analysis",
+    "do_nothing_gate",
     "recommendation",
     "alert_levels",
     "liquidity_analysis",
@@ -139,20 +142,17 @@ class SubagentInvoker:
             }
 
         try:
-            # Safe in the current sync orchestrator path.
-            return asyncio.run(_call())
+            running_loop = asyncio.get_running_loop()
         except RuntimeError:
-            # If an event loop is already active, avoid nested-loop failure and return route metadata.
-            candidates = self.gateway.get_route_candidates(role_alias)
-            routed_model = candidates[0] if candidates else "unknown"
-            return {
-                "content": "",
-                "model_alias": role_alias,
-                "model": routed_model,
-                "provider": self._provider_from_model(routed_model),
-                "input_tokens": 0,
-                "output_tokens": 0,
-            }
+            running_loop = None
+
+        if running_loop and running_loop.is_running():
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(lambda: asyncio.run(_call()))
+                return future.result()
+
+        # Safe in the current sync orchestrator path.
+        return asyncio.run(_call())
 
     @staticmethod
     def _parse_json_payload(raw: Any) -> dict[str, Any] | None:
@@ -251,6 +251,9 @@ class SubagentInvoker:
                 "summary.key_levels.entry": "number (> 0)",
                 "summary.key_levels.stop": "number (> 0)",
                 "summary.key_levels.target_1": "number (> 0)",
+                "recommendation.action": "string (BUY|WATCH|NO_POSITION)",
+                "recommendation.confidence": "number 0-100 (required, calculated)",
+                "do_nothing_gate.confidence_actual": "number 0-100 (required, calculated)",
                 "alert_levels.price_alerts[0].price": "number (> 0)",
                 "alert_levels.price_alerts[0].significance": "string (>= 120 chars)",
             }
@@ -263,6 +266,8 @@ class SubagentInvoker:
                     "Do not use placeholder wording like 'runtime generated draft analysis'.",
                     "Set data_quality.price_data_source to ib_gateway or ib_mcp.",
                     "Include data_quality.quote_timestamp and data_quality.prior_close with current market quote context.",
+                    "Include recommendation.action and recommendation.confidence (0-100).",
+                    "Include do_nothing_gate.confidence_actual (0-100) consistent with recommendation confidence logic.",
                     "All numeric trading levels must be > 0.",
                 ],
             }

@@ -30,6 +30,7 @@ import {
   EMPTY_LIQUIDITY_ANALYSIS,
   EMPTY_SCORING,
   EMPTY_SCENARIOS,
+  resolveCaseStrength,
 } from '../utils';
 
 /** Map v2.3 direction string + gate result → canonical recommendation */
@@ -173,21 +174,21 @@ export function earningsParserV23(response: AnalysisDetailResponse): AnalysisDet
       : { ...EMPTY_SCENARIOS, expected_value: evActual },
 
     bull_case_analysis: {
-      strength:           get(bullCase, 'strength', 5),
+      strength:           resolveCaseStrength(bullCase),
       arguments:          transformArguments(bullCase.arguments),
       summary:            get(bullCase, 'summary', get(p5, 'bull_case', '')),
       strongest_argument: get(bullCase, 'strongest_argument', ''),
     },
 
     base_case_analysis: {
-      strength:           get(baseCase, 'strength', 5),
+      strength:           resolveCaseStrength(baseCase),
       arguments:          transformArguments(baseCase.arguments),
       summary:            get(baseCase, 'summary', ''),
       strongest_argument: get(baseCase, 'strongest_argument', ''),
     },
 
     bear_case_analysis: {
-      strength:           get(bearCase, 'strength', 5),
+      strength:           resolveCaseStrength(bearCase),
       arguments:          transformArguments(bearCase.arguments),
       summary:            get(bearCase, 'summary', get(p5, 'bear_case', '')),
       strongest_argument: get(bearCase, 'strongest_argument', ''),

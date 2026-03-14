@@ -5,9 +5,9 @@ Supports multiple years with automatic detection.
 """
 
 from datetime import date, datetime, time
-from zoneinfo import ZoneInfo
+from timezone_config import get_tradegent_zoneinfo
 
-ET = ZoneInfo("America/New_York")
+ET = get_tradegent_zoneinfo()
 
 # NYSE holidays by year (update as needed)
 NYSE_HOLIDAYS = {

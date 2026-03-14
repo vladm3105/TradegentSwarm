@@ -1032,6 +1032,9 @@ def _build_stock_analysis_document(
 
     overrides = _collect_payload_overrides(payload)
     recommendation = _as_dict(overrides.get("recommendation"))
+    decision_override = _as_dict(overrides.get("decision"))
+    probability_override = _as_dict(overrides.get("probability"))
+    scoring_override = _as_dict(overrides.get("scoring"))
     summary_override = _as_dict(overrides.get("summary"))
     gate_override = _as_dict(overrides.get("do_nothing_gate"))
     key_levels_override = _as_dict(summary_override.get("key_levels"))
@@ -1134,7 +1137,13 @@ def _build_stock_analysis_document(
     rec_confidence = int(
         _number_or_default(
             recommendation.get("confidence"),
-            _number_or_default(gate_override.get("confidence_actual"), 50),
+            _number_or_default(
+                gate_override.get("confidence_actual"),
+                _number_or_default(
+                    decision_override.get("confidence_pct"),
+                    _number_or_default(probability_override.get("confidence_pct"), 0),
+                ),
+            ),
         )
     )
 
@@ -1387,8 +1396,16 @@ def _build_stock_analysis_document(
     bear_source.update(latest_bear)
     bear_source.update(bear_override)
 
+    baseline_base = _as_dict(rich_baseline_doc.get("base_case_analysis"))
+    latest_base = _as_dict(latest_doc.get("base_case_analysis"))
+    base_override = _as_dict(overrides.get("base_case_analysis"))
+    base_source = dict(baseline_base)
+    base_source.update(latest_base)
+    base_source.update(base_override)
+
     bull_arguments = _normalize_case_arguments(bull_source.get("arguments"), fallback=bull_args)
     bear_arguments = _normalize_case_arguments(bear_source.get("arguments"), fallback=bear_args)
+    base_arguments = _normalize_case_arguments(base_source.get("arguments"), fallback=[])
 
     bull_summary_default = (
         "Bull case summary: participation breadth and trend structure support upside "
@@ -1461,6 +1478,27 @@ def _build_stock_analysis_document(
                 else runtime_note
             )
 
+    # Confidence fallback: derive from available scored sections when explicit
+    # confidence fields are absent. This preserves "calculated-or-0" semantics.
+    weighted_total_score = _number_or_default(scoring_override.get("weighted_total"), float("nan"))
+    derived_confidence = 0
+    if not math.isnan(weighted_total_score) and weighted_total_score > 0:
+        derived_confidence = int(round(weighted_total_score * 10))
+    else:
+        score_candidates = [
+            _number_or_default(catalyst.get("catalyst_score"), float("nan")),
+            _number_or_default(market_environment.get("environment_score"), float("nan")),
+            _number_or_default(technical.get("technical_score"), float("nan")),
+            _number_or_default(fundamentals.get("fundamental_score"), float("nan")),
+            _number_or_default(sentiment.get("sentiment_score"), float("nan")),
+        ]
+        valid_scores = [score for score in score_candidates if not math.isnan(score) and score > 0]
+        if len(valid_scores) >= 3:
+            derived_confidence = int(round(sum(valid_scores) / len(valid_scores) * 10))
+    derived_confidence = max(0, min(100, derived_confidence))
+    if rec_confidence <= 0 and derived_confidence > 0:
+        rec_confidence = derived_confidence
+
     ma_20d = _number_or_default(_as_dict(technical.get("moving_averages")).get("ma_20d"), alert_price)
     primary_alert = {
         "price": alert_price,
@@ -1507,7 +1545,12 @@ def _build_stock_analysis_document(
     if math.isnan(rr_actual):
         rr_actual = 0.0
 
-    confidence_actual = int(_number_or_default(gate_override.get("confidence_actual"), rec_confidence))
+    confidence_actual = int(
+        _number_or_default(
+            gate_override.get("confidence_actual"),
+            _number_or_default(decision_override.get("confidence_pct"), rec_confidence),
+        )
+    )
     confidence_passes = confidence_actual >= confidence_threshold
     ev_passes = ev_actual >= ev_threshold
     rr_passes = rr_actual >= rr_threshold
@@ -1566,10 +1609,21 @@ def _build_stock_analysis_document(
         "liquidity_analysis": liquidity_analysis,
         "scenarios": scenarios_payload,
         "bull_case_analysis": {
+            "strength": int(_number_or_default(bull_source.get("strength"), 6)),
             "arguments": bull_arguments,
             "summary": _string_or_default(bull_source.get("summary"), bull_summary_default),
         },
+        "base_case_analysis": {
+            "strength": int(_number_or_default(base_source.get("strength"), 5)),
+            "arguments": base_arguments,
+            "summary": _string_or_default(
+                base_source.get("summary"),
+                "Base case: price consolidates in the current range as market awaits "
+                "a clear catalyst. Neither bull nor bear thesis fully validated.",
+            ),
+        },
         "bear_case_analysis": {
+            "strength": int(_number_or_default(bear_source.get("strength"), 5)),
             "arguments": bear_arguments,
             "summary": _string_or_default(bear_source.get("summary"), bear_summary_default),
         },
@@ -1594,6 +1648,7 @@ def _build_stock_analysis_document(
         },
         "falsification": falsification,
         "recommendation": {"action": rec_action, "confidence": rec_confidence},
+        "rationale": summary_text,
         "summary": {
             "narrative": summary_text,
             "key_levels": {
@@ -1749,7 +1804,7 @@ def _build_earnings_analysis_document(
 
     decision_confidence_raw = _number_or_default(decision_override.get("confidence_pct"), float("nan"))
     if math.isnan(decision_confidence_raw) or decision_confidence_raw <= 0:
-        decision_confidence = int(_number_or_default(probability_override.get("confidence_pct"), 50))
+        decision_confidence = int(_number_or_default(probability_override.get("confidence_pct"), 0))
     else:
         decision_confidence = int(decision_confidence_raw)
 

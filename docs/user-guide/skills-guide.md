@@ -29,8 +29,8 @@ Skills are Claude Code automation workflows that produce structured trading anal
 
 | Skill | Version | Triggers | Output |
 |-------|---------|----------|--------|
-| **stock-analysis** | v2.4 | "stock analysis", "technical" | `analysis/stock/` |
-| **earnings-analysis** | v2.4 | "earnings analysis", "pre-earnings" | `analysis/earnings/` |
+| **stock-analysis** | v2.7 | "stock analysis", "technical" | `analysis/stock/` |
+| **earnings-analysis** | v2.6 | "earnings analysis", "pre-earnings" | `analysis/earnings/` |
 | **research-analysis** | v2.1 | "research", "macro analysis" | `analysis/research/` |
 | **ticker-profile** | v2.1 | "ticker profile", "what do I know about" | `analysis/ticker-profiles/` |
 | **trade-journal** | v2.1 | "log trade", "bought", "sold" | `trades/` |
@@ -42,7 +42,7 @@ Skills are Claude Code automation workflows that produce structured trading anal
 
 ## Core Analysis Skills
 
-### stock-analysis (v2.4)
+### stock-analysis (v2.7)
 
 Comprehensive stock analysis with bias checks and scenario modeling.
 
@@ -58,16 +58,20 @@ Comprehensive stock analysis with bias checks and scenario modeling.
 7. Do Nothing Gate
 8. Recommendation
 
-**Key Features (v2.4):**
+**Key Features (v2.7):**
 - Phase 0: Time Validation (system/IB MCP sync, ERROR if >1hr discrepancy)
 - Market status awareness (weekend/holiday/pre-market/after-hours)
-- Steel-man bear case with scored arguments
+- Steel-man bull/base/bear cases with strength scores (1-10)
 - Bias countermeasures (rule + checklist + mantra)
 - 4-scenario framework (bull, base, bear, disaster)
 - Pre-exit gate for loss aversion
 - Falsification criteria
 - Meta-learning with validation tracking
 - Data quality and news age checks
+
+**Confidence behavior:**
+- Confidence is sourced from calculated/model output when present.
+- If confidence cannot be calculated or is missing, runtime sets confidence to `0` (no baseline `50` fallback).
 
 **Do Nothing Gate:**
 | Check | Threshold |
@@ -77,7 +81,7 @@ Comprehensive stock analysis with bias checks and scenario modeling.
 | Risk/Reward | > 2:1 |
 | Edge | Not priced in |
 
-### earnings-analysis (v2.4)
+### earnings-analysis (v2.6)
 
 Pre-earnings analysis focused on IV, consensus, and event risk.
 

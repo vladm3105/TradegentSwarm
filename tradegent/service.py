@@ -70,10 +70,12 @@ from orchestrator import (
     process_task_queue,
 )
 from position_monitor import PositionMonitor
+from timezone_config import apply_process_timezone_from_env, get_tradegent_zoneinfo
 from trading_calendar import is_market_hours, is_trading_day, ET as TRADING_ET
 from watchlist_monitor import WatchlistMonitor
 
-ET = ZoneInfo("America/New_York")
+apply_process_timezone_from_env()
+ET = get_tradegent_zoneinfo()
 BASE_DIR = Path(__file__).parent
 
 # ─── Logging Setup (structlog with rotation) ─────────────────────────────────

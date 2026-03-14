@@ -248,12 +248,21 @@ export function useWebSocket() {
       return;
     }
 
+    const callbackUrl = (() => {
+      if (typeof window === 'undefined') {
+        return '/login';
+      }
+
+      const currentPath = `${window.location.pathname}${window.location.search}` || '/';
+      return `/login?callbackUrl=${encodeURIComponent(currentPath)}`;
+    })();
+
     authRedirectInProgressRef.current = true;
     markPendingMessagesAsError('Authentication error. Please sign in again.');
     setConnected(false);
     logger.warn('WebSocket auth failed, redirecting user to login');
 
-    void signOut({ callbackUrl: '/login' });
+    void signOut({ callbackUrl });
   }, [markPendingMessagesAsError, setConnected]);
 
   const connect = useCallback(() => {

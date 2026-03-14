@@ -13,12 +13,12 @@ Components:
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from enum import Enum
-from zoneinfo import ZoneInfo
-
-ET = ZoneInfo("America/New_York")
 from typing import Callable, TYPE_CHECKING
 import logging
 import re
+from timezone_config import get_tradegent_zoneinfo
+
+ET = get_tradegent_zoneinfo()
 
 if TYPE_CHECKING:
     from db_layer import NexusDB

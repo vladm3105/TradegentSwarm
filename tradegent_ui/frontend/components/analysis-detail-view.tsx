@@ -113,13 +113,18 @@ function StrengthBar({
     red: 'bg-red-500',
   }[color];
 
+  const safeStrength = Math.max(1, Math.min(10, Number.isFinite(strength) ? strength : 5));
+  const safeStrengthDisplay = Number.isInteger(safeStrength)
+    ? String(safeStrength)
+    : safeStrength.toFixed(1);
+
   return (
     <div className="flex items-center gap-3 py-1">
       <span className="text-sm w-20 shrink-0">{label}</span>
       <div className="flex-1 h-4 bg-muted rounded overflow-hidden">
-        <div className={cn('h-full rounded', colorClass)} style={{ width: `${strength * 10}%` }} />
+        <div className={cn('h-full rounded', colorClass)} style={{ width: `${safeStrength * 10}%` }} />
       </div>
-      <span className="text-sm font-medium w-10">{strength}/10</span>
+      <span className="text-sm font-medium w-10">{safeStrengthDisplay}/10</span>
     </div>
   );
 }

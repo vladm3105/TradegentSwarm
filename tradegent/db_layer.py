@@ -20,6 +20,11 @@ from dotenv import load_dotenv
 import psycopg
 from psycopg.rows import dict_row
 from psycopg import errors as pg_errors
+from timezone_config import (
+    apply_process_timezone_from_env,
+    get_db_timezone_name,
+    get_tradegent_zoneinfo,
+)
 
 # Load .env file for credentials
 _env_path = Path(__file__).parent / ".env"
@@ -28,7 +33,8 @@ if _env_path.exists():
 
 log = logging.getLogger("nexus-light.db")
 
-ET = ZoneInfo("America/New_York")
+apply_process_timezone_from_env()
+ET = get_tradegent_zoneinfo()
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 
@@ -142,6 +148,9 @@ class NexusDB:
     def connect(self) -> "NexusDB":
         """Establish database connection."""
         self._conn = psycopg.connect(self.dsn, row_factory=dict_row)
+        session_tz = get_db_timezone_name()
+        with self._conn.cursor() as cur:
+            cur.execute("SELECT set_config('TimeZone', %s, false)", (session_tz,))
         log.info("Database connected")
         return self
 

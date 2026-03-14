@@ -260,6 +260,44 @@ def validate_bull_bear_arguments(doc: dict, result: ValidationResult):
             )
 
 
+def validate_case_strength_ranges(doc: dict, result: ValidationResult):
+    """Validate bull/base/bear strength exists and is in [1, 10].
+
+    Enforced as an error for v2.7+ documents (new reports), warning for older versions.
+    """
+    version = result.version or MIN_VERSION
+    strict = version >= 2.7
+
+    for case in ["bull_case_analysis", "base_case_analysis", "bear_case_analysis"]:
+        section = doc.get(case, {})
+        strength = section.get("strength") if isinstance(section, dict) else None
+
+        if strength is None:
+            msg = f"{case}.strength is required and must be between 1 and 10"
+            if strict:
+                result.add_error(msg)
+            else:
+                result.add_warning(msg)
+            continue
+
+        try:
+            value = float(strength)
+        except (TypeError, ValueError):
+            msg = f"{case}.strength must be numeric in [1, 10] (found {strength!r})"
+            if strict:
+                result.add_error(msg)
+            else:
+                result.add_warning(msg)
+            continue
+
+        if not (1 <= value <= 10):
+            msg = f"{case}.strength must be in [1, 10] (found {value})"
+            if strict:
+                result.add_error(msg)
+            else:
+                result.add_warning(msg)
+
+
 def validate_do_nothing_gate(doc: dict, result: ValidationResult):
     """Validate Do Nothing gate thresholds (v2.6 normalized)."""
     gate = doc.get("do_nothing_gate", {})
@@ -717,6 +755,7 @@ def validate_document(file_path: Path) -> ValidationResult:
     validate_comparable_companies(doc, result)
     validate_liquidity_analysis(doc, result)
     validate_bull_bear_arguments(doc, result)
+    validate_case_strength_ranges(doc, result)
     validate_do_nothing_gate(doc, result)
     validate_falsification(doc, result)
     validate_bias_check(doc, result)

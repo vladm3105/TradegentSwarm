@@ -53,6 +53,8 @@ describe('useWebSocket auth handling', () => {
   });
 
   it('redirects to login via signOut on websocket auth error', async () => {
+    window.history.pushState({}, '', '/analysis?source=test');
+
     renderHook(() => useWebSocket());
 
     await waitFor(() => {
@@ -65,7 +67,9 @@ describe('useWebSocket auth handling', () => {
     });
 
     await waitFor(() => {
-      expect(signOut).toHaveBeenCalledWith({ callbackUrl: '/login' });
+      expect(signOut).toHaveBeenCalledWith({
+        callbackUrl: '/login?callbackUrl=%2Fanalysis%3Fsource%3Dtest',
+      });
     });
   });
 

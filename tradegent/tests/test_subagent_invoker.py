@@ -194,3 +194,54 @@ def test_subagent_invoker_extracts_nested_analysis_payload() -> None:
 
     assert outputs["draft"]["payload"]["current_price"] == 222.0
     assert "analysis" not in outputs["draft"]["payload"]
+
+
+@pytest.mark.asyncio
+async def test_invoke_llm_phase_with_active_event_loop_keeps_content() -> None:
+    gateway = FakeGateway()
+    invoker = SubagentInvoker(gateway=gateway, enable_litellm=True)  # type: ignore[arg-type]
+
+    result = invoker._invoke_llm_phase(
+        "reasoning_standard",
+        _plan(),
+        "draft",
+        {"ticker": "AAPL", "analysis_type": "stock"},
+    )
+
+    assert result["content"] == '{"ok": true}'
+    assert result["model_alias"] == "reasoning_standard"
+
+
+def test_stock_prompt_contract_requires_confidence_fields() -> None:
+    plan = _plan()
+
+    prompt_payload = SubagentInvoker._build_prompt_payload(
+        plan,
+        "draft",
+        {"ticker": "AAPL", "analysis_type": "stock"},
+    )
+
+    schema_hint = prompt_payload["schema_hint"]
+    output_contract = prompt_payload["output_contract"]
+
+    assert schema_hint["recommendation.confidence"] == "number 0-100 (required, calculated)"
+    assert schema_hint["do_nothing_gate.confidence_actual"] == "number 0-100 (required, calculated)"
+    assert "Include recommendation.action and recommendation.confidence (0-100)." in output_contract["rules"]
+    assert (
+        "Include do_nothing_gate.confidence_actual (0-100) consistent with recommendation confidence logic."
+        in output_contract["rules"]
+    )
+
+
+def test_stock_top_level_required_includes_base_case_and_gate() -> None:
+    plan = _plan()
+
+    prompt_payload = SubagentInvoker._build_prompt_payload(
+        plan,
+        "summarize",
+        {"ticker": "AAPL", "analysis_type": "stock"},
+    )
+
+    top_level_required = prompt_payload["output_contract"]["top_level_required"]
+    assert "base_case_analysis" in top_level_required
+    assert "do_nothing_gate" in top_level_required
