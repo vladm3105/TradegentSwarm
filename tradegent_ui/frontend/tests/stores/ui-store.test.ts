@@ -8,6 +8,7 @@ describe('UI Store', () => {
       sidebarOpen: true,
       sidebarCollapsed: false,
       chatPanelOpen: false,
+      chatPanelWidth: 320,
       theme: 'system',
     });
   });
@@ -44,6 +45,12 @@ describe('UI Store', () => {
       const store = useUIStore.getState();
       store.setChatPanelOpen(true);
       expect(useUIStore.getState().chatPanelOpen).toBe(true);
+    });
+
+    it('sets chat panel width directly', () => {
+      const store = useUIStore.getState();
+      store.setChatPanelWidth(460);
+      expect(useUIStore.getState().chatPanelWidth).toBe(460);
     });
   });
 

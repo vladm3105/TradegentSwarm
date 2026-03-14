@@ -78,8 +78,8 @@ function AnalysisRow({ analysis, onView, isLoading }: AnalysisRowProps) {
           : '-'
         }
       </td>
-      <td className="p-4 text-muted-foreground text-sm">
-        {formatDate(analysis.analysis_date)}
+      <td className="p-4 text-muted-foreground text-sm whitespace-nowrap">
+        {formatDate(analysis.analysis_date, { includeTime: true })}
       </td>
       <td className="p-4">
         <Button

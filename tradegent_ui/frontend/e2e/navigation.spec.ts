@@ -16,6 +16,8 @@ test.describe('Navigation', () => {
     await expect(page.getByRole('link', { name: /watchlist/i })).toBeVisible();
     await expect(page.getByRole('link', { name: /charts/i })).toBeVisible();
     await expect(page.getByRole('link', { name: /scanner/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /schedules/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /schedule history/i })).toBeVisible();
     await expect(page.getByRole('link', { name: /settings/i })).toBeVisible();
   });
 
@@ -47,6 +49,18 @@ test.describe('Navigation', () => {
     await page.getByRole('link', { name: /scanner/i }).click();
     await expect(page).toHaveURL('/scanner');
     await expect(page.getByRole('heading', { name: /scanner/i })).toBeVisible();
+  });
+
+  test('navigates to schedules page', async ({ page }) => {
+    await page.getByRole('link', { name: /^schedules$/i }).click();
+    await expect(page).toHaveURL('/schedules');
+    await expect(page.getByRole('heading', { name: /schedules/i })).toBeVisible();
+  });
+
+  test('navigates to schedule history page', async ({ page }) => {
+    await page.getByRole('link', { name: /schedule history/i }).click();
+    await expect(page).toHaveURL('/schedules/history');
+    await expect(page.getByRole('heading', { name: /schedule history/i })).toBeVisible();
   });
 
   test('navigates to settings page', async ({ page }) => {

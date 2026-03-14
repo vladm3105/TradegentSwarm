@@ -10,8 +10,8 @@ def _user() -> UserClaims:
     return UserClaims(sub="auth0|u1", email="user@example.com", roles=["admin"])
 
 
-def test_get_or_create_user_id_falls_back(monkeypatch):
-    """Uses fallback user id when auth0 subject is not found."""
+def test_get_or_create_user_id_raises_for_unprovisioned_user(monkeypatch):
+    """Rejects unprovisioned users instead of falling back to another account."""
     from tradegent_ui.server.services import sessions_service
 
     monkeypatch.setattr(
@@ -19,13 +19,9 @@ def test_get_or_create_user_id_falls_back(monkeypatch):
         "get_user_id_by_sub",
         lambda sub: None,
     )
-    monkeypatch.setattr(
-        sessions_service.sessions_repository,
-        "get_fallback_user_id",
-        lambda: 7,
-    )
-
-    assert sessions_service.get_or_create_user_id(_user()) == 7
+    with pytest.raises(HTTPException) as exc_info:
+        sessions_service.get_or_create_user_id(_user())
+    assert exc_info.value.status_code == 403
 
 
 def test_save_messages_raises_404_when_session_missing(monkeypatch):
@@ -82,3 +78,44 @@ def test_list_sessions_shapes_payload(monkeypatch):
     result = sessions_service.list_sessions(20, 0, False, _user())
     assert result["total"] == 1
     assert result["sessions"][0]["session_id"] == "s-11"
+
+
+def test_persist_roundtrip_messages_upserts_user_when_missing(monkeypatch):
+    """persist_roundtrip_messages creates/updates user before writing messages."""
+    from tradegent_ui.server.services import sessions_service
+
+    captured: dict = {}
+
+    def _upsert_user_by_sub(auth0_sub, email, name=None, picture=None, email_verified=True):
+        captured["auth0_sub"] = auth0_sub
+        captured["email"] = email
+        captured["name"] = name
+        return 123
+
+    monkeypatch.setattr(
+        sessions_service.sessions_repository,
+        "upsert_user_by_sub",
+        _upsert_user_by_sub,
+    )
+    monkeypatch.setattr(
+        sessions_service,
+        "_resolve_or_create_session_db_id",
+        lambda session_id, user_id, title=None: 55,
+    )
+    monkeypatch.setattr(
+        sessions_service.sessions_repository,
+        "upsert_messages",
+        lambda db_session_id, payloads: None,
+    )
+
+    result = sessions_service.persist_roundtrip_messages(
+        auth_sub="auth0|ws-user",
+        session_id="auth0|ws-user",
+        user_content="hello",
+        assistant_content="hi",
+        assistant_status="complete",
+    )
+
+    assert result["success"] is True
+    assert captured["auth0_sub"] == "auth0|ws-user"
+    assert captured["email"].endswith("@local.invalid")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from typing import Optional
 
 from fastapi import HTTPException
 
@@ -11,6 +12,37 @@ from ..repositories import schedules_repository
 
 def list_schedules() -> list[dict[str, Any]]:
     return schedules_repository.list_schedules()
+
+
+def create_schedule(
+    name: str,
+    task_type: str,
+    frequency: str,
+    is_enabled: bool = True,
+    time_of_day: Optional[Any] = None,
+    day_of_week: Optional[str] = None,
+    interval_minutes: Optional[int] = None,
+) -> dict[str, Any]:
+    if not name.strip():
+        raise HTTPException(400, "Schedule name is required")
+    if not task_type.strip():
+        raise HTTPException(400, "Task type is required")
+    if not frequency.strip():
+        raise HTTPException(400, "Frequency is required")
+
+    schedule_id = schedules_repository.create_schedule(
+        {
+            "name": name.strip(),
+            "task_type": task_type.strip(),
+            "frequency": frequency.strip(),
+            "is_enabled": is_enabled,
+            "time_of_day": time_of_day,
+            "day_of_week": day_of_week,
+            "interval_minutes": interval_minutes,
+        }
+    )
+
+    return {"success": True, "schedule_id": schedule_id}
 
 
 def get_schedule(schedule_id: int) -> dict[str, Any]:
@@ -29,6 +61,14 @@ def update_schedule(schedule_id: int, updates: dict[str, Any]) -> dict[str, Any]
         raise HTTPException(404, "Schedule not found")
 
     return {"success": True, "schedule_id": schedule_id}
+
+
+def set_schedule_enabled(schedule_id: int, enabled: bool) -> dict[str, Any]:
+    updated = schedules_repository.update_schedule(schedule_id, {"is_enabled": enabled})
+    if not updated:
+        raise HTTPException(404, "Schedule not found")
+
+    return {"success": True, "schedule_id": schedule_id, "is_enabled": enabled}
 
 
 def run_schedule_now(schedule_id: int) -> dict[str, Any]:

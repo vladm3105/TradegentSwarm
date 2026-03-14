@@ -738,7 +738,22 @@ export interface WatchlistEntry {
   source_analysis: string | null;
   notes: string | null;
   created_at: string;
+  last_analysis_at: string | null;
   days_until_expiry: number | null;
+}
+
+export interface CreateWatchlistEntryPayload {
+  watchlist_id?: number;
+  ticker: string;
+  entry_trigger: string;
+  entry_price?: number | null;
+  invalidation?: string | null;
+  invalidation_price?: number | null;
+  expires_at?: string | null;
+  priority?: 'high' | 'medium' | 'low';
+  source?: string | null;
+  source_analysis?: string | null;
+  notes?: string | null;
 }
 
 export interface WatchlistStats {
@@ -784,6 +799,13 @@ export async function listWatchlist(params?: {
   return fetchApi<WatchlistListResponse>(`/api/watchlist/list?${query.toString()}`);
 }
 
+export async function createWatchlistEntry(payload: CreateWatchlistEntryPayload): Promise<WatchlistEntry> {
+  return fetchApi<WatchlistEntry>('/api/watchlist', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function getWatchlistDetail(id: number): Promise<WatchlistEntry> {
   return fetchApi<WatchlistEntry>(`/api/watchlist/detail/${id}`);
 }
@@ -799,11 +821,23 @@ export interface Schedule {
   name: string;
   task_type: string;
   frequency: string;
-  parameters?: Record<string, unknown> | null;
   is_enabled: boolean;
+  time_of_day?: string | null;
+  day_of_week?: string | null;
+  interval_minutes?: number | null;
   next_run_at: string | null;
   last_run_at: string | null;
   last_run_status: string | null;
+}
+
+export interface CreateSchedulePayload {
+  name: string;
+  task_type: string;
+  frequency: string;
+  is_enabled?: boolean;
+  time_of_day?: string;
+  day_of_week?: string;
+  interval_minutes?: number;
 }
 
 export interface ScheduleRun {
@@ -824,9 +858,26 @@ export async function listSchedules(): Promise<Schedule[]> {
   return fetchApi<Schedule[]>('/api/schedules');
 }
 
+export async function createSchedule(
+  body: CreateSchedulePayload
+): Promise<{ success: boolean; schedule_id: number }> {
+  return fetchApi<{ success: boolean; schedule_id: number }>('/api/schedules', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
 export async function updateSchedule(
   scheduleId: number,
-  body: { is_enabled?: boolean; frequency?: string; time_of_day?: string; day_of_week?: number; interval_minutes?: number }
+  body: {
+    name?: string;
+    task_type?: string;
+    is_enabled?: boolean;
+    frequency?: string;
+    time_of_day?: string | null;
+    day_of_week?: string | null;
+    interval_minutes?: number | null;
+  }
 ): Promise<{ success: boolean; schedule_id: number }> {
   return fetchApi<{ success: boolean; schedule_id: number }>(`/api/schedules/${scheduleId}`, {
     method: 'PATCH',
@@ -838,6 +889,28 @@ export async function runScheduleNow(scheduleId: number): Promise<{ success: boo
   return fetchApi<{ success: boolean; message: string }>(`/api/schedules/${scheduleId}/run`, {
     method: 'POST',
   });
+}
+
+export async function enableSchedule(
+  scheduleId: number
+): Promise<{ success: boolean; schedule_id: number; is_enabled: boolean }> {
+  return fetchApi<{ success: boolean; schedule_id: number; is_enabled: boolean }>(
+    `/api/schedules/${scheduleId}/enable`,
+    {
+      method: 'POST',
+    }
+  );
+}
+
+export async function disableSchedule(
+  scheduleId: number
+): Promise<{ success: boolean; schedule_id: number; is_enabled: boolean }> {
+  return fetchApi<{ success: boolean; schedule_id: number; is_enabled: boolean }>(
+    `/api/schedules/${scheduleId}/disable`,
+    {
+      method: 'POST',
+    }
+  );
 }
 
 export async function getScheduleHistory(
@@ -1099,13 +1172,17 @@ export const api = {
   },
   watchlist: {
     list: listWatchlist,
+    create: createWatchlistEntry,
     detail: getWatchlistDetail,
     stats: getWatchlistStats,
   },
   schedules: {
     list: listSchedules,
+    create: createSchedule,
     update: updateSchedule,
     runNow: runScheduleNow,
+    enable: enableSchedule,
+    disable: disableSchedule,
     history: getScheduleHistory,
   },
   scanners: {

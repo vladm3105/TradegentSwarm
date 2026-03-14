@@ -44,7 +44,8 @@ except ImportError:
 # ============================================================
 
 MIN_VERSION = 2.6
-SCHEMA_PATH = Path(__file__).parent.parent / "tradegent_knowledge/workflows/.github/schemas/stock-analysis.json"
+_WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
+SCHEMA_PATH = _WORKSPACE_ROOT / "tradegent_knowledge/workflows/.github/schemas/stock-analysis.json"
 
 # Required sections for v2.6
 REQUIRED_SECTIONS = [
@@ -275,6 +276,11 @@ def validate_do_nothing_gate(doc: dict, result: ValidationResult):
                 f"do_nothing_gate.{key} should be {expected} (found {actual})"
             )
 
+    required_actuals = ("ev_actual", "rr_actual", "confidence_actual")
+    for key in required_actuals:
+        if key not in gate or gate.get(key) is None:
+            result.add_error(f"do_nothing_gate.{key} is required")
+
     # Validate gate result consistency
     gates_passed = gate.get("gates_passed", 0)
     gate_result = gate.get("gate_result", "")
@@ -295,6 +301,11 @@ def validate_do_nothing_gate(doc: dict, result: ValidationResult):
     # Validate confidence consistency
     confidence_actual = gate.get("confidence_actual", 0)
     confidence_passes = gate.get("confidence_passes", False)
+    ev_actual = gate.get("ev_actual", 0)
+    ev_passes = gate.get("ev_passes", False)
+    rr_actual = gate.get("rr_actual", 0)
+    rr_passes = gate.get("rr_passes", False)
+    edge_exists = bool(gate.get("edge_exists", False))
 
     if confidence_actual >= 60 and not confidence_passes:
         result.add_error(
@@ -304,6 +315,46 @@ def validate_do_nothing_gate(doc: dict, result: ValidationResult):
         result.add_error(
             f"Confidence inconsistency: {confidence_actual}% < 60% but confidence_passes=true"
         )
+
+    if ev_actual >= GATE_THRESHOLDS["ev_threshold"] and not ev_passes:
+        result.add_error(
+            f"EV inconsistency: {ev_actual} >= {GATE_THRESHOLDS['ev_threshold']} but ev_passes=false"
+        )
+    elif ev_actual < GATE_THRESHOLDS["ev_threshold"] and ev_passes:
+        result.add_error(
+            f"EV inconsistency: {ev_actual} < {GATE_THRESHOLDS['ev_threshold']} but ev_passes=true"
+        )
+
+    if rr_actual >= GATE_THRESHOLDS["rr_threshold"] and not rr_passes:
+        result.add_error(
+            f"R:R inconsistency: {rr_actual} >= {GATE_THRESHOLDS['rr_threshold']} but rr_passes=false"
+        )
+    elif rr_actual < GATE_THRESHOLDS["rr_threshold"] and rr_passes:
+        result.add_error(
+            f"R:R inconsistency: {rr_actual} < {GATE_THRESHOLDS['rr_threshold']} but rr_passes=true"
+        )
+
+    expected_gates_passed = (
+        int(bool(ev_passes))
+        + int(bool(confidence_passes))
+        + int(bool(rr_passes))
+        + int(edge_exists)
+    )
+    if gates_passed != expected_gates_passed:
+        result.add_error(
+            f"Gate inconsistency: gates_passed={gates_passed} but expected={expected_gates_passed} from pass flags"
+        )
+
+
+def _resolve_stock_analysis_path() -> Path:
+    candidates = [
+        _WORKSPACE_ROOT / "tradegent_knowledge/knowledge/analysis/stock",
+        Path(__file__).parent.parent / "tradegent_knowledge/knowledge/analysis/stock",
+    ]
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_dir():
+            return candidate
+    return candidates[0]
 
 
 def validate_falsification(doc: dict, result: ValidationResult):
@@ -749,11 +800,14 @@ Examples:
 
     if args.all:
         # Validate all stock analyses
-        base_path = Path(__file__).parent.parent / "tradegent_knowledge/knowledge/analysis/stock"
+        base_path = _resolve_stock_analysis_path()
         files = list(base_path.glob("*.yaml"))
 
         if not files:
-            print(f"No YAML files found in {base_path}")
+            print(
+                "No YAML files found in expected stock analysis directories. "
+                f"Checked primary path: {base_path}"
+            )
             sys.exit(2)
 
         results = []

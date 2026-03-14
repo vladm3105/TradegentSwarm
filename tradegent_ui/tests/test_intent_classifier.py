@@ -25,6 +25,9 @@ class TestExtractTickers:
     def test_no_tickers(self):
         assert extract_tickers("show my positions") == []
 
+    def test_extract_ticker_from_count_follow_up(self):
+        assert extract_tickers("how many nvda only?") == ["NVDA"]
+
 
 class TestClassifyIntent:
     """Tests for intent classification."""
@@ -51,11 +54,25 @@ class TestClassifyIntent:
         assert "ZIM" in result.tickers
 
     def test_unknown_intent(self):
-        result = classify_intent("hello there")
+        result = classify_intent("blah blah xyz nonsense query")
         assert result.intent == Intent.UNKNOWN or result.requires_clarification
 
     def test_system_intent(self):
         result = classify_intent("system health status")
+        assert result.intent == Intent.SYSTEM
+
+    def test_system_count_follow_up_intent(self):
+        result = classify_intent("how many nvda only?")
+        assert result.intent == Intent.SYSTEM
+        assert "NVDA" in result.tickers
+
+    def test_analysis_intent_with_recommendation_typo(self):
+        result = classify_intent("what is average recomendation for nvda?")
+        assert result.intent == Intent.ANALYSIS
+        assert "NVDA" in result.tickers
+
+    def test_system_intent_for_schedule_command(self):
+        result = classify_intent("disable schedule 3")
         assert result.intent == Intent.SYSTEM
 
 

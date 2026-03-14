@@ -317,6 +317,50 @@ class TestKBStockUpsert:
         mock_cursor.execute.assert_called()
 
 
+class TestKBEarningsUpsert:
+    """Test KB earnings-analysis upsert field normalization."""
+
+    def test_upsert_kb_earnings_analysis_prefers_gate_confidence_and_ev_actual(
+        self, mock_nexus_db, mock_db_connection, tmp_path
+    ):
+        _, mock_cursor = mock_db_connection
+        mock_cursor.fetchone.return_value = {"id": 654}
+
+        yaml_path = tmp_path / "NVDA_20260309T1216.yaml"
+        yaml_path.write_text("stub", encoding="utf-8")
+
+        payload = {
+            "_meta": {
+                "id": "NVDA_20260309T1216",
+                "created": "2026-03-09T12:16:25.473870",
+                "version": "2.6",
+            },
+            "ticker": "NVDA",
+            "decision": {
+                "recommendation": "WATCH",
+                "confidence_pct": 51,
+                "expected_value_pct": 4.1,
+            },
+            "recommendation": {"action": "WATCH", "confidence": 49},
+            "probability": {"confidence_pct": 55},
+            "do_nothing_gate": {
+                "confidence_actual": 68,
+                "ev_actual": 7.7,
+                "gate_result": "PASS",
+                "gates_passed": 4,
+            },
+            "scenarios": {"expected_value": 3.9},
+        }
+
+        record_id = mock_nexus_db.upsert_kb_earnings_analysis(str(yaml_path), payload)
+        assert record_id == 654
+
+        args, _kwargs = mock_cursor.execute.call_args
+        params = args[1]
+        assert params[8] == 68
+        assert params[10] == 7.7
+
+
 class TestAnalysisResults:
     """Test analysis results operations."""
 

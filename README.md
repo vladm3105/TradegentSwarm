@@ -129,6 +129,41 @@ Policy:
 - ✅ Unified logging and monitoring
 - ✅ Type-safe frontend/backend contract
 
+### Chat Logging
+
+Tradegent UI now performs backend-authoritative chat logging for both REST and WebSocket roundtrips.
+
+- Persists chat messages to `nexus.agent_sessions` and `nexus.agent_messages`
+- Captures `user` + `assistant` records at roundtrip completion
+- Applies to sync REST, sync WS, and async task completion paths
+- Persistence failures are logged (`*.persistence_failed`) without interrupting chat delivery
+
+### Chat Command Coverage (Tradegent UI)
+
+The Tradegent UI chat layer routes intents to analysis/trade/portfolio/research agents and also handles operational system commands.
+
+Current operational chat support includes:
+
+- Automation status and mode changes (`dry_run`, `paper`, `live` with explicit confirm)
+- Trading pause/resume controls
+- Schedule operations (list, enable, disable, run-now)
+- Knowledge-base report count queries with optional ticker follow-up filters
+
+Example chat commands:
+
+- `what is average recommendation for NVDA?`
+- `automation status`
+- `pause trading`
+- `set trading mode to paper`
+- `list schedules`
+- `disable schedule 3`
+- `how many reports do you have?`
+- `how many NVDA only?`
+
+See [tradegent_ui/README.md](tradegent_ui/README.md) for endpoint details and interaction flow.
+
+See [tradegent_ui/README.md](tradegent_ui/README.md) for query examples and log event names.
+
 **Quick Reference:**
 ```typescript
 // Frontend: make request-response call

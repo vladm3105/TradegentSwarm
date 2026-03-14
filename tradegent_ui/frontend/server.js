@@ -34,7 +34,7 @@ logStream.write(`\n--- server started ${new Date().toISOString()} ---\n`);
 
 const dev = process.argv.includes('--dev');
 const port = parseInt(process.env.PORT || '3001', 10);
-const hostname = process.env.HOST || 'localhost';
+const hostname = process.env.HOST || '0.0.0.0';
 
 // Parse backend host/port from API URL
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
@@ -145,7 +145,7 @@ app.prepare().then(() => {
     return _emit(event, ...args);
   };
 
-  server.listen(port, () => {
+  server.listen(port, hostname, () => {
     console.log(
       `> Ready on http://${hostname}:${port} (${dev ? 'dev' : 'production'})`
     );

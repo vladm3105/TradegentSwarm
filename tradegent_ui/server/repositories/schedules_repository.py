@@ -11,12 +11,47 @@ from ..database import get_db_connection
 
 
 ALLOWED_UPDATE_FIELDS = {
+    "name",
+    "task_type",
     "is_enabled",
     "frequency",
     "time_of_day",
     "day_of_week",
     "interval_minutes",
 }
+
+
+def create_schedule(data: dict[str, Any]) -> int:
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO nexus.schedules (
+                    name,
+                    task_type,
+                    frequency,
+                    is_enabled,
+                    time_of_day,
+                    day_of_week,
+                    interval_minutes
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (
+                    data["name"],
+                    data["task_type"],
+                    data["frequency"],
+                    data.get("is_enabled", True),
+                    data.get("time_of_day"),
+                    data.get("day_of_week"),
+                    data.get("interval_minutes"),
+                ),
+            )
+            row = cur.fetchone()
+            conn.commit()
+
+    return cast(int, row["id"])
 
 
 def list_schedules() -> list[dict[str, Any]]:

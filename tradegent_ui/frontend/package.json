@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node server.js --dev",
+    "dev": "HOST=0.0.0.0 node server.js --dev",
     "build": "next build",
-    "start": "node server.js",
+    "start": "HOST=0.0.0.0 node server.js",
     "lint": "next lint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

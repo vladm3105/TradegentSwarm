@@ -39,6 +39,7 @@ from .routes import (
 )
 from .analyses import router as analyses_router
 from .auth import validate_websocket_token
+from .services import sessions_service
 from shared.observability import (
     set_correlation_id,
     extract_from_headers,
@@ -367,6 +368,26 @@ async def chat(request: ChatRequest, req: Request):
             output_tokens=(debug_metadata or {}).get("output_tokens"),
         )
 
+        # Backend-authoritative chat logging (best effort).
+        try:
+            sessions_service.persist_roundtrip_messages(
+                auth_sub=session_id,
+                session_id=request.session_id or session_id,
+                user_content=request.message,
+                assistant_content=response.text or "",
+                assistant_status="error" if (response.error or not response.success) else "complete",
+                assistant_error=response.error,
+                assistant_a2ui=response.a2ui,
+                user_email=user.email,
+                user_name=user.name,
+            )
+        except Exception as persist_exc:
+            log.warning(
+                "api.chat.persistence_failed",
+                session_id=session_id,
+                error=str(persist_exc),
+            )
+
         return ChatResponse(
             success=response.success,
             session_id=session_id,
@@ -595,6 +616,26 @@ async def websocket_endpoint(websocket: WebSocket):
                             duration_ms=round(duration_ms, 2),
                         )
 
+                        # Backend-authoritative chat logging (best effort).
+                        try:
+                            sessions_service.persist_roundtrip_messages(
+                                auth_sub=session_id,
+                                session_id=data.get("session_id") or session_id,
+                                user_content=content,
+                                assistant_content=response.text or "",
+                                assistant_status="error" if (response.error or not response.success) else "complete",
+                                assistant_error=response.error,
+                                assistant_a2ui=response.a2ui,
+                                user_email=user.email,
+                                user_name=user.name,
+                            )
+                        except Exception as persist_exc:
+                            log.warning(
+                                "ws.chat.persistence_failed",
+                                session_id=session_id,
+                                error=str(persist_exc),
+                            )
+
                         # Log A2UI payload before sending (debug level)
                         log.debug(
                             "ws.a2ui.sending",
@@ -647,6 +688,27 @@ async def websocket_endpoint(websocket: WebSocket):
                         session_id=session_id,
                         task_id=task_id,
                         progress_updates=progress_count,
+                    )
+
+            elif msg_type == "unsubscribe":
+                # Cancel an active task subscription / task execution
+                task_id = data.get("task_id")
+                if task_id:
+                    task_manager = await get_task_manager()
+                    cancelled = await task_manager.cancel_task(task_id)
+                    await websocket.send_json(
+                        {
+                            "type": "response",
+                            "success": cancelled,
+                            "text": "Task cancelled" if cancelled else None,
+                            "error": None if cancelled else "Task cannot be cancelled",
+                        }
+                    )
+                    log.info(
+                        "ws.unsubscribe.processed",
+                        session_id=session_id,
+                        task_id=task_id,
+                        cancelled=cancelled,
                     )
 
             elif msg_type == "ping":

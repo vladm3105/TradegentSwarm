@@ -924,3 +924,118 @@ def test_write_stock_analysis_yaml_blocks_sparse_rag_coverage(monkeypatch) -> No
     assert declined_data["decline"]["reason"] == "stock_quality_gate_failed"
 
     declined_path.unlink(missing_ok=True)
+
+
+def test_write_stock_analysis_yaml_blocks_empty_llm_for_adk_payload(monkeypatch) -> None:
+    monkeypatch.setenv("ADK_EMPTY_LLM_BLOCK_ENABLED", "true")
+    monkeypatch.setenv("ADK_CONF_GATE_FIX_ENABLED", "true")
+    monkeypatch.setenv("ADK_CONF_GATE_FIX_ROLLOUT_PERCENT", "100")
+
+    result = write_analysis_yaml(
+        run_id="run-stock-empty-llm-1",
+        ticker="NVDA",
+        analysis_type="stock",
+        skill_name="stock-analysis",
+        payload={
+            "_runtime_context": {"selected_engine": "adk", "entrypoint": "skill_router"},
+            "draft": {"status": "ok", "llm": {"content": ""}},
+            "critique": {"status": "ok", "llm": {"content": ""}},
+            "repair": {"status": "ok", "llm": {"content": ""}},
+        },
+    )
+
+    assert result["success"] is False
+    assert result.get("status") == "blocked_quality"
+    reason_codes = result.get("reason_codes")
+    assert isinstance(reason_codes, list)
+    assert "empty_adk_llm_content" in reason_codes
+
+
+def test_write_stock_analysis_yaml_allows_empty_llm_for_deterministic_fallback(monkeypatch) -> None:
+    monkeypatch.setenv("ADK_EMPTY_LLM_BLOCK_ENABLED", "true")
+    monkeypatch.setenv("ADK_CONF_GATE_FIX_ENABLED", "true")
+    monkeypatch.setenv("ADK_CONF_GATE_FIX_ROLLOUT_PERCENT", "100")
+    monkeypatch.setenv("ADK_MARKET_DATA_GATES_ENABLED", "false")
+
+    result = write_analysis_yaml(
+        run_id="run-stock-empty-llm-carveout-1",
+        ticker="NVDA",
+        analysis_type="stock",
+        skill_name="stock-analysis",
+        payload={
+            "_runtime_context": {
+                "selected_engine": "adk",
+                "entrypoint": "skill_router",
+                "deterministic_fallback": True,
+            },
+            "current_price": 300.0,
+            "recommendation": {"action": "WATCH", "confidence": 64},
+            "summary": {
+                "narrative": "Deterministic fallback produced structured output with explicit risk controls.",
+                "key_levels": {"entry": 300.0, "stop": 288.0, "target_1": 324.0},
+            },
+            "alert_levels": {
+                "price_alerts": [
+                    {
+                        "price": 299.0,
+                        "tag": "20-day MA",
+                        "significance": (
+                            "Deterministic fallback alert significance includes explicit execution relevance and "
+                            "risk reassessment instructions to satisfy quality checks in production workflows."
+                        ),
+                        "derivation": {
+                            "methodology": "moving_average",
+                            "source_field": "technical.moving_averages.ma_20d",
+                            "source_value": 299.0,
+                            "calculation": "direct",
+                        },
+                    }
+                ]
+            },
+            "draft": {"status": "ok", "llm": {"content": ""}},
+        },
+    )
+
+    assert result["success"] is True
+    file_path = Path(result["file_path"])
+    data = yaml.safe_load(file_path.read_text(encoding="utf-8"))
+    assert data["adk_runtime"]["conf_gate_fix_enabled"] is True
+    file_path.unlink(missing_ok=True)
+
+
+def test_write_earnings_analysis_yaml_derives_confidence_from_decision_and_probability() -> None:
+    result = write_analysis_yaml(
+        run_id="run-earn-confidence-derive-1",
+        ticker="AMD",
+        analysis_type="earnings",
+        skill_name="earnings-analysis",
+        payload={
+            "decision": {
+                "recommendation": "WATCH",
+                "confidence_pct": 73,
+            },
+            "probability": {
+                "confidence_pct": 70,
+            },
+            "scenarios": {
+                "expected_value": 6.4,
+            },
+            "summary": {
+                "key_levels": {"entry": 120.0, "stop": 112.0, "target_1": 136.0}
+            },
+        },
+    )
+
+    assert result["success"] is True
+    file_path = Path(result["file_path"])
+    data = yaml.safe_load(file_path.read_text(encoding="utf-8"))
+    gate = data["do_nothing_gate"]
+
+    assert gate["confidence_actual"] == 73
+    assert data["decision"]["confidence_pct"] == 73
+    assert data["probability"]["confidence_pct"] == 70
+    assert gate["ev_actual"] == 6.4
+    assert gate["rr_actual"] == 2.0
+    assert isinstance(gate["gates_passed"], int)
+
+    file_path.unlink(missing_ok=True)

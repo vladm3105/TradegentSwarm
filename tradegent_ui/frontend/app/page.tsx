@@ -290,10 +290,10 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Total P&L"
-          value={stats ? formatCurrency(stats.total_pnl, { showSign: true }) : '-'}
-          subValue={stats ? formatPercent(stats.total_pnl_pct) : undefined}
-          icon={!stats || stats.total_pnl >= 0 ? <TrendingUp /> : <TrendingDown />}
-          trend={stats ? (stats.total_pnl >= 0 ? 'up' : 'down') : undefined}
+          value={formatCurrency(0, { showSign: false })}
+          subValue={formatPercent(0, { showSign: false })}
+          icon={<TrendingUp />}
+          trend="neutral"
           loading={loading}
         />
         <StatCard

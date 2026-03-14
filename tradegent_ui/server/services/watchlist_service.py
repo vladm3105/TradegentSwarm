@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Optional
 
 from fastapi import HTTPException
@@ -39,6 +40,55 @@ def create_watchlist(name: str, description: str | None, color: str | None, is_p
         color=color,
         is_pinned=is_pinned,
     )
+
+
+def create_watchlist_entry(
+    watchlist_id: int | None,
+    ticker: str,
+    entry_trigger: str,
+    entry_price: float | None,
+    invalidation: str | None,
+    invalidation_price: float | None,
+    expires_at: datetime | None,
+    priority: str,
+    source: str | None,
+    source_analysis: str | None,
+    notes: str | None,
+) -> dict[str, Any]:
+    normalized_ticker = ticker.strip().upper()
+    normalized_trigger = entry_trigger.strip()
+
+    if not normalized_ticker:
+        raise HTTPException(status_code=400, detail="Ticker is required")
+    if len(normalized_ticker) > 10:
+        raise HTTPException(status_code=400, detail="Ticker too long")
+    if not normalized_trigger:
+        raise HTTPException(status_code=400, detail="Entry trigger is required")
+
+    normalized_priority = priority.strip().lower()
+    if normalized_priority not in {"high", "medium", "low"}:
+        raise HTTPException(status_code=400, detail="Priority must be high, medium, or low")
+
+    created = watchlist_repository.create_watchlist_entry(
+        {
+            "watchlist_id": watchlist_id,
+            "ticker": normalized_ticker,
+            "entry_trigger": normalized_trigger,
+            "entry_price": entry_price,
+            "invalidation": invalidation,
+            "invalidation_price": invalidation_price,
+            "expires_at": expires_at,
+            "priority": normalized_priority,
+            "source": source,
+            "source_analysis": source_analysis,
+            "notes": notes,
+        }
+    )
+
+    if not created:
+        raise HTTPException(status_code=500, detail="Failed to create watchlist entry")
+
+    return created
 
 
 def update_watchlist(watchlist_id: int, updates: dict[str, Any]) -> dict[str, Any]:

@@ -33,6 +33,7 @@ def list_results(scanner_code: Optional[str], limit: int) -> list[dict[str, Any]
     for row in rows:
         candidates = []
         candidates_found = 0
+        resolved_scanner_code = row.get("scanner_code") or scanner_code or "UNKNOWN"
 
         if row["raw_output"]:
             try:
@@ -53,7 +54,7 @@ def list_results(scanner_code: Optional[str], limit: int) -> list[dict[str, Any]
         results.append(
             {
                 "id": row["id"],
-                "scanner_code": row["scanner_code"],
+                "scanner_code": str(resolved_scanner_code),
                 "scan_time": row["started_at"].isoformat() if row["started_at"] else "",
                 "status": row["status"],
                 "duration_seconds": float(row["duration_seconds"]) if row["duration_seconds"] else None,

@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useMemo } from 'react';
 import { useUIStore } from '@/stores/ui-store';
 
 interface KeyboardShortcut {
@@ -14,58 +14,61 @@ interface KeyboardShortcut {
 export function useKeyboardShortcuts() {
   const { toggleChatPanel, toggleSidebar } = useUIStore();
 
-  const shortcuts: KeyboardShortcut[] = [
-    {
-      key: 'k',
-      ctrl: true,
-      action: () => {
-        // Focus search input
-        const searchInput = document.querySelector<HTMLInputElement>(
-          'input[placeholder*="Search ticker"]'
-        );
-        searchInput?.focus();
+  const shortcuts: KeyboardShortcut[] = useMemo(
+    () => [
+      {
+        key: 'k',
+        ctrl: true,
+        action: () => {
+          // Focus search input
+          const searchInput = document.querySelector<HTMLInputElement>(
+            'input[placeholder*="Search ticker"]'
+          );
+          searchInput?.focus();
+        },
+        description: 'Open search',
       },
-      description: 'Open search',
-    },
-    {
-      key: 'k',
-      meta: true,
-      action: () => {
-        const searchInput = document.querySelector<HTMLInputElement>(
-          'input[placeholder*="Search ticker"]'
-        );
-        searchInput?.focus();
+      {
+        key: 'k',
+        meta: true,
+        action: () => {
+          const searchInput = document.querySelector<HTMLInputElement>(
+            'input[placeholder*="Search ticker"]'
+          );
+          searchInput?.focus();
+        },
+        description: 'Open search (Mac)',
       },
-      description: 'Open search (Mac)',
-    },
-    {
-      key: '/',
-      ctrl: true,
-      action: () => toggleChatPanel(),
-      description: 'Toggle chat panel',
-    },
-    {
-      key: 'b',
-      ctrl: true,
-      action: () => toggleSidebar(),
-      description: 'Toggle sidebar',
-    },
-    {
-      key: 'Escape',
-      action: () => {
-        // Close any open modals or panels
-        const chatOpen = useUIStore.getState().chatPanelOpen;
-        if (chatOpen) {
-          toggleChatPanel();
-        }
-        // Blur focused input
-        if (document.activeElement instanceof HTMLElement) {
-          document.activeElement.blur();
-        }
+      {
+        key: '/',
+        ctrl: true,
+        action: () => toggleChatPanel(),
+        description: 'Toggle chat panel',
       },
-      description: 'Close modals/panels',
-    },
-  ];
+      {
+        key: 'b',
+        ctrl: true,
+        action: () => toggleSidebar(),
+        description: 'Toggle sidebar',
+      },
+      {
+        key: 'Escape',
+        action: () => {
+          // Close any open modals or panels
+          const chatOpen = useUIStore.getState().chatPanelOpen;
+          if (chatOpen) {
+            toggleChatPanel();
+          }
+          // Blur focused input
+          if (document.activeElement instanceof HTMLElement) {
+            document.activeElement.blur();
+          }
+        },
+        description: 'Close modals/panels',
+      },
+    ],
+    [toggleChatPanel, toggleSidebar]
+  );
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
@@ -101,7 +104,7 @@ export function useKeyboardShortcuts() {
         }
       }
     },
-    [shortcuts, toggleChatPanel, toggleSidebar]
+    [shortcuts]
   );
 
   useEffect(() => {
@@ -130,8 +133,10 @@ export function useNavigationShortcuts() {
       '4': '/watchlist',
       '5': '/charts',
       '6': '/scanner',
-      '7': '/knowledge',
-      '8': '/settings',
+      '7': '/schedules',
+      '8': '/schedules/history',
+      '9': '/knowledge',
+      '0': '/settings',
     };
 
     if (routes[event.key]) {

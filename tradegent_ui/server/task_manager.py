@@ -8,6 +8,8 @@ from datetime import datetime
 from enum import Enum
 from typing import AsyncGenerator
 
+from .services import sessions_service
+
 log = structlog.get_logger(__name__)
 
 
@@ -320,14 +322,26 @@ class TaskManager:
             log.debug("task.progress", task_id=task.task_id, progress=20, stage="route")
             await asyncio.sleep(0.1)
 
+            if task.state == TaskState.CANCELLED:
+                task.add_message("Task cancelled")
+                return
+
             task.state = TaskState.STREAMING
             task.update_progress(30, "Executing tools...")
             log.debug("task.progress", task_id=task.task_id, progress=30, stage="execute")
+
+            if task.state == TaskState.CANCELLED:
+                task.add_message("Task cancelled")
+                return
 
             # Process query
             process_start = time.perf_counter()
             response = await coordinator.process(task.session_id, task.query)
             process_ms = (time.perf_counter() - process_start) * 1000
+
+            if task.state == TaskState.CANCELLED:
+                task.add_message("Task cancelled")
+                return
 
             task.update_progress(80, "Generating response...")
             log.debug("task.progress", task_id=task.task_id, progress=80, stage="generate")
@@ -335,7 +349,12 @@ class TaskManager:
 
             if response.success:
                 task.state = TaskState.COMPLETED
-                task.result = response.a2ui
+                task.result = {
+                    "success": response.success,
+                    "text": response.text,
+                    "a2ui": response.a2ui,
+                    "error": response.error,
+                }
                 task.update_progress(100, "Task completed successfully")
 
                 duration_ms = (time.perf_counter() - start_time) * 1000
@@ -351,6 +370,26 @@ class TaskManager:
                     process_ms=round(process_ms, 2),
                     duration_ms=round(duration_ms, 2),
                 )
+
+                # Backend-authoritative async chat logging (best effort).
+                try:
+                    sessions_service.persist_roundtrip_messages(
+                        auth_sub=task.session_id,
+                        session_id=task.session_id,
+                        user_content=task.query,
+                        assistant_content=response.text or "",
+                        assistant_status="error" if (response.error or not response.success) else "complete",
+                        assistant_error=response.error,
+                        assistant_a2ui=response.a2ui,
+                        task_id=task.task_id,
+                    )
+                except Exception as persist_exc:
+                    log.warning(
+                        "task.persistence_failed",
+                        task_id=task.task_id,
+                        session_id=task.session_id,
+                        error=str(persist_exc),
+                    )
             else:
                 task.state = TaskState.FAILED
                 task.error = response.error or "Unknown error"
@@ -365,6 +404,26 @@ class TaskManager:
                     error=task.error,
                     duration_ms=round(duration_ms, 2),
                 )
+
+                # Persist failed assistant response as part of async roundtrip logging.
+                try:
+                    sessions_service.persist_roundtrip_messages(
+                        auth_sub=task.session_id,
+                        session_id=task.session_id,
+                        user_content=task.query,
+                        assistant_content=task.error or "Task failed",
+                        assistant_status="error",
+                        assistant_error=task.error,
+                        assistant_a2ui=None,
+                        task_id=task.task_id,
+                    )
+                except Exception as persist_exc:
+                    log.warning(
+                        "task.persistence_failed",
+                        task_id=task.task_id,
+                        session_id=task.session_id,
+                        error=str(persist_exc),
+                    )
 
         except Exception as e:
             duration_ms = (time.perf_counter() - start_time) * 1000

@@ -2,6 +2,10 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Chat Panel', () => {
   test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      window.localStorage.removeItem('tradegent-chat-storage');
+    });
+
     // Go to the app
     await page.goto('/');
 

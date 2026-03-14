@@ -286,6 +286,69 @@ def test_run_adk_analysis_generation_returns_legacy_json_block(
     assert parsed["expected_value_pct"] == 9.5
 
 
+def test_run_adk_analysis_generation_prefers_gate_confidence_actual(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    module = _load_orchestrator_module()
+
+    artifact = tmp_path / "NVDA_20260306T1215.yaml"
+    artifact.write_text(
+        "\n".join(
+            [
+                "recommendation:",
+                "  action: BUY",
+                "  confidence: 51",
+                "do_nothing_gate:",
+                "  gate_result: PASS",
+                "  confidence_actual: 67",
+                "  ev_actual: 8.25",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    valid_response = {
+        "contract_version": "1.0.0",
+        "run_id": "9a1b99d0-4e32-4a0c-8f51-3ed789ac4fd2",
+        "status": "completed",
+        "artifacts": {
+            "yaml_write": {
+                "payload": {
+                    "file_path": str(artifact),
+                }
+            }
+        },
+        "telemetry": {},
+        "policy_decisions": [
+            {
+                "decision": "allow",
+                "checkpoint_id": "post_validation",
+                "policy_bundle_version": "1.0.0",
+                "evaluated_at": "2026-03-06T12:00:00+00:00",
+            }
+        ],
+    }
+
+    monkeypatch.setattr(
+        "orchestrator._create_adk_coordinator",
+        lambda _db: _FakeCoordinator(valid_response),
+    )
+
+    output = module._run_adk_analysis_generation(
+        db=MagicMock(),
+        ticker="NVDA",
+        analysis_type=module.AnalysisType.STOCK,
+        entrypoint="ANALYZE-NVDA",
+        prompt="prompt",
+        allowed_tools="mcp__ib-mcp__*",
+    )
+
+    parsed = module.parse_json_block(output)
+    assert parsed is not None
+    assert parsed["confidence"] == 67
+    assert parsed["expected_value_pct"] == 8.25
+
+
 def test_update_analysis_confidence_rolls_back_on_db_error() -> None:
     module = _load_orchestrator_module()
 

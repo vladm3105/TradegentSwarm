@@ -4,7 +4,8 @@ Serves stock analysis data from the knowledge base.
 """
 
 import logging
-from typing import Optional
+import math
+from typing import Any, Optional
 from datetime import datetime, timezone
 from pathlib import Path
 import zlib
@@ -56,7 +57,62 @@ def get_db_connection():
 
 def _to_float(value: object) -> Optional[float]:
     if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return float(value)
+        parsed = float(value)
+        return None if math.isnan(parsed) else parsed
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            parsed = float(stripped)
+        except ValueError:
+            return None
+        return None if math.isnan(parsed) else parsed
+    return None
+
+
+def _to_int(value: object) -> Optional[int]:
+    parsed = _to_float(value)
+    return int(parsed) if parsed is not None else None
+
+
+def _as_dict(value: object) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _extract_gate_result(payload: dict[str, Any], row_value: object) -> str:
+    gate = _as_dict(payload.get("do_nothing_gate"))
+    value = gate.get("gate_result") if gate.get("gate_result") is not None else row_value
+    if isinstance(value, str) and value.strip():
+        return value.strip().upper()
+    return "FAIL"
+
+
+def _extract_expected_value(payload: dict[str, Any], row_value: object) -> Optional[float]:
+    gate = _as_dict(payload.get("do_nothing_gate"))
+    for candidate in (gate.get("ev_actual"), gate.get("expected_value_actual"), row_value):
+        parsed = _to_float(candidate)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _extract_confidence(payload: dict[str, Any], row_value: object) -> Optional[int]:
+    gate = _as_dict(payload.get("do_nothing_gate"))
+    recommendation = _as_dict(payload.get("recommendation"))
+    decision = _as_dict(payload.get("decision"))
+    probability = _as_dict(payload.get("probability"))
+
+    for candidate in (
+        gate.get("confidence_actual"),
+        row_value,
+        recommendation.get("confidence"),
+        decision.get("confidence_pct"),
+        probability.get("confidence_pct"),
+    ):
+        parsed = _to_int(candidate)
+        if parsed is not None:
+            return max(0, min(100, parsed))
     return None
 
 
@@ -98,10 +154,13 @@ def _collect_declined_rows(
         if not isinstance(payload, dict):
             continue
 
-        meta = payload.get("_meta") if isinstance(payload.get("_meta"), dict) else {}
-        recommendation = payload.get("recommendation") if isinstance(payload.get("recommendation"), dict) else {}
-        gate = payload.get("do_nothing_gate") if isinstance(payload.get("do_nothing_gate"), dict) else {}
-        decline = payload.get("decline") if isinstance(payload.get("decline"), dict) else {}
+        meta = _as_dict(payload.get("_meta"))
+        recommendation = _as_dict(payload.get("recommendation"))
+        gate = _as_dict(payload.get("do_nothing_gate"))
+        decline = _as_dict(payload.get("decline"))
+        confidence_value = _extract_confidence(payload, recommendation.get("confidence"))
+        expected_value = _extract_expected_value(payload, gate.get("ev_actual") or gate.get("expected_value_actual"))
+        gate_result = _extract_gate_result(payload, gate.get("gate_result"))
 
         created_raw = meta.get("created")
         created_iso = ""
@@ -123,9 +182,9 @@ def _collect_declined_rows(
                 "schema_version": str(meta.get("version", "2.7")),
                 "file_path": str(path),
                 "recommendation": recommendation.get("action"),
-                "confidence": recommendation.get("confidence"),
-                "expected_value_pct": gate.get("ev_actual") or gate.get("expected_value_actual"),
-                "gate_result": gate.get("gate_result") or "FAIL",
+                "confidence": confidence_value,
+                "expected_value_pct": expected_value,
+                "gate_result": gate_result,
                 "current_price": payload.get("current_price"),
                 "yaml_content": payload,
                 "analysis_type": str(meta.get("type") or "stock-analysis"),
@@ -138,6 +197,11 @@ def _collect_declined_rows(
 
 
 def _row_to_summary(row: dict) -> "AnalysisSummary":
+    payload = _as_dict(row.get("yaml_content"))
+    confidence = _extract_confidence(payload, row.get("confidence"))
+    expected_value = _extract_expected_value(payload, row.get("expected_value_pct"))
+    gate_result = _extract_gate_result(payload, row.get("gate_result"))
+
     analysis_date = row.get("analysis_date")
     if isinstance(analysis_date, datetime):
         analysis_date_str = analysis_date.isoformat()
@@ -151,9 +215,9 @@ def _row_to_summary(row: dict) -> "AnalysisSummary":
         ticker=row["ticker"],
         type=row.get("analysis_type") or "stock",
         recommendation=row.get("recommendation"),
-        confidence=row.get("confidence"),
-        gate_result=row.get("gate_result"),
-        expected_value=_to_float(row.get("expected_value_pct")),
+        confidence=confidence,
+        gate_result=gate_result,
+        expected_value=expected_value,
         analysis_date=analysis_date_str,
         status=row.get("status") or "completed",
         schema_version=str(row.get("schema_version") or ""),
@@ -178,6 +242,11 @@ def _row_sort_epoch(row: dict) -> float:
 
 
 def _row_to_detail(row: dict) -> "AnalysisDetailResponse":
+    payload = _as_dict(row.get("yaml_content"))
+    confidence = _extract_confidence(payload, row.get("confidence"))
+    expected_value = _extract_expected_value(payload, row.get("expected_value_pct"))
+    gate_result = _extract_gate_result(payload, row.get("gate_result"))
+
     analysis_date = row.get("analysis_date")
     if isinstance(analysis_date, datetime):
         analysis_date_str = analysis_date.isoformat()
@@ -189,11 +258,11 @@ def _row_to_detail(row: dict) -> "AnalysisDetailResponse":
     # Prefer explicit row status (e.g. declined, error), then _meta.status in YAML,
     # then fall back to date-derived completed/expired. Normalize legacy 'active' → 'completed'.
     row_status = row.get("status")
-    yaml_content = row.get("yaml_content") or {}
+    yaml_content = payload
     if row_status and row_status not in {"active", "completed", "expired"}:
         status = row_status
     else:
-        meta = yaml_content.get("_meta") if isinstance(yaml_content.get("_meta"), dict) else {}
+        meta = _as_dict(yaml_content.get("_meta"))
         raw = str(meta.get("status") or row_status or "completed")
         status = "completed" if raw == "active" else raw
 
@@ -204,9 +273,9 @@ def _row_to_detail(row: dict) -> "AnalysisDetailResponse":
         schema_version=str(row.get("schema_version") or ""),
         file_path=row.get("file_path") or "",
         recommendation=row.get("recommendation"),
-        confidence=row.get("confidence"),
-        gate_result=row.get("gate_result"),
-        expected_value=_to_float(row.get("expected_value_pct")),
+        confidence=confidence,
+        gate_result=gate_result,
+        expected_value=expected_value,
         current_price=_to_float(row.get("current_price")),
         status=status,
         yaml_content=yaml_content,

@@ -149,7 +149,7 @@ export interface WSMessage {
 }
 
 export interface WSResponse {
-  type: 'response' | 'progress' | 'error' | 'pong';
+  type: 'response' | 'progress' | 'complete' | 'task_created' | 'error' | 'pong';
   // Response fields (type: 'response')
   success?: boolean;
   text?: string;
@@ -158,6 +158,14 @@ export interface WSResponse {
   task_id?: string;
   progress?: number;
   message?: string;
+  state?: string;
+  // Completion fields (type: 'complete')
+  result?: {
+    success?: boolean;
+    text?: string;
+    a2ui?: unknown;
+    error?: string | null;
+  };
   // Error fields (type: 'error')
   error?: string;
   code?: string;  // Error code for specific error types (e.g., AUTH_ERROR)

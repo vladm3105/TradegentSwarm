@@ -62,6 +62,39 @@ sudo journalctl -u tradegent --since "yesterday" | grep -i error
 python orchestrator.py stock list --enabled
 ```
 
+### Reset Stale Failed Schedule Status
+
+**When:** A schedule card still shows `failed` from an old run, and operators need to clear stale status indicators after remediation.
+
+```bash
+# Inspect current schedule status fields
+docker exec -i tradegent-postgres-1 psql -U tradegent -d tradegent -c "
+SELECT id, name, last_run_status, fail_count, consecutive_fails, last_run_at
+FROM nexus.schedules
+WHERE id IN (4,5,6)
+ORDER BY id;"
+
+# Reset stale failed status for specific schedules (example: ids 4 and 5)
+docker exec -i tradegent-postgres-1 psql -U tradegent -d tradegent -c "
+UPDATE nexus.schedules
+SET last_run_status = NULL,
+    fail_count = 0,
+    consecutive_fails = 0,
+    updated_at = now()
+WHERE id IN (4,5);"
+
+# Verify reset
+docker exec -i tradegent-postgres-1 psql -U tradegent -d tradegent -c "
+SELECT id, name, last_run_status, fail_count, consecutive_fails
+FROM nexus.schedules
+WHERE id IN (4,5,6)
+ORDER BY id;"
+```
+
+Notes:
+- This does not delete history from `nexus.run_history`; it only clears schedule summary fields used by UI badges.
+- Do not use bulk resets without selecting explicit schedule IDs.
+
 ### Evening Shutdown (Optional)
 
 **When:** After market close (16:30 ET)

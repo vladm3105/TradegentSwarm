@@ -69,8 +69,31 @@ The Tradegent Agent UI provides a comprehensive trading dashboard with real-time
 | Feature | Description | API Endpoint |
 |---------|-------------|--------------|
 | List Schedules | View configured schedules | `GET /api/schedules` |
-| Toggle Schedule | Enable/disable scheduled tasks | `PATCH /api/schedules/{id}` |
+| Create Schedule | Add a new scheduled task | `POST /api/schedules` |
+| Update Schedule | Edit schedule metadata and timing | `PATCH /api/schedules/{id}` |
+| Enable Schedule | Enable a scheduled task | `POST /api/schedules/{id}/enable` |
+| Disable Schedule | Disable a scheduled task | `POST /api/schedules/{id}/disable` |
 | Run Now | Manually trigger scheduled task | `POST /api/schedules/{id}/run` |
+| Schedule History | View recent run history by schedule | `GET /api/schedules/history/{id}` |
+
+**UX updates:**
+- Toggle actions now show explicit `Enable`/`Disable` buttons.
+- Success/failure toast notifications are shown after each toggle.
+
+### 6.1 Watchlist Entry Management
+
+| Feature | Description | API Endpoint |
+|---------|-------------|--------------|
+| Create Watchlist Entry | Add an entry directly from the Watchlist page form | `POST /api/watchlist` |
+| Last Analysis Date | Show most recent analysis timestamp per entry | `GET /api/watchlist/list` |
+| Entry Detail | View enriched watchlist entry details | `GET /api/watchlist/detail/{id}` |
+
+### 6.2 Analysis and Scanner Display
+
+| Feature | Description | API Endpoint |
+|---------|-------------|--------------|
+| Analysis Timestamp Precision | Analysis table displays date and time for each report row | `GET /api/analyses/list` |
+| Scanner Result Identity Normalization | Scanner results always include a non-null `scanner_code` resolved from run metadata | `GET /api/scanners/results` |
 
 ### 7. Dashboard Customization
 
@@ -261,5 +284,6 @@ NEXT_PUBLIC_WS_URL=ws://localhost:8081
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.2 | 2026-03-13 | Added analysis timestamp precision note, documented scanner result `scanner_code` normalization, and updated API feature mapping |
 | 1.1 | 2026-03-11 | Documented Route -> Service -> Repository backend architecture, corrected automation endpoint references, and recorded post-migration hardening updates |
 | 1.0 | 2026-03-05 | Initial IPLAN-002 implementation |

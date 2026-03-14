@@ -309,19 +309,41 @@ async def get_analysis_quality():
             with conn.cursor() as cur:
                 # Gate pass rate
                 cur.execute("""
+                    WITH analysis_quality AS (
+                        SELECT gate_result, recommendation
+                        FROM nexus.kb_stock_analyses
+                        WHERE analysis_date >= CURRENT_DATE - INTERVAL '30 days'
+
+                        UNION ALL
+
+                        SELECT gate_result, recommendation
+                        FROM nexus.kb_earnings_analyses
+                        WHERE analysis_date >= CURRENT_DATE - INTERVAL '30 days'
+                          AND COALESCE(NULLIF(LOWER(yaml_content->'adk_runtime'->>'degraded'), ''), 'false') <> 'true'
+                    )
                     SELECT
                         COUNT(*) FILTER (WHERE gate_result = 'PASS') * 100.0 / NULLIF(COUNT(*), 0) as pass_rate
-                    FROM nexus.kb_stock_analyses
-                    WHERE analysis_date >= CURRENT_DATE - INTERVAL '30 days'
+                    FROM analysis_quality
                 """)
                 gate = cur.fetchone()
 
                 # Recommendation distribution (filter out NULL recommendations)
                 cur.execute("""
+                    WITH analysis_quality AS (
+                        SELECT recommendation
+                        FROM nexus.kb_stock_analyses
+                        WHERE analysis_date >= CURRENT_DATE - INTERVAL '30 days'
+
+                        UNION ALL
+
+                        SELECT recommendation
+                        FROM nexus.kb_earnings_analyses
+                        WHERE analysis_date >= CURRENT_DATE - INTERVAL '30 days'
+                          AND COALESCE(NULLIF(LOWER(yaml_content->'adk_runtime'->>'degraded'), ''), 'false') <> 'true'
+                    )
                     SELECT recommendation, COUNT(*) as count
-                    FROM nexus.kb_stock_analyses
-                    WHERE analysis_date >= CURRENT_DATE - INTERVAL '30 days'
-                      AND recommendation IS NOT NULL
+                    FROM analysis_quality
+                    WHERE recommendation IS NOT NULL
                     GROUP BY recommendation
                 """)
                 rec_dist = {row["recommendation"]: row["count"] for row in cur.fetchall()}

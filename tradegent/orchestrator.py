@@ -21,6 +21,7 @@ Usage:
 
 import json
 import logging
+import math
 import os
 import re
 import signal
@@ -206,15 +207,64 @@ def _extract_legacy_analysis_json(yaml_doc: dict[str, Any]) -> dict[str, Any]:
     recommendation = (
         yaml_doc.get("recommendation") if isinstance(yaml_doc.get("recommendation"), dict) else {}
     )
+    decision = yaml_doc.get("decision") if isinstance(yaml_doc.get("decision"), dict) else {}
+    probability = yaml_doc.get("probability") if isinstance(yaml_doc.get("probability"), dict) else {}
+
+    def _coerce_int(value: Any) -> int | None:
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float):
+            if math.isnan(value):
+                return None
+            return int(value)
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return None
+            try:
+                parsed = float(stripped)
+            except ValueError:
+                return None
+            if math.isnan(parsed):
+                return None
+            return int(parsed)
+        return None
+
+    def _coerce_float(value: Any) -> float | None:
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, (int, float)):
+            parsed = float(value)
+            return None if math.isnan(parsed) else parsed
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return None
+            try:
+                parsed = float(stripped)
+            except ValueError:
+                return None
+            return None if math.isnan(parsed) else parsed
+        return None
 
     gate_result = str(gate.get("gate_result", "FAIL")).strip().upper()
-    confidence_value = recommendation.get("confidence", 0)
-    if not isinstance(confidence_value, int):
-        confidence_value = int(confidence_value) if isinstance(confidence_value, float) else 0
+    confidence_value = (
+        _coerce_int(gate.get("confidence_actual"))
+        or _coerce_int(recommendation.get("confidence"))
+        or _coerce_int(decision.get("confidence_pct"))
+        or _coerce_int(probability.get("confidence_pct"))
+        or 0
+    )
+    confidence_value = max(0, min(100, confidence_value))
 
-    expected_value = gate.get("expected_value_actual", 0.0)
-    if not isinstance(expected_value, (int, float)):
-        expected_value = 0.0
+    expected_value = (
+        _coerce_float(gate.get("ev_actual"))
+        or _coerce_float(gate.get("expected_value_actual"))
+        or _coerce_float(gate.get("expected_value"))
+        or 0.0
+    )
 
     recommendation_action = recommendation.get("action", "UNKNOWN")
     if not isinstance(recommendation_action, str):
@@ -314,6 +364,138 @@ def _run_adk_analysis_generation(
     except Exception as exc:
         log.error("[%s] ADK analysis generation failed: %s", entrypoint, exc)
         return ""
+
+
+def _run_adk_scan_generation(
+    db: "NexusDB",
+    scanner: "IBScanner",
+    entrypoint: str,
+) -> str:
+    """Run scanner workflow via ADK coordinator and emit scanner-compatible JSON block."""
+    try:
+        try:
+            from tradegent.adk_runtime.validators import validate_response_envelope
+        except ImportError:
+            from adk_runtime.validators import validate_response_envelope
+
+        coordinator = _create_adk_coordinator(db)
+        request: dict[str, Any] = {
+            "contract_version": "1.0.0",
+            "intent": "scan",
+            "ticker": scanner.scanner_code,
+            "analysis_type": "stock",
+            "constraints": {
+                "entrypoint": entrypoint,
+                "scanner_code": scanner.scanner_code,
+                "display_name": scanner.display_name,
+                "allowed_tools": cfg.allowed_tools_scanner,
+            },
+            "scanner": {
+                "name": scanner.scanner_code,
+                "display_name": scanner.display_name,
+            },
+            "client_request_id": f"{entrypoint.lower()}-{scanner.scanner_code.lower()}-{int(time.time())}",
+            "idempotency_key": f"scan:{scanner.scanner_code}:{datetime.now().strftime('%Y%m%dT%H%M%S')}",
+        }
+
+        response = coordinator.handle(request)
+        validate_response_envelope(response)
+
+        run_id = str(response.get("run_id", "unknown"))
+        contract_version = str(response.get("contract_version", "unknown"))
+        status = str(response.get("status", "failed"))
+
+        log.info(
+            "[%s] Engine boundary selected_engine=adk entrypoint=CoordinatorAgent run_id=%s contract_version=%s status=%s",
+            entrypoint,
+            run_id,
+            contract_version,
+            status,
+        )
+
+        if status != "completed":
+            log.error("[%s] ADK scan did not complete (status=%s)", entrypoint, status)
+            return ""
+
+        yaml_path = _extract_adk_yaml_path(response)
+        if not yaml_path:
+            yaml_error = _extract_adk_yaml_write_error(response)
+            if yaml_error:
+                log.error("[%s] ADK yaml_write failed: %s", entrypoint, yaml_error)
+            log.error("[%s] ADK response missing yaml artifact path", entrypoint)
+            return ""
+
+        document = yaml.safe_load(Path(yaml_path).read_text(encoding="utf-8"))
+        if not isinstance(document, dict):
+            log.error("[%s] ADK YAML artifact is not a mapping: %s", entrypoint, yaml_path)
+            return ""
+
+        candidates = document.get("candidates")
+        if not isinstance(candidates, list):
+            candidates = []
+
+        summary = document.get("scan_summary")
+        if not isinstance(summary, dict):
+            summary = {}
+
+        scanner_info = document.get("scanner")
+        scanner_name = scanner.scanner_code
+        if isinstance(scanner_info, dict):
+            scanner_name = str(scanner_info.get("name") or scanner_name)
+
+        payload = {
+            "scanner": scanner_name,
+            "scan_time": datetime.now().isoformat(),
+            "candidates": candidates,
+            "scan_summary": summary,
+            "adk_run_id": run_id,
+            "adk_yaml_path": yaml_path,
+        }
+
+        return (
+            f"ADK scan completed for {scanner.scanner_code}.\n"
+            f"Source artifact: {yaml_path}\n\n"
+            "```json\n"
+            f"{json.dumps(payload, indent=2)}\n"
+            "```\n"
+        )
+    except Exception as exc:
+        log.error("[%s] ADK scan generation failed: %s", entrypoint, exc)
+        return ""
+
+
+import re as _re
+
+_TICKER_PATTERN = _re.compile(r"^[A-Z]{1,6}([.\-][A-Z]{1,4})?$")
+
+
+def _filter_valid_scanner_candidates(
+    candidates: list[dict], scanner_code: str
+) -> list[dict]:
+    """Return candidates whose ticker field is a plausible stock symbol.
+
+    Rejects entries where the ticker:
+    - equals the scanner code (placeholder artifact bug),
+    - contains underscores (scanner code naming convention),
+    - is longer than 10 characters,
+    - does not match the pattern of a real stock ticker.
+    """
+    valid = []
+    sc_upper = scanner_code.upper()
+    for c in candidates:
+        ticker = str(c.get("ticker", "")).strip().upper()
+        if not ticker:
+            continue
+        if ticker == sc_upper:
+            continue
+        if "_" in ticker:
+            continue
+        if len(ticker) > 10:
+            continue
+        if not _TICKER_PATTERN.match(ticker):
+            continue
+        valid.append(c)
+    return valid
 
 
 def _safe_db_rollback(db: "NexusDB", context: str) -> None:
@@ -3308,21 +3490,34 @@ def run_scanners(db: NexusDB, scanner_code: str | None = None):
 
     log.info(f"═══ SCANNERS: {len(scanners)} ═══")
 
+    engine = validate_agent_engine()
+
     for scanner in scanners:
         log.info(f"Scanner: {scanner.display_name}")
         run_id = db.start_scanner_run(scanner.scanner_code)
 
         try:
-            output = call_claude_code(
-                build_scanner_prompt(scanner),
-                cfg.allowed_tools_scanner,
-                f"SCAN-{scanner.scanner_code}",
-            )
+            if engine == "adk":
+                output = _run_adk_scan_generation(
+                    db,
+                    scanner,
+                    f"SCAN-{scanner.scanner_code}",
+                )
+            else:
+                output = call_claude_code(
+                    build_scanner_prompt(scanner),
+                    cfg.allowed_tools_scanner,
+                    f"SCAN-{scanner.scanner_code}",
+                )
             if not output:
                 db.complete_scanner_run(
                     run_id, "failed",
                     scanner_code=scanner.scanner_code,
-                    error="Claude Code returned empty"
+                    error=(
+                        "ADK scan generation returned empty"
+                        if engine == "adk"
+                        else "Claude Code returned empty"
+                    ),
                 )
                 continue
 
@@ -3347,25 +3542,42 @@ def run_scanners(db: NexusDB, scanner_code: str | None = None):
                 scan_time=parsed.get("scan_time"),
             )
 
+            valid_candidates = _filter_valid_scanner_candidates(candidates, scanner.scanner_code)
+            skipped = len(candidates) - len(valid_candidates)
+            if skipped:
+                log.warning(
+                    "[SCAN-%s] Skipped %d invalid candidates (scanner code used as ticker or bad format)",
+                    scanner.scanner_code, skipped,
+                )
+
             if scanner.auto_add_to_watchlist:
-                for c in candidates[: scanner.max_candidates]:
+                for c in valid_candidates[: scanner.max_candidates]:
                     db.upsert_stock(
                         c["ticker"], is_enabled=True, tags=[f"scanner:{scanner.scanner_code}"]
                     )
 
-            if scanner.auto_analyze and candidates:
+            if scanner.auto_analyze and valid_candidates:
                 atype = AnalysisType(scanner.analysis_type)
-                tasks = [(c["ticker"], atype, False) for c in candidates[: scanner.max_candidates]]
+                tasks = [(c["ticker"], atype, False) for c in valid_candidates[: scanner.max_candidates]]
                 results = run_analyses_parallel(tasks, source_scanner=scanner.scanner_code)
                 log.info(f"[SCAN-{scanner.scanner_code}] Auto-analyze: {results.succeeded}/{results.total}")
 
         except Exception as e:
             log.error(f"Scanner {scanner.scanner_code} failed: {e}")
-            db.complete_scanner_run(
-                run_id, "failed",
-                scanner_code=scanner.scanner_code,
-                error=str(e)
-            )
+            _safe_db_rollback(db, f"scanner_{scanner.scanner_code}_failure")
+            try:
+                db.complete_scanner_run(
+                    run_id, "failed",
+                    scanner_code=scanner.scanner_code,
+                    error=str(e)
+                )
+            except Exception as complete_err:
+                log.error(
+                    "Failed to mark scanner run failed (%s): %s",
+                    scanner.scanner_code,
+                    complete_err,
+                )
+                _safe_db_rollback(db, f"scanner_{scanner.scanner_code}_mark_failed")
 
 
 @dataclass
@@ -4044,16 +4256,39 @@ def run_earnings_check(db: NexusDB):
     log.info(f"═══ EARNINGS CHECK: {len(stocks)} stocks ═══")
 
     for stock in stocks:
+        if not stock.ticker:
+            log.warning("Skipping earnings trigger for stock row without ticker: %s", stock)
+            continue
+
         days = stock.days_to_earnings
         if days is None:
             continue
         schedules = db.get_earnings_triggered_schedules(stock.ticker, days)
         for sched in schedules:
             log.info(f"  Triggering: {sched.name} for {stock.ticker} (T-{days})")
+            if not sched.analysis_type:
+                log.warning(
+                    "Skipping schedule %s (%s): missing analysis_type",
+                    sched.id,
+                    sched.name,
+                )
+                continue
+
+            try:
+                sched_analysis_type = AnalysisType(sched.analysis_type)
+            except ValueError:
+                log.warning(
+                    "Skipping schedule %s (%s): invalid analysis_type=%s",
+                    sched.id,
+                    sched.name,
+                    sched.analysis_type,
+                )
+                continue
+
             run_pipeline(
                 db,
                 stock.ticker,
-                AnalysisType(sched.analysis_type),
+                sched_analysis_type,
                 auto_execute=sched.auto_execute,
                 schedule_id=sched.id,
             )
@@ -4061,6 +4296,14 @@ def run_earnings_check(db: NexusDB):
 
 def run_due_schedules(db: NexusDB):
     """Execute all schedules that are due."""
+    schedule_timeout = int(cfg._get("task_timeout_minutes", "scheduler", "120"))
+    recovered = db.recover_stuck_schedule_runs(schedule_timeout)
+    if recovered:
+        log.warning(
+            "Recovered %s stale schedule run(s) stuck in running state",
+            recovered,
+        )
+
     schedules = db.get_due_schedules()
     log.info(f"═══ DUE SCHEDULES: {len(schedules)} ═══")
 
@@ -4075,15 +4318,54 @@ def run_due_schedules(db: NexusDB):
             if scanner:
                 run_scanners(db, scanner.scanner_code)
 
+    def _run_custom_task(s: Schedule) -> None:
+        if not s.custom_prompt:
+            return
+        output = call_claude_code(
+            s.custom_prompt, cfg.allowed_tools_analysis, f"CUSTOM-{s.id}"
+        )
+        if output:
+            ts = datetime.now().strftime("%Y%m%dT%H%M")
+            (cfg.analyses_dir / f"custom_{s.id}_{ts}.md").write_text(output)
+
+    def _run_with_schedule_tracking(s: Schedule, task_fn) -> None:
+        """Record start/completion for tasks that do not pass schedule_id downstream."""
+        run_id = db.mark_schedule_started(s.id)
+        try:
+            task_fn()
+        except Exception as e:
+            _safe_db_rollback(db, f"schedule_{s.id}_task_failure")
+            try:
+                db.mark_schedule_completed(s.id, run_id, "failed", error=str(e))
+            except Exception as completion_err:
+                log.error(
+                    "Failed to mark schedule %s failed after task error: %s",
+                    s.id,
+                    completion_err,
+                )
+                _safe_db_rollback(db, f"schedule_{s.id}_mark_failed")
+            raise
+
+        try:
+            db.mark_schedule_completed(s.id, run_id, "completed")
+        except Exception as completion_err:
+            log.error("Failed to mark schedule %s completed: %s", s.id, completion_err)
+            _safe_db_rollback(db, f"schedule_{s.id}_mark_completed")
+            raise
+
     task_dispatch = {
         "analyze_stock": lambda s: run_analysis(
             db, s.target_ticker, AnalysisType(s.analysis_type), s.id
         )
         if s.target_ticker
         else None,
-        "analyze_watchlist": lambda s: run_watchlist(db, s.auto_execute),
-        "run_scanner": _run_scanner_task,
-        "run_all_scanners": lambda s: run_scanners(db),
+        "analyze_watchlist": lambda s: _run_with_schedule_tracking(
+            s, lambda: run_watchlist(db, s.auto_execute)
+        ),
+        "run_scanner": lambda s: _run_with_schedule_tracking(
+            s, lambda: _run_scanner_task(s)
+        ),
+        "run_all_scanners": lambda s: _run_with_schedule_tracking(s, lambda: run_scanners(db)),
         "pipeline": lambda s: run_pipeline(
             db, s.target_ticker, AnalysisType(s.analysis_type), s.auto_execute, s.id
         )
@@ -4093,6 +4375,7 @@ def run_due_schedules(db: NexusDB):
         "postmortem": lambda s: run_analysis(db, s.target_ticker, AnalysisType.POSTMORTEM, s.id)
         if s.target_ticker
         else None,
+        "custom": lambda s: _run_with_schedule_tracking(s, lambda: _run_custom_task(s)),
     }
 
     executed = 0
@@ -4101,24 +4384,32 @@ def run_due_schedules(db: NexusDB):
             log.info("Daily analysis limit reached mid-batch — stopping")
             break
 
+        if sched.task_type in {"analyze_stock", "pipeline", "postmortem"} and not sched.target_ticker:
+            log.warning(
+                "Skipping misconfigured schedule '%s' (id=%s): task_type=%s requires target_ticker",
+                sched.name,
+                sched.id,
+                sched.task_type,
+            )
+            continue
+
         log.info(f"Executing: {sched.name}")
         try:
             handler = task_dispatch.get(sched.task_type)
             if handler:
                 handler(sched)
                 executed += 1
-            elif sched.task_type == "custom" and sched.custom_prompt:
-                output = call_claude_code(
-                    sched.custom_prompt, cfg.allowed_tools_analysis, f"CUSTOM-{sched.id}"
-                )
-                if output:
-                    ts = datetime.now().strftime("%Y%m%dT%H%M")
-                    (cfg.analyses_dir / f"custom_{sched.id}_{ts}.md").write_text(output)
+            else:
+                log.warning(f"Unknown schedule task_type: {sched.task_type} (id={sched.id})")
         except Exception as e:
             log.error(f"Schedule '{sched.name}' failed: {e}")
 
-        next_run = db.calculate_next_run(sched)
-        db.update_next_run(sched.id, next_run)
+        try:
+            next_run = db.calculate_next_run(sched)
+            db.update_next_run(sched.id, next_run)
+        except Exception as e:
+            log.error(f"Failed to update next_run for schedule '{sched.name}': {e}")
+            _safe_db_rollback(db, f"update_next_run_{sched.id}")
 
 
 # ─── Status ──────────────────────────────────────────────────────────────────

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from adk_runtime.contracts import RequestEnvelope, SkillExecutionPlan
+from ..contracts import RequestEnvelope, SkillExecutionPlan
 
 
 @dataclass(slots=True)

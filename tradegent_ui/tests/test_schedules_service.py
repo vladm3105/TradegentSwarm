@@ -61,3 +61,30 @@ def test_get_schedule_history_success(monkeypatch) -> None:
     assert result["schedule_name"] == "Daily Scan"
     assert len(result["runs"]) == 1
     assert result["runs"][0]["status"] == "success"
+
+
+def test_set_schedule_enabled_success(monkeypatch) -> None:
+    monkeypatch.setattr(
+        schedules_service.schedules_repository,
+        "update_schedule",
+        lambda schedule_id, updates: schedule_id == 7 and updates == {"is_enabled": False},
+    )
+
+    result = schedules_service.set_schedule_enabled(7, False)
+
+    assert result == {"success": True, "schedule_id": 7, "is_enabled": False}
+
+
+def test_set_schedule_enabled_not_found(monkeypatch) -> None:
+    monkeypatch.setattr(
+        schedules_service.schedules_repository,
+        "update_schedule",
+        lambda schedule_id, updates: False,
+    )
+
+    try:
+        schedules_service.set_schedule_enabled(404, True)
+        assert False, "Expected HTTPException"
+    except HTTPException as exc:
+        assert exc.status_code == 404
+        assert exc.detail == "Schedule not found"

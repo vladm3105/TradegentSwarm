@@ -25,15 +25,15 @@ import {
 import { cn, formatCurrency, formatDate } from '@/lib/utils';
 import {
   createWatchlist,
+  createWatchlistEntry,
   listWatchlist,
   listWatchlists,
   type CreateWatchlistPayload,
+  type CreateWatchlistEntryPayload,
   type WatchlistEntry,
   type WatchlistStats,
   type WatchlistSummary,
 } from '@/lib/api';
-import { useChat } from '@/hooks/use-chat';
-import { useUIStore } from '@/stores/ui-store';
 
 const priorityColors: Record<string, string> = {
   high: 'bg-loss/20 text-loss',
@@ -53,15 +53,21 @@ export default function WatchlistPage() {
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
+  const [entryOpen, setEntryOpen] = useState(false);
+  const [entryLoading, setEntryLoading] = useState(false);
   const [newWatchlist, setNewWatchlist] = useState<CreateWatchlistPayload>({
     name: '',
     description: '',
     color: '#3b82f6',
     is_pinned: false,
   });
-
-  const { sendMessage } = useChat();
-  const { setChatPanelOpen } = useUIStore();
+  const [newEntry, setNewEntry] = useState<CreateWatchlistEntryPayload>({
+    ticker: '',
+    entry_trigger: '',
+    priority: 'medium',
+    source: 'manual_form',
+    notes: '',
+  });
 
   const fetchWatchlist = useCallback(async () => {
     setLoading(true);
@@ -104,12 +110,14 @@ export default function WatchlistPage() {
       : watchlists.find((watchlist) => watchlist.id === selectedWatchlistId) ?? null;
 
   const handleAddEntry = () => {
-    setChatPanelOpen(true);
-    if (selectedWatchlist) {
-      sendMessage(`add to watchlist ${selectedWatchlist.name}`);
-      return;
-    }
-    sendMessage('add to watchlist');
+    const defaultWatchlistId =
+      selectedWatchlistId === 'all' ? watchlists[0]?.id : selectedWatchlistId;
+
+    setNewEntry((current) => ({
+      ...current,
+      watchlist_id: defaultWatchlistId,
+    }));
+    setEntryOpen(true);
   };
 
   const handleCreateWatchlist = async () => {
@@ -140,6 +148,43 @@ export default function WatchlistPage() {
       setError(err instanceof Error ? err.message : 'Failed to create watchlist');
     } finally {
       setCreateLoading(false);
+    }
+  };
+
+  const handleCreateEntry = async () => {
+    if (!newEntry.ticker?.trim()) {
+      setError('Ticker is required');
+      return;
+    }
+    if (!newEntry.entry_trigger?.trim()) {
+      setError('Entry trigger is required');
+      return;
+    }
+
+    setEntryLoading(true);
+    setError(null);
+    try {
+      const payload: CreateWatchlistEntryPayload = {
+        ...newEntry,
+        ticker: newEntry.ticker.trim().toUpperCase(),
+        entry_trigger: newEntry.entry_trigger.trim(),
+        expires_at: newEntry.expires_at ? new Date(newEntry.expires_at).toISOString() : null,
+      };
+
+      await createWatchlistEntry(payload);
+      setEntryOpen(false);
+      setNewEntry({
+        ticker: '',
+        entry_trigger: '',
+        priority: 'medium',
+        source: 'manual_form',
+        notes: '',
+      });
+      await fetchWatchlist();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create watchlist entry');
+    } finally {
+      setEntryLoading(false);
     }
   };
 
@@ -192,6 +237,122 @@ export default function WatchlistPage() {
               <Button onClick={handleCreateWatchlist} disabled={createLoading}>
                 {createLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
                 Create
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={entryOpen} onOpenChange={setEntryOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5" />
+              Add Watchlist Entry
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Watchlist</label>
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={newEntry.watchlist_id ?? ''}
+                  onChange={(event) => setNewEntry((current) => ({ ...current, watchlist_id: Number(event.target.value) || undefined }))}
+                >
+                  <option value="">No specific list</option>
+                  {watchlists.map((watchlist) => (
+                    <option key={watchlist.id} value={watchlist.id}>{watchlist.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Ticker</label>
+                <Input
+                  value={newEntry.ticker ?? ''}
+                  onChange={(event) => setNewEntry((current) => ({ ...current, ticker: event.target.value.toUpperCase() }))}
+                  placeholder="NVDA"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Entry Trigger</label>
+              <Input
+                value={newEntry.entry_trigger ?? ''}
+                onChange={(event) => setNewEntry((current) => ({ ...current, entry_trigger: event.target.value }))}
+                placeholder="Price above 960 with strong volume"
+              />
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Entry Price</label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={newEntry.entry_price ?? ''}
+                  onChange={(event) => setNewEntry((current) => ({ ...current, entry_price: event.target.value ? Number(event.target.value) : null }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Invalidation Price</label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={newEntry.invalidation_price ?? ''}
+                  onChange={(event) => setNewEntry((current) => ({ ...current, invalidation_price: event.target.value ? Number(event.target.value) : null }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Priority</label>
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={newEntry.priority ?? 'medium'}
+                  onChange={(event) => setNewEntry((current) => ({ ...current, priority: event.target.value as 'high' | 'medium' | 'low' }))}
+                >
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Invalidation Rule</label>
+                <Input
+                  value={newEntry.invalidation ?? ''}
+                  onChange={(event) => setNewEntry((current) => ({ ...current, invalidation: event.target.value }))}
+                  placeholder="Close below 940"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Expires At</label>
+                <Input
+                  type="datetime-local"
+                  value={newEntry.expires_at ?? ''}
+                  onChange={(event) => setNewEntry((current) => ({ ...current, expires_at: event.target.value || null }))}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Notes</label>
+              <Input
+                value={newEntry.notes ?? ''}
+                onChange={(event) => setNewEntry((current) => ({ ...current, notes: event.target.value }))}
+                placeholder="Reason, catalyst, and what to monitor"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setEntryOpen(false)} disabled={entryLoading}>
+                Cancel
+              </Button>
+              <Button onClick={handleCreateEntry} disabled={entryLoading}>
+                {entryLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+                Add Entry
               </Button>
             </div>
           </div>
@@ -405,6 +566,9 @@ export default function WatchlistPage() {
                         {entry.expires_at && (
                           <p className="text-xs text-muted-foreground">Expires {formatDate(entry.expires_at)}</p>
                         )}
+                        <p className="text-xs text-muted-foreground">
+                          Last analysis {entry.last_analysis_at ? formatDate(entry.last_analysis_at) : 'n/a'}
+                        </p>
                         {entry.watchlist_source_type && (
                           <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground/80">
                             {entry.watchlist_source_type}

@@ -7,7 +7,10 @@ from hashlib import sha256
 import json
 from typing import Any
 
-from db_layer import NexusDB
+try:
+    from tradegent.db_layer import NexusDB
+except ImportError:  # run directly from tradegent/ dir
+    from db_layer import NexusDB  # type: ignore[no-redef]
 
 
 _ALLOWED_TRANSITIONS = {

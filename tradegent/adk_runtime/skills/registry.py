@@ -6,8 +6,8 @@ import hashlib
 import os
 from typing import Any
 
-from adk_runtime.contracts import RequestEnvelope
-from adk_runtime.subagent_invoker import SubagentInvoker
+from ..contracts import RequestEnvelope
+from ..subagent_invoker import SubagentInvoker
 
 from .base import SkillAdapter, SkillAdapterContext
 from .earnings_analysis_adapter import EarningsAnalysisAdapter

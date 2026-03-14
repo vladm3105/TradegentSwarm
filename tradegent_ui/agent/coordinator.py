@@ -1,13 +1,18 @@
 """Coordinator agent for intent routing."""
+from datetime import datetime
+import re
+from zoneinfo import ZoneInfo
 import time
 import structlog
 from typing import Any
+from fastapi import HTTPException
 
 from .base_agent import AgentResponse
 from .intent_classifier import (
     Intent,
     ClassificationResult,
     detect_multi_intent,
+    extract_tickers,
     get_clarification_prompt,
 )
 from .context_manager import ConversationContext, context_store
@@ -223,7 +228,20 @@ class Coordinator:
         # Handle system intent
         if intent == Intent.SYSTEM:
             log.debug("agent.routing.system", query_preview=query[:50])
-            return await self._handle_system(query, context)
+            response = await self._handle_system(query, context)
+            context.add_message(
+                role="user",
+                content=query,
+                intent=intent,
+                tickers=classification.tickers,
+            )
+            context.add_message(
+                role="assistant",
+                content=response.text,
+                a2ui_components=(response.a2ui or {}).get("components", []),
+            )
+            context.update_from_classification(classification, response.tool_results)
+            return response
 
         # Handle unknown intent
         if intent == Intent.UNKNOWN:
@@ -414,6 +432,324 @@ class Coordinator:
                     "type": "a2ui",
                     "text": status,
                     "components": components,
+                },
+            )
+
+        if "date" in query_lower or "today" in query_lower or "time" in query_lower:
+            now_et = datetime.now(ZoneInfo("America/New_York"))
+            time_text = now_et.strftime("%Y-%m-%d %H:%M %Z")
+            response_text = f"Current market timezone time (ET): {time_text}."
+
+            return AgentResponse(
+                success=True,
+                text=response_text,
+                a2ui={
+                    "type": "a2ui",
+                    "text": response_text,
+                    "components": [
+                        {
+                            "type": "TextCard",
+                            "props": {
+                                "title": "Current Time",
+                                "content": response_text,
+                            },
+                        }
+                    ],
+                },
+            )
+
+        # Chat-driven UI automation and schedule commands
+        try:
+            from server.services import automation_service, schedules_service
+            from server.services.circuit_breaker import get_circuit_breaker
+
+            is_automation_query = any(
+                kw in query_lower
+                for kw in (
+                    "automation",
+                    "trading mode",
+                    "pause trading",
+                    "resume trading",
+                    "dry run",
+                    "paper mode",
+                    "live mode",
+                )
+            )
+            is_schedule_query = "schedule" in query_lower or "schedules" in query_lower
+
+            if is_automation_query:
+                if "pause" in query_lower and "trading" in query_lower:
+                    result = automation_service.pause_trading()
+                    text = "Trading automation paused."
+                    return AgentResponse(
+                        success=True,
+                        text=text,
+                        a2ui={
+                            "type": "a2ui",
+                            "text": text,
+                            "components": [
+                                {
+                                    "type": "TextCard",
+                                    "props": {"title": "Automation", "content": text},
+                                }
+                            ],
+                        },
+                        tool_results={"automation": result},
+                    )
+
+                if "resume" in query_lower and "trading" in query_lower:
+                    cb = get_circuit_breaker()
+                    result = automation_service.resume_trading(cb)
+                    text = "Trading automation resumed."
+                    return AgentResponse(
+                        success=True,
+                        text=text,
+                        a2ui={
+                            "type": "a2ui",
+                            "text": text,
+                            "components": [
+                                {
+                                    "type": "TextCard",
+                                    "props": {"title": "Automation", "content": text},
+                                }
+                            ],
+                        },
+                        tool_results={"automation": result},
+                    )
+
+                if any(kw in query_lower for kw in ("set mode", "switch to", "trading mode", "mode to")):
+                    mode = None
+                    if "dry run" in query_lower or "dry_run" in query_lower:
+                        mode = "dry_run"
+                    elif "paper" in query_lower:
+                        mode = "paper"
+                    elif "live" in query_lower:
+                        mode = "live"
+
+                    if mode:
+                        confirm = "confirm" in query_lower
+                        result = automation_service.set_trading_mode(mode, confirm)
+                        text = f"Trading mode set to {mode}."
+                        return AgentResponse(
+                            success=True,
+                            text=text,
+                            a2ui={
+                                "type": "a2ui",
+                                "text": text,
+                                "components": [
+                                    {
+                                        "type": "TextCard",
+                                        "props": {"title": "Automation", "content": text},
+                                    }
+                                ],
+                            },
+                            tool_results={"automation": result},
+                        )
+
+                if "status" in query_lower or "automation" in query_lower:
+                    status_data = automation_service.get_automation_status()
+                    mode = status_data.get("mode", "unknown")
+                    paused = status_data.get("is_paused", False)
+                    auto_execute = status_data.get("auto_execute", False)
+                    status_text = (
+                        f"Automation status: mode={mode}, auto_execute={auto_execute}, paused={paused}."
+                    )
+                    return AgentResponse(
+                        success=True,
+                        text=status_text,
+                        a2ui={
+                            "type": "a2ui",
+                            "text": status_text,
+                            "components": [
+                                {
+                                    "type": "MetricsRow",
+                                    "props": {
+                                        "metrics": [
+                                            {"label": "Mode", "value": str(mode)},
+                                            {"label": "Auto Execute", "value": str(auto_execute)},
+                                            {"label": "Paused", "value": str(paused)},
+                                        ]
+                                    },
+                                }
+                            ],
+                        },
+                        tool_results={"automation": status_data},
+                    )
+
+            if is_schedule_query:
+                schedule_id = None
+                id_match = re.search(r"schedule(?:\s+id)?\s*#?\s*(\d+)", query_lower)
+                if id_match:
+                    schedule_id = int(id_match.group(1))
+
+                if "list" in query_lower or "show" in query_lower or query_lower.strip() in {"schedules", "schedule"}:
+                    schedules = schedules_service.list_schedules()
+                    if not schedules:
+                        text = "No schedules found."
+                    else:
+                        summary = [
+                            f"#{row['id']} {row['name']} ({row['frequency']}) - {'enabled' if row['is_enabled'] else 'disabled'}"
+                            for row in schedules[:10]
+                        ]
+                        text = "Schedules:\n" + "\n".join(summary)
+
+                    return AgentResponse(
+                        success=True,
+                        text=text,
+                        a2ui={
+                            "type": "a2ui",
+                            "text": text,
+                            "components": [
+                                {
+                                    "type": "TextCard",
+                                    "props": {"title": "Schedules", "content": text},
+                                }
+                            ],
+                        },
+                    )
+
+                if any(kw in query_lower for kw in ("enable schedule", "disable schedule", "run schedule", "trigger schedule")):
+                    if not schedule_id:
+                        text = "Please specify a schedule id, for example: enable schedule 3."
+                        return AgentResponse(
+                            success=True,
+                            text=text,
+                            a2ui={"type": "a2ui", "text": text, "components": []},
+                        )
+
+                    if "enable schedule" in query_lower:
+                        result = schedules_service.set_schedule_enabled(schedule_id, True)
+                        text = f"Schedule {schedule_id} enabled."
+                    elif "disable schedule" in query_lower:
+                        result = schedules_service.set_schedule_enabled(schedule_id, False)
+                        text = f"Schedule {schedule_id} disabled."
+                    else:
+                        result = schedules_service.run_schedule_now(schedule_id)
+                        text = f"Schedule {schedule_id} triggered."
+
+                    return AgentResponse(
+                        success=True,
+                        text=text,
+                        a2ui={
+                            "type": "a2ui",
+                            "text": text,
+                            "components": [
+                                {
+                                    "type": "TextCard",
+                                    "props": {"title": "Schedules", "content": text},
+                                }
+                            ],
+                        },
+                        tool_results={"schedule": result},
+                    )
+
+        except HTTPException as http_exc:
+            text = f"Command failed: {http_exc.detail}"
+            return AgentResponse(
+                success=True,
+                text=text,
+                a2ui={"type": "a2ui", "text": text, "components": []},
+            )
+        except Exception as exc:
+            log.warning("system.ui_command.failed", error=str(exc), query=query[:120])
+
+        count_query = any(kw in query_lower for kw in ("how many", "do you have", "count"))
+        report_words = ("report", "reports", "analysis", "analyses", "database")
+        mentions_reports_now = any(kw in query_lower for kw in report_words)
+        recent_user_queries = [m.content.lower() for m in context.messages[-6:] if m.role == "user"]
+        mentions_reports_recently = any(
+            any(kw in msg for kw in report_words) and any(c in msg for c in ("how many", "count", "do you have"))
+            for msg in recent_user_queries
+        )
+
+        has_ticker_filter = bool(extract_tickers(query)) and "only" in query_lower
+        is_report_count_query = count_query and (
+            mentions_reports_now or mentions_reports_recently or has_ticker_filter
+        )
+        if is_report_count_query:
+            try:
+                import psycopg
+                from psycopg.rows import dict_row
+                from server.config import get_settings
+
+                tickers_in_query = extract_tickers(query)
+                ticker_filter = tickers_in_query[0] if tickers_in_query else None
+
+                _s = get_settings()
+                with psycopg.connect(
+                    host=_s.pg_host, port=_s.pg_port,
+                    user=_s.pg_user, password=_s.pg_pass,
+                    dbname=_s.pg_db, row_factory=dict_row,
+                ) as _conn:
+                    with _conn.cursor() as _cur:
+                        if ticker_filter:
+                            _cur.execute(
+                                "SELECT "
+                                "(SELECT COUNT(*) FROM nexus.kb_stock_analyses WHERE UPPER(ticker)=UPPER(%s)) AS stock, "
+                                "(SELECT COUNT(*) FROM nexus.kb_earnings_analyses WHERE UPPER(ticker)=UPPER(%s)) AS earnings",
+                                (ticker_filter, ticker_filter),
+                            )
+                        else:
+                            _cur.execute(
+                                "SELECT "
+                                "(SELECT COUNT(*) FROM nexus.kb_stock_analyses) AS stock, "
+                                "(SELECT COUNT(*) FROM nexus.kb_earnings_analyses) AS earnings"
+                            )
+                        _row = _cur.fetchone()
+                stock_cnt = int(_row["stock"]) if _row else 0
+                earn_cnt = int(_row["earnings"]) if _row else 0
+                total = stock_cnt + earn_cnt
+
+                if ticker_filter:
+                    report_text = (
+                        f"Knowledge base contains {total} reports for {ticker_filter}: "
+                        f"{stock_cnt} stock analyses and {earn_cnt} earnings analyses."
+                    )
+                else:
+                    report_text = (
+                        f"Knowledge base contains {total} reports: "
+                        f"{stock_cnt} stock analyses and {earn_cnt} earnings analyses."
+                    )
+            except Exception as _exc:
+                log.warning("system.report_count.failed", error=str(_exc))
+                report_text = "Unable to query report counts — database may be unavailable."
+
+            return AgentResponse(
+                success=True,
+                text=report_text,
+                a2ui={
+                    "type": "a2ui",
+                    "text": report_text,
+                    "components": [
+                        {
+                            "type": "TextCard",
+                            "props": {"title": "Knowledge Base", "content": report_text},
+                        }
+                    ],
+                },
+            )
+
+        if "hello" in query_lower or "hi" in query_lower or "hey" in query_lower or "how are you" in query_lower:
+            greeting_text = (
+                "Ready. Ask for stock analysis (e.g., analyze NVDA), "
+                "portfolio status, research context, or system status."
+            )
+
+            return AgentResponse(
+                success=True,
+                text=greeting_text,
+                a2ui={
+                    "type": "a2ui",
+                    "text": greeting_text,
+                    "components": [
+                        {
+                            "type": "TextCard",
+                            "props": {
+                                "title": "Tradegent Agent",
+                                "content": greeting_text,
+                            },
+                        }
+                    ],
                 },
             )
 

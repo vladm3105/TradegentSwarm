@@ -81,3 +81,83 @@ def test_patch_schedule_route_calls_service(monkeypatch) -> None:
     assert response.json() == {"success": True, "schedule_id": 7}
     assert captured["schedule_id"] == 7
     assert captured["updates"] == {"is_enabled": False, "interval_minutes": 30}
+
+
+def test_create_schedule_route_calls_service(monkeypatch) -> None:
+    captured = {}
+
+    def _create(**kwargs):
+        captured.update(kwargs)
+        return {"success": True, "schedule_id": 42}
+
+    monkeypatch.setattr(
+        schedules_route_module.schedules_service,
+        "create_schedule",
+        _create,
+    )
+
+    client = TestClient(_build_app())
+    response = client.post(
+        "/api/schedules/",
+        json={
+            "name": "Weekly Review",
+            "task_type": "portfolio_review",
+            "frequency": "weekly",
+            "day_of_week": "sun",
+            "time_of_day": "16:00",
+            "is_enabled": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"success": True, "schedule_id": 42}
+    assert captured["name"] == "Weekly Review"
+    assert captured["task_type"] == "portfolio_review"
+    assert captured["frequency"] == "weekly"
+    assert captured["day_of_week"] == "sun"
+
+
+def test_enable_schedule_route_calls_service(monkeypatch) -> None:
+    captured = {}
+
+    def _set_schedule_enabled(schedule_id: int, enabled: bool):
+        captured["schedule_id"] = schedule_id
+        captured["enabled"] = enabled
+        return {"success": True, "schedule_id": schedule_id, "is_enabled": enabled}
+
+    monkeypatch.setattr(
+        schedules_route_module.schedules_service,
+        "set_schedule_enabled",
+        _set_schedule_enabled,
+    )
+
+    client = TestClient(_build_app())
+    response = client.post("/api/schedules/3/enable")
+
+    assert response.status_code == 200
+    assert response.json() == {"success": True, "schedule_id": 3, "is_enabled": True}
+    assert captured["schedule_id"] == 3
+    assert captured["enabled"] is True
+
+
+def test_disable_schedule_route_calls_service(monkeypatch) -> None:
+    captured = {}
+
+    def _set_schedule_enabled(schedule_id: int, enabled: bool):
+        captured["schedule_id"] = schedule_id
+        captured["enabled"] = enabled
+        return {"success": True, "schedule_id": schedule_id, "is_enabled": enabled}
+
+    monkeypatch.setattr(
+        schedules_route_module.schedules_service,
+        "set_schedule_enabled",
+        _set_schedule_enabled,
+    )
+
+    client = TestClient(_build_app())
+    response = client.post("/api/schedules/3/disable")
+
+    assert response.status_code == 200
+    assert response.json() == {"success": True, "schedule_id": 3, "is_enabled": False}
+    assert captured["schedule_id"] == 3
+    assert captured["enabled"] is False

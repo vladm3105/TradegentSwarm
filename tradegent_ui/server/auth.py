@@ -475,12 +475,13 @@ async def validate_websocket_token(
     subprotocols = websocket.scope.get("subprotocols") or []
     client = websocket.scope.get("client")
     client_ip = f"{client[0]}:{client[1]}" if client else "unknown"
+    headers = getattr(websocket, "headers", {})
 
     log.debug(
         "ws.upgrade.received",
         client_ip=client_ip,
         subprotocols=subprotocols,
-        origin=dict(websocket.headers).get("origin", ""),
+        origin=dict(headers).get("origin", ""),
         path=websocket.scope.get("path", ""),
     )
 

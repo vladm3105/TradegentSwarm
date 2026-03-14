@@ -251,6 +251,7 @@ class TestScheduleExecution:
         """Test running when no schedules are due."""
         mock_nexus_db.get_due_schedules = MagicMock(return_value=[])
         mock_nexus_db.get_today_run_count = MagicMock(return_value=0)
+        mock_nexus_db.recover_stuck_schedule_runs = MagicMock(return_value=0)
 
         from orchestrator import run_due_schedules
 
@@ -266,6 +267,7 @@ class TestScheduleExecution:
         """Test running with a due schedule."""
         mock_nexus_db.get_due_schedules = MagicMock(return_value=[sample_schedule])
         mock_nexus_db.get_today_run_count = MagicMock(return_value=0)
+        mock_nexus_db.recover_stuck_schedule_runs = MagicMock(return_value=0)
         mock_nexus_db.start_run = MagicMock(return_value=1)
         mock_nexus_db.complete_run = MagicMock()
         mock_nexus_db.update_next_run = MagicMock()
@@ -276,10 +278,111 @@ class TestScheduleExecution:
         with patch("orchestrator.cfg") as mock_cfg:
             mock_cfg.dry_run_mode = True
             mock_cfg.max_daily_analyses = 15
+            mock_cfg._get = MagicMock(return_value="120")
 
             with patch("orchestrator.run_analysis") as mock_run:
                 mock_run.return_value = {"success": True}
                 run_due_schedules(mock_nexus_db)
+
+    def test_run_due_schedules_recovers_stale_running_schedules(self, mock_nexus_db):
+        """Scheduler should recover stale running schedule runs before executing due jobs."""
+        mock_nexus_db.recover_stuck_schedule_runs = MagicMock(return_value=2)
+        mock_nexus_db.get_due_schedules = MagicMock(return_value=[])
+        mock_nexus_db.get_today_run_count = MagicMock(return_value=0)
+
+        from orchestrator import run_due_schedules
+
+        with patch("orchestrator.cfg") as mock_cfg:
+            mock_cfg.max_daily_analyses = 15
+            mock_cfg._get = MagicMock(return_value="120")
+            run_due_schedules(mock_nexus_db)
+
+        mock_nexus_db.recover_stuck_schedule_runs.assert_called_once_with(120)
+
+    def test_run_due_schedules_tracks_analyze_watchlist(self, mock_nexus_db):
+        """Analyze watchlist schedules must update schedule run metadata."""
+        sched = MagicMock(
+            id=2,
+            name="Morning Watchlist Analysis",
+            task_type="analyze_watchlist",
+            auto_execute=False,
+        )
+        mock_nexus_db.get_due_schedules = MagicMock(return_value=[sched])
+        mock_nexus_db.get_today_run_count = MagicMock(return_value=0)
+        mock_nexus_db.calculate_next_run = MagicMock(return_value=None)
+        mock_nexus_db.update_next_run = MagicMock()
+        mock_nexus_db.mark_schedule_started = MagicMock(return_value=200)
+        mock_nexus_db.mark_schedule_completed = MagicMock()
+
+        from orchestrator import run_due_schedules
+
+        with patch("orchestrator.cfg") as mock_cfg:
+            mock_cfg.max_daily_analyses = 15
+            with patch("orchestrator.run_watchlist") as mock_run_watchlist:
+                run_due_schedules(mock_nexus_db)
+
+        mock_run_watchlist.assert_called_once_with(mock_nexus_db, False)
+        mock_nexus_db.mark_schedule_started.assert_called_once_with(2)
+        mock_nexus_db.mark_schedule_completed.assert_called_once_with(2, 200, "completed")
+
+    def test_run_due_schedules_tracks_run_all_scanners(self, mock_nexus_db):
+        """Run-all-scanners schedules must update schedule run metadata."""
+        sched = MagicMock(
+            id=1,
+            name="Pre-Market Earnings Scan",
+            task_type="run_all_scanners",
+        )
+        mock_nexus_db.get_due_schedules = MagicMock(return_value=[sched])
+        mock_nexus_db.get_today_run_count = MagicMock(return_value=0)
+        mock_nexus_db.calculate_next_run = MagicMock(return_value=None)
+        mock_nexus_db.update_next_run = MagicMock()
+        mock_nexus_db.mark_schedule_started = MagicMock(return_value=100)
+        mock_nexus_db.mark_schedule_completed = MagicMock()
+
+        from orchestrator import run_due_schedules
+
+        with patch("orchestrator.cfg") as mock_cfg:
+            mock_cfg.max_daily_analyses = 15
+            with patch("orchestrator.run_scanners") as mock_run_scanners:
+                run_due_schedules(mock_nexus_db)
+
+        mock_run_scanners.assert_called_once_with(mock_nexus_db)
+        mock_nexus_db.mark_schedule_started.assert_called_once_with(1)
+        mock_nexus_db.mark_schedule_completed.assert_called_once_with(1, 100, "completed")
+
+
+class TestScannerRuntimeSelection:
+    """Test scanner engine dispatch behavior."""
+
+    def test_run_scanners_uses_adk_not_claude_cli(self, mock_nexus_db):
+        """When AGENT_ENGINE=adk, scanner runs must not call Claude CLI directly."""
+        scanner = MagicMock(
+            scanner_code="HIGH_OPT_IMP_VOLAT",
+            display_name="High Implied Volatility",
+            auto_add_to_watchlist=False,
+            auto_analyze=False,
+            max_candidates=5,
+        )
+
+        mock_nexus_db.get_enabled_scanners = MagicMock(return_value=[scanner])
+        mock_nexus_db.start_scanner_run = MagicMock(return_value=11)
+        mock_nexus_db.complete_scanner_run = MagicMock()
+
+        from orchestrator import run_scanners
+
+        with patch("orchestrator.cfg") as mock_cfg:
+            mock_cfg.scanners_enabled = True
+            mock_cfg.allowed_tools_scanner = "mcp__ib-mcp__*"
+            with patch("orchestrator.validate_agent_engine", return_value="adk"):
+                with patch(
+                    "orchestrator._run_adk_scan_generation",
+                    return_value='{"scanner":"HIGH_OPT_IMP_VOLAT","scan_time":"2026-03-12T12:00:00","candidates":[]}',
+                ) as mock_adk_scan:
+                    with patch("orchestrator.call_claude_code") as mock_cli:
+                        run_scanners(mock_nexus_db)
+
+        mock_adk_scan.assert_called_once()
+        mock_cli.assert_not_called()
 
 
 class TestRateLimiting:

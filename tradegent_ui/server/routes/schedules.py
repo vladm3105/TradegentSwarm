@@ -33,7 +33,7 @@ Example migration:
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, time
 import structlog
 
 from ..auth import get_current_user, UserClaims
@@ -49,8 +49,8 @@ class ScheduleResponse(BaseModel):
     task_type: str
     frequency: str
     is_enabled: bool
-    time_of_day: Optional[str]
-    day_of_week: Optional[int]
+    time_of_day: Optional[time]
+    day_of_week: Optional[str]
     interval_minutes: Optional[int]
     next_run_at: Optional[datetime]
     last_run_at: Optional[datetime]
@@ -60,10 +60,22 @@ class ScheduleResponse(BaseModel):
 
 
 class ScheduleUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    task_type: Optional[str] = None
     is_enabled: Optional[bool] = None
     frequency: Optional[str] = None
-    time_of_day: Optional[str] = None
-    day_of_week: Optional[int] = None
+    time_of_day: Optional[time] = None
+    day_of_week: Optional[str] = None
+    interval_minutes: Optional[int] = None
+
+
+class ScheduleCreateRequest(BaseModel):
+    name: str
+    task_type: str
+    frequency: str
+    is_enabled: bool = True
+    time_of_day: Optional[time] = None
+    day_of_week: Optional[str] = None
     interval_minutes: Optional[int] = None
 
 
@@ -74,6 +86,25 @@ async def list_schedules(
     """List all scheduled tasks."""
     rows = schedules_service.list_schedules()
     return [ScheduleResponse(**row) for row in rows]
+
+
+@router.post("/")
+async def create_schedule(
+    body: ScheduleCreateRequest,
+    user: UserClaims = Depends(get_current_user),
+):
+    """Create a new schedule."""
+    result = schedules_service.create_schedule(
+        name=body.name,
+        task_type=body.task_type,
+        frequency=body.frequency,
+        is_enabled=body.is_enabled,
+        time_of_day=body.time_of_day,
+        day_of_week=body.day_of_week,
+        interval_minutes=body.interval_minutes,
+    )
+    log.info("schedule.created", schedule_id=result["schedule_id"], user=user.email)
+    return result
 
 
 @router.get("/{schedule_id}", response_model=ScheduleResponse)
@@ -94,15 +125,19 @@ async def update_schedule(
 ):
     """Update a schedule."""
     updates: dict[str, object] = {}
-    if body.is_enabled is not None:
+    if "name" in body.model_fields_set:
+        updates["name"] = body.name
+    if "task_type" in body.model_fields_set:
+        updates["task_type"] = body.task_type
+    if "is_enabled" in body.model_fields_set:
         updates["is_enabled"] = body.is_enabled
-    if body.frequency is not None:
+    if "frequency" in body.model_fields_set:
         updates["frequency"] = body.frequency
-    if body.time_of_day is not None:
+    if "time_of_day" in body.model_fields_set:
         updates["time_of_day"] = body.time_of_day
-    if body.day_of_week is not None:
+    if "day_of_week" in body.model_fields_set:
         updates["day_of_week"] = body.day_of_week
-    if body.interval_minutes is not None:
+    if "interval_minutes" in body.model_fields_set:
         updates["interval_minutes"] = body.interval_minutes
 
     result = schedules_service.update_schedule(schedule_id, updates)
@@ -120,6 +155,28 @@ async def run_schedule_now(
     result = schedules_service.run_schedule_now(schedule_id)
 
     log.info("schedule.triggered", schedule_id=schedule_id, user=user.email)
+    return result
+
+
+@router.post("/{schedule_id}/enable")
+async def enable_schedule(
+    schedule_id: int,
+    user: UserClaims = Depends(get_current_user),
+):
+    """Enable a schedule."""
+    result = schedules_service.set_schedule_enabled(schedule_id, True)
+    log.info("schedule.enabled", schedule_id=schedule_id, user=user.email)
+    return result
+
+
+@router.post("/{schedule_id}/disable")
+async def disable_schedule(
+    schedule_id: int,
+    user: UserClaims = Depends(get_current_user),
+):
+    """Disable a schedule."""
+    result = schedules_service.set_schedule_enabled(schedule_id, False)
+    log.info("schedule.disabled", schedule_id=schedule_id, user=user.email)
     return result
 
 

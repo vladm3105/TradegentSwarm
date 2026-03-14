@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from adk_runtime.contracts import SkillExecutionPlan
-from adk_runtime.subagent_invoker import SubagentInvoker
+from ..contracts import SkillExecutionPlan
+from ..subagent_invoker import SubagentInvoker
 
 from .base import SkillAdapterContext
 from .contracts import load_phase_prompt_specs, validate_skill_phase_outputs

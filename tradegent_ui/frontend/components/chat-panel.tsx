@@ -29,6 +29,23 @@ import {
   type SessionSummary,
 } from '@/lib/api';
 
+const CHAT_PANEL_MIN_WIDTH = 280;
+const CHAT_PANEL_MAX_WIDTH = 720;
+const CHAT_PANEL_DEFAULT_WIDTH = 320;
+
+function getMaxChatPanelWidth() {
+  if (typeof window === 'undefined') {
+    return CHAT_PANEL_MAX_WIDTH;
+  }
+
+  // Leave space for the main content area on smaller viewports.
+  return Math.max(CHAT_PANEL_MIN_WIDTH, Math.min(CHAT_PANEL_MAX_WIDTH, window.innerWidth - 80));
+}
+
+function clampChatPanelWidth(width: number) {
+  return Math.min(getMaxChatPanelWidth(), Math.max(CHAT_PANEL_MIN_WIDTH, width));
+}
+
 function ProgressBar({ progress, message }: { progress?: number; message?: string }) {
   if (progress === undefined) return null;
 
@@ -225,10 +242,14 @@ export function ChatPanel() {
   const [sessionsList, setSessionsList] = useState<SessionSummary[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [savingSession, setSavingSession] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const resizeStartXRef = useRef(0);
+  const resizeStartWidthRef = useRef(CHAT_PANEL_DEFAULT_WIDTH);
+  const latestPanelWidthRef = useRef(CHAT_PANEL_DEFAULT_WIDTH);
 
-  const { chatPanelOpen, setChatPanelOpen } = useUIStore();
+  const { chatPanelOpen, setChatPanelOpen, chatPanelWidth, setChatPanelWidth } = useUIStore();
   const {
     messages,
     isStreaming,
@@ -267,6 +288,58 @@ export function ChatPanel() {
       setTimeout(() => inputRef.current?.focus(), 100);
     }
   }, [chatPanelOpen]);
+
+  useEffect(() => {
+    latestPanelWidthRef.current = chatPanelWidth;
+  }, [chatPanelWidth]);
+
+  // Keep width clamped to viewport constraints.
+  useEffect(() => {
+    const handleWindowResize = () => {
+      setChatPanelWidth(clampChatPanelWidth(latestPanelWidthRef.current));
+    };
+
+    window.addEventListener('resize', handleWindowResize);
+    return () => window.removeEventListener('resize', handleWindowResize);
+  }, [setChatPanelWidth]);
+
+  // Drag-to-resize behavior for the left panel edge.
+  useEffect(() => {
+    if (!isResizing) {
+      return;
+    }
+
+    const handleMouseMove = (event: MouseEvent) => {
+      const deltaX = resizeStartXRef.current - event.clientX;
+      const nextWidth = clampChatPanelWidth(resizeStartWidthRef.current + deltaX);
+      setChatPanelWidth(nextWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing, setChatPanelWidth]);
+
+  const handleResizeStart = (event: React.MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    resizeStartXRef.current = event.clientX;
+    resizeStartWidthRef.current = chatPanelWidth;
+    setIsResizing(true);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -376,7 +449,17 @@ export function ChatPanel() {
   if (!chatPanelOpen) return null;
 
   return (
-    <aside className="fixed inset-y-0 right-0 z-50 w-80 border-l bg-background flex flex-col">
+    <aside
+      className="fixed inset-y-0 right-0 z-50 border-l bg-background flex flex-col"
+      style={{ width: `${chatPanelWidth}px` }}
+    >
+      <div
+        className="absolute left-0 top-0 h-full w-1 cursor-col-resize hover:bg-border/70"
+        onMouseDown={handleResizeStart}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize chat panel"
+      />
       {/* Header */}
       <div className="flex items-center justify-between h-16 px-4 border-b">
         <div className="flex items-center gap-2">

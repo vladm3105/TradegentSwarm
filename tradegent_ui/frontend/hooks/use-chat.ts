@@ -42,7 +42,7 @@ export function useChat() {
   const sendAsyncMessage = useCallback(
     async (content: string) => {
       // Add user message immediately
-      const userMsgId = addMessage({
+      addMessage({
         role: 'user',
         content,
         status: 'complete',

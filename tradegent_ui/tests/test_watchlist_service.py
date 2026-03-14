@@ -58,3 +58,35 @@ def test_list_watchlist_entries_shapes_stats(monkeypatch) -> None:
     assert result["total"] == 2
     assert result["stats"]["active"] == 1
     assert result["stats"]["by_priority"]["high"] == 1
+
+
+def test_create_watchlist_entry_normalizes_ticker(monkeypatch) -> None:
+    captured = {}
+
+    def _create(payload):
+        captured.update(payload)
+        return {"id": 1, "ticker": payload["ticker"]}
+
+    monkeypatch.setattr(
+        watchlist_service.watchlist_repository,
+        "create_watchlist_entry",
+        _create,
+    )
+
+    result = watchlist_service.create_watchlist_entry(
+        watchlist_id=1,
+        ticker=" nvda ",
+        entry_trigger="Breakout above 950",
+        entry_price=950.0,
+        invalidation=None,
+        invalidation_price=None,
+        expires_at=None,
+        priority="medium",
+        source="manual_form",
+        source_analysis=None,
+        notes=None,
+    )
+
+    assert captured["ticker"] == "NVDA"
+    assert captured["entry_trigger"] == "Breakout above 950"
+    assert result["id"] == 1

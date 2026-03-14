@@ -15,11 +15,13 @@ import { logger } from '@/lib/logger';
 
 let sharedWebSocket: TradegentWebSocket | null = null;
 let activeWebSocketConsumers = 0;
+const RESPONSE_IDLE_TIMEOUT_MS = 20_000;
 
 export function useWebSocket() {
   const wsRef = useRef<TradegentWebSocket | null>(null);
   const handleMessageRef = useRef<((data: WSResponse) => void) | null>(null);
   const authRedirectInProgressRef = useRef(false);
+  const pendingMessageTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const {
     setConnected,
     setStreaming,
@@ -28,16 +30,104 @@ export function useWebSocket() {
     setSessionId,
   } = useChatStore();
 
+  const markPendingMessagesAsError = useCallback(
+    (error: string) => {
+      const messages = useChatStore.getState().messages;
+      const pendingMessages = messages.filter(
+        (m) => m.role === 'assistant' && (m.status === 'pending' || m.status === 'streaming')
+      );
+
+      for (const message of pendingMessages) {
+        const timeoutId = pendingMessageTimeoutsRef.current.get(message.id);
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          pendingMessageTimeoutsRef.current.delete(message.id);
+        }
+        updateMessage(message.id, {
+          content: message.content || error,
+          status: 'error',
+          error,
+          progressMessage: undefined,
+        });
+      }
+
+      if (pendingMessages.length > 0) {
+        setStreaming(false);
+      }
+    },
+    [setStreaming, updateMessage]
+  );
+
+  const refreshPendingMessageTimeout = useCallback(
+    (messageId: string) => {
+      const existingTimeoutId = pendingMessageTimeoutsRef.current.get(messageId);
+      if (existingTimeoutId) {
+        clearTimeout(existingTimeoutId);
+      }
+
+      const timeoutId = setTimeout(() => {
+        const currentMessage = useChatStore.getState().messages.find((m) => m.id === messageId);
+        if (!currentMessage) {
+          pendingMessageTimeoutsRef.current.delete(messageId);
+          return;
+        }
+
+        if (currentMessage.status === 'pending' || currentMessage.status === 'streaming') {
+          updateMessage(messageId, {
+            content: currentMessage.content || 'Request timed out. Please try again.',
+            status: 'error',
+            error: 'Request timed out. Please try again.',
+            progressMessage: undefined,
+          });
+          setStreaming(false);
+        }
+
+        pendingMessageTimeoutsRef.current.delete(messageId);
+      }, RESPONSE_IDLE_TIMEOUT_MS);
+
+      pendingMessageTimeoutsRef.current.set(messageId, timeoutId);
+    },
+    [setStreaming, updateMessage]
+  );
+
+  const clearPendingMessageTimeout = useCallback((messageId: string) => {
+    const timeoutId = pendingMessageTimeoutsRef.current.get(messageId);
+    if (!timeoutId) {
+      return;
+    }
+
+    clearTimeout(timeoutId);
+    pendingMessageTimeoutsRef.current.delete(messageId);
+  }, []);
+
   // Keep handleMessage ref up to date
   handleMessageRef.current = (data: WSResponse) => {
     switch (data.type) {
+      case 'task_created': {
+        const messages = useChatStore.getState().messages;
+        const pendingMessage = messages.find(
+          (m) => m.role === 'assistant' && (m.status === 'pending' || m.status === 'streaming')
+        );
+
+        if (pendingMessage && data.task_id) {
+          updateMessage(pendingMessage.id, {
+            taskId: data.task_id,
+            status: 'streaming',
+            progress: 0,
+            progressMessage: 'Task queued...',
+          });
+          refreshPendingMessageTimeout(pendingMessage.id);
+        }
+        break;
+      }
+
       case 'response': {
         // Log A2UI response received
         logger.a2uiReceived(data.a2ui, { source: 'websocket' });
 
         // Full response received
         // Backend sends: { type: 'response', success, text, a2ui, error }
-        const a2ui = validateA2UIResponse(data.a2ui);
+        const a2ui = data.a2ui ? validateA2UIResponse(data.a2ui) : null;
         logger.a2uiValidated(!!a2ui, a2ui ? undefined : 'Validation returned null');
 
         // Log full payload in A2UI debug mode
@@ -55,6 +145,7 @@ export function useWebSocket() {
         const content = a2ui?.text ?? responseData.text ?? '';
 
         if (pendingMessage) {
+          clearPendingMessageTimeout(pendingMessage.id);
           updateMessage(pendingMessage.id, {
             content,
             a2ui: a2ui ?? undefined,
@@ -88,7 +179,42 @@ export function useWebSocket() {
             progressMessage: data.message || `Processing...`,
             taskId: data.task_id,
           });
+          refreshPendingMessageTimeout(pendingMessage.id);
         }
+        break;
+      }
+
+      case 'complete': {
+        const messages = useChatStore.getState().messages;
+        const pendingMessage = messages.find(
+          (m) => m.role === 'assistant' && (m.status === 'pending' || m.status === 'streaming')
+        );
+
+        const result = data.result;
+        const a2ui = result?.a2ui ? validateA2UIResponse(result.a2ui) : null;
+        const content = a2ui?.text ?? result?.text ?? '';
+
+        if (pendingMessage) {
+          clearPendingMessageTimeout(pendingMessage.id);
+          updateMessage(pendingMessage.id, {
+            content,
+            a2ui: a2ui ?? undefined,
+            status: result?.error ? 'error' : 'complete',
+            error: result?.error ?? undefined,
+            progress: 100,
+            progressMessage: result?.error ? 'Task failed' : 'Completed',
+          });
+        } else if (content || a2ui) {
+          addMessage({
+            role: 'assistant',
+            content,
+            a2ui: a2ui ?? undefined,
+            status: result?.error ? 'error' : 'complete',
+            error: result?.error ?? undefined,
+          });
+        }
+
+        setStreaming(false);
         break;
       }
 
@@ -99,6 +225,7 @@ export function useWebSocket() {
           (m) => m.role === 'assistant' && (m.status === 'pending' || m.status === 'streaming')
         );
         if (pendingMessage) {
+          clearPendingMessageTimeout(pendingMessage.id);
           updateMessage(pendingMessage.id, {
             content: data.error || 'An error occurred',
             status: 'error',
@@ -122,12 +249,12 @@ export function useWebSocket() {
     }
 
     authRedirectInProgressRef.current = true;
+    markPendingMessagesAsError('Authentication error. Please sign in again.');
     setConnected(false);
-    setStreaming(false);
     logger.warn('WebSocket auth failed, redirecting user to login');
 
     void signOut({ callbackUrl: '/login' });
-  }, [setConnected, setStreaming]);
+  }, [markPendingMessagesAsError, setConnected]);
 
   const connect = useCallback(() => {
     if (!sharedWebSocket) {
@@ -142,6 +269,7 @@ export function useWebSocket() {
           }
         },
         onDisconnect: () => {
+          markPendingMessagesAsError('Connection lost while waiting for response.');
           setConnected(false);
         },
         onError: (error) => {
@@ -156,9 +284,11 @@ export function useWebSocket() {
     if (sharedWebSocket.getState() === 'disconnected') {
       void sharedWebSocket.connect();
     }
-  }, [handleAuthError, handleMessage, setConnected, setSessionId]);
+  }, [handleAuthError, handleMessage, markPendingMessagesAsError, setConnected, setSessionId]);
 
   const disconnect = useCallback(() => {
+    pendingMessageTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
+    pendingMessageTimeoutsRef.current.clear();
     sharedWebSocket?.disconnect();
     resetWebSocket();
     sharedWebSocket = null;
@@ -174,15 +304,16 @@ export function useWebSocket() {
       setStreaming(true);
 
       // Add pending assistant message
-      addMessage({
+      const pendingMessageId = addMessage({
         role: 'assistant',
         content: '',
         status: 'pending',
       });
+      refreshPendingMessageTimeout(pendingMessageId);
 
       wsRef.current?.sendChatMessage(content, async);
     },
-    [connect, setStreaming, addMessage]
+    [connect, setStreaming, addMessage, refreshPendingMessageTimeout]
   );
 
   const subscribeToTask = useCallback((taskId: string) => {

@@ -42,7 +42,7 @@ def list_scanners(scanner_type: Optional[str], enabled_only: bool) -> list[dict[
             SELECT started_at, status, raw_output
             FROM nexus.run_history
             WHERE task_type = 'run_scanner'
-            AND ticker = s.scanner_code
+            AND COALESCE(NULLIF(ticker, ''), raw_output::jsonb->>'scanner') = s.scanner_code
             ORDER BY started_at DESC
             LIMIT 1
         ) r ON true
@@ -62,14 +62,16 @@ def list_scanner_results(scanner_code: Optional[str], limit: int) -> list[dict[s
     params: list[Any] = []
 
     if scanner_code:
-        conditions.append("ticker = %s")
+        conditions.append(
+            "COALESCE(NULLIF(ticker, ''), raw_output::jsonb->>'scanner') = %s"
+        )
         params.append(scanner_code)
 
     where_clause = "WHERE " + " AND ".join(conditions)
     query = f"""
         SELECT
             id,
-            ticker as scanner_code,
+            COALESCE(NULLIF(ticker, ''), raw_output::jsonb->>'scanner') as scanner_code,
             started_at,
             status,
             duration_seconds,

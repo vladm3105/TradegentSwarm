@@ -380,6 +380,13 @@ Notes:
 | `/api/dashboard/service-health` | GET | Yes | Service health status |
 | `/api/dashboard/watchlist-summary` | GET | Yes | Watchlist summary |
 
+**Scanner Endpoints:**
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/api/scanners/list` | GET | Yes | List scanner configurations |
+| `/api/scanners/results` | GET | Yes | Get recent scanner run results |
+| `/api/scanners/latest` | GET | Yes | Get latest unique scanner candidates |
+
 **Watchlist Endpoints:**
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
@@ -387,19 +394,35 @@ Notes:
 | `/api/watchlists` | POST | Yes | Create manual watchlist |
 | `/api/watchlists/{id}` | PATCH | Yes | Update watchlist metadata (name, description, color, pinned) |
 | `/api/watchlists/{id}` | DELETE | Yes | Delete empty manual watchlist |
+| `/api/watchlist` | POST | Yes | Create watchlist entry (ticker, trigger, invalidation, expiry, priority) |
 | `/api/watchlist/list` | GET | Yes | List watchlist entries (supports `watchlist_id` filter) |
 | `/api/watchlist/detail/{id}` | GET | Yes | Get single watchlist entry details |
 | `/api/watchlist/stats` | GET | Yes | Get watchlist stats (supports `watchlist_id` filter) |
 
+**Schedule Endpoints:**
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/api/schedules` | GET | Yes | List schedules |
+| `/api/schedules` | POST | Yes | Create schedule |
+| `/api/schedules/{id}` | PATCH | Yes | Update schedule |
+| `/api/schedules/{id}/enable` | POST | Yes | Enable schedule |
+| `/api/schedules/{id}/disable` | POST | Yes | Disable schedule |
+| `/api/schedules/{id}/run` | POST | Yes | Trigger schedule run immediately |
+| `/api/schedules/history/{id}` | GET | Yes | Get recent run history |
+
 Notes:
 - `watchlist_source_type` values are `manual`, `scanner`, or `auto`.
 - The default auto-generated list is `Analysis Signals`.
+- Watchlist entry payloads include optional enrichment fields such as `last_analysis_at` and `days_until_expiry`.
+- Schedule status badges are driven by `nexus.schedules.last_run_status`.
+- If a historical failure remains visible after remediation, operators can clear stale status fields (`last_run_status`, `fail_count`, `consecutive_fails`) without deleting `run_history` records.
+- Scanner results normalize `scanner_code` from either `run_history.ticker` or `run_history.raw_output.scanner` to ensure API responses always return a valid string.
 
 > **Note:** Dashboard endpoints return real data from PostgreSQL BI views. See [Dashboard Data Source](#dashboard-data-source) section below.
 
 ### WebSocket
 
-Connect to `ws://localhost:8080/ws/agent` for real-time communication.
+Connect to `ws://localhost:8081/ws/agent` for real-time communication.
 
 **Message Types:**
 
@@ -659,6 +682,8 @@ The BI views aggregate data from these core tables:
 ### Fallback Behavior
 
 If database queries fail (connection error, missing views), endpoints return mock data to prevent frontend errors. Check server logs for `*_error` messages to diagnose issues.
+
+If LLM formatting fails during chat response generation, agents return deterministic fallback A2UI `TextCard` content so users still receive tool-derived output instead of a hard failure.
 
 ## Project Structure
 
@@ -994,3 +1019,31 @@ User: "What do you know about ZIM?"
 → Agent calls graph_context(ticker="ZIM"), rag_search(query="ZIM")
 → Returns A2UI with context summary
 ```
+
+### System and UI Control Commands from Chat
+
+The coordinator supports direct system and UI control commands through `/api/chat` and `/ws/agent` for operational actions.
+
+Supported command families:
+
+- Automation status and mode
+  - `automation status`
+  - `set trading mode to dry run`
+  - `switch to paper mode`
+  - `set trading mode to live confirm`
+- Trading pause/resume
+  - `pause trading`
+  - `resume trading`
+- Schedules
+  - `list schedules`
+  - `enable schedule 3`
+  - `disable schedule 3`
+  - `run schedule 3`
+- Report count queries (with optional follow-up ticker filter)
+  - `how many reports do you have?`
+  - `how many NVDA only?`
+
+Notes:
+
+- System command handling uses service-layer operations for automation and schedules.
+- LLM formatting failures still return deterministic fallback A2UI text so tool and service results are still delivered.

@@ -11,6 +11,8 @@ import {
   Target,
   BookOpen,
   Network,
+  CalendarDays,
+  History,
   Settings,
   MessageSquare,
   ChevronLeft,
@@ -33,6 +35,8 @@ const navItems: NavItem[] = [
   { title: 'Watchlist', href: '/watchlist', icon: Eye },
   { title: 'Charts', href: '/charts', icon: LineChart },
   { title: 'Scanner', href: '/scanner', icon: Target },
+  { title: 'Schedules', href: '/schedules', icon: CalendarDays },
+  { title: 'Schedule History', href: '/schedules/history', icon: History },
   { title: 'Knowledge', href: '/knowledge', icon: BookOpen },
   { title: 'Graph', href: '/graph', icon: Network },
   { title: 'Settings', href: '/settings', icon: Settings },
@@ -42,6 +46,16 @@ export function Sidebar() {
   const pathname = usePathname();
   const { sidebarCollapsed, setSidebarCollapsed, toggleChatPanel } =
     useUIStore();
+
+  // Keep a single active item by selecting the most specific matching route.
+  const activeHref = navItems
+    .filter((item) => {
+      if (item.href === '/') {
+        return pathname === '/';
+      }
+      return pathname === item.href || pathname.startsWith(`${item.href}/`);
+    })
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
 
   return (
     <aside
@@ -75,9 +89,7 @@ export function Sidebar() {
       {/* Navigation */}
       <nav className="flex-1 space-y-1 p-2 overflow-y-auto">
         {navItems.map((item) => {
-          const isActive =
-            pathname === item.href ||
-            (item.href !== '/' && pathname.startsWith(item.href));
+          const isActive = item.href === activeHref;
 
           return (
             <Link

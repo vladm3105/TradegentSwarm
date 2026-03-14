@@ -15,6 +15,40 @@ def get_user_id_by_sub(auth0_sub: str) -> Optional[int]:
     return row["id"] if row else None
 
 
+def upsert_user_by_sub(
+    auth0_sub: str,
+    email: str,
+    name: Optional[str] = None,
+    picture: Optional[str] = None,
+    email_verified: bool = True,
+) -> int:
+    """Create or update user by auth subject and return user id.
+
+    Used by backend-authoritative chat logging to ensure authenticated users
+    can have sessions/messages persisted even before explicit profile sync.
+    """
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO nexus.users (auth0_sub, email, name, picture, email_verified, last_login_at)
+                VALUES (%s, %s, %s, %s, %s, now())
+                ON CONFLICT (auth0_sub) DO UPDATE SET
+                    email = EXCLUDED.email,
+                    name = COALESCE(EXCLUDED.name, nexus.users.name),
+                    picture = COALESCE(EXCLUDED.picture, nexus.users.picture),
+                    email_verified = EXCLUDED.email_verified,
+                    last_login_at = now(),
+                    updated_at = now()
+                RETURNING id
+                """,
+                (auth0_sub, email, name, picture, email_verified),
+            )
+            row = cast(dict[str, Any], cur.fetchone())
+            conn.commit()
+    return int(row["id"])
+
+
 def get_fallback_user_id() -> int:
     """Return fallback user id (first available user) or 1 when empty."""
     with get_db_connection() as conn:
@@ -25,7 +59,7 @@ def get_fallback_user_id() -> int:
 
 
 def list_sessions(user_id: int, limit: int, offset: int, include_archived: bool) -> list[dict]:
-    """List sessions for a user including shared sessions with user_id NULL."""
+    """List sessions for a user."""
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             if include_archived:
@@ -33,7 +67,7 @@ def list_sessions(user_id: int, limit: int, offset: int, include_archived: bool)
                     """
                     SELECT id, session_id, title, message_count, created_at, updated_at, is_archived
                     FROM nexus.agent_sessions
-                    WHERE user_id = %s OR user_id IS NULL
+                    WHERE user_id = %s
                     ORDER BY updated_at DESC
                     LIMIT %s OFFSET %s
                     """,
@@ -44,7 +78,7 @@ def list_sessions(user_id: int, limit: int, offset: int, include_archived: bool)
                     """
                     SELECT id, session_id, title, message_count, created_at, updated_at, is_archived
                     FROM nexus.agent_sessions
-                    WHERE (user_id = %s OR user_id IS NULL) AND is_archived = false
+                    WHERE user_id = %s AND is_archived = false
                     ORDER BY updated_at DESC
                     LIMIT %s OFFSET %s
                     """,
@@ -54,17 +88,17 @@ def list_sessions(user_id: int, limit: int, offset: int, include_archived: bool)
 
 
 def count_sessions(user_id: int, include_archived: bool) -> int:
-    """Count sessions for a user including shared sessions with user_id NULL."""
+    """Count sessions for a user."""
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             if include_archived:
                 cur.execute(
-                    "SELECT COUNT(*) as count FROM nexus.agent_sessions WHERE user_id = %s OR user_id IS NULL",
+                    "SELECT COUNT(*) as count FROM nexus.agent_sessions WHERE user_id = %s",
                     (user_id,),
                 )
             else:
                 cur.execute(
-                    "SELECT COUNT(*) as count FROM nexus.agent_sessions WHERE (user_id = %s OR user_id IS NULL) AND is_archived = false",
+                    "SELECT COUNT(*) as count FROM nexus.agent_sessions WHERE user_id = %s AND is_archived = false",
                     (user_id,),
                 )
             row = cast(dict[str, Any], cur.fetchone())
@@ -72,14 +106,14 @@ def count_sessions(user_id: int, include_archived: bool) -> int:
 
 
 def get_session_by_public_id(session_id: str, user_id: int) -> Optional[dict]:
-    """Get a session by public session_id constrained to user ownership/shared."""
+    """Get a session by public session_id constrained to user ownership."""
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
                 SELECT id, session_id, title, message_count, created_at, updated_at, is_archived
                 FROM nexus.agent_sessions
-                WHERE session_id = %s AND (user_id = %s OR user_id IS NULL)
+                WHERE session_id = %s AND user_id = %s
                 """,
                 (session_id, user_id),
             )
@@ -121,13 +155,13 @@ def create_session(session_id: str, user_id: int, title: Optional[str]) -> dict:
 
 
 def get_session_db_id(session_id: str, user_id: int) -> Optional[int]:
-    """Resolve DB session id from public session id constrained to user/shared."""
+    """Resolve DB session id from public session id constrained to user ownership."""
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
                 SELECT id FROM nexus.agent_sessions
-                WHERE session_id = %s AND (user_id = %s OR user_id IS NULL)
+                WHERE session_id = %s AND user_id = %s
                 """,
                 (session_id, user_id),
             )
@@ -192,7 +226,7 @@ def update_session_metadata(
                 f"""
                 UPDATE nexus.agent_sessions
                 SET {", ".join(updates)}, updated_at = now()
-                WHERE session_id = %s AND (user_id = %s OR user_id IS NULL)
+                WHERE session_id = %s AND user_id = %s
                 RETURNING id
                 """,
                 tuple(params),
@@ -203,13 +237,13 @@ def update_session_metadata(
 
 
 def delete_session(session_id: str, user_id: int) -> bool:
-    """Delete a session by public id constrained to user/shared; return True when deleted."""
+    """Delete a session by public id constrained to user ownership; return True when deleted."""
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
                 DELETE FROM nexus.agent_sessions
-                WHERE session_id = %s AND (user_id = %s OR user_id IS NULL)
+                WHERE session_id = %s AND user_id = %s
                 RETURNING id
                 """,
                 (session_id, user_id),

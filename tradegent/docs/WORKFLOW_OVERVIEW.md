@@ -673,6 +673,15 @@ Long-running orchestrator service (`service.py`).
 | Watchlist trigger | Every tick | Check price/condition |
 | Options expiring | 7 days before | Queue options-management |
 
+### Scheduler Guardrails (March 2026)
+
+- Earnings-triggered schedules are resolved from ticker earnings proximity, not `next_run_at`.
+- `pre_earnings` schedules match `days_before_earnings`; `post_earnings` schedules match `days_after_earnings`.
+- `next_run_at` remains `NULL` for earnings-triggered frequencies by design.
+- `run_earnings_check` skips rows with missing ticker and skips schedules with missing/invalid `analysis_type`.
+- `run_due_schedules` now hard-skips misconfigured task types (`analyze_stock`, `pipeline`, `postmortem`) when `target_ticker` is missing.
+- Schedule status badges in UI are sourced from `nexus.schedules.last_run_status`; historical failures remain visible until a newer run overwrites status or operators reset status fields.
+
 ### Running Modes
 
 ```bash

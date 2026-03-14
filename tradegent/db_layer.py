@@ -523,10 +523,9 @@ class NexusDB:
                 """
                 INSERT INTO nexus.run_history
                 (task_type, ticker, status, stage)
-                VALUES ('run_scanner', %s, 'running', 'scan')
+                VALUES ('run_scanner', NULL, 'running', 'scan')
                 RETURNING id
             """,
-                [scanner_code],
             )
             run_id = cur.fetchone()["id"]
         self.conn.commit()
@@ -630,6 +629,109 @@ class NexusDB:
                 "UPDATE nexus.schedules SET next_run_at = %s WHERE id = %s", [next_run, schedule_id]
             )
         self.conn.commit()
+
+    def recover_stuck_schedule_runs(self, timeout_minutes: int = 120) -> int:
+        """Mark stale schedule runs stuck in 'running' as failed and update schedule state.
+
+        Two recovery passes:
+        1. run_history rows still in 'running' past timeout → mark failed, update schedule.
+        2. schedule rows still showing last_run_status='running' whose most recent run_history
+           row has already terminated (failed/completed) → sync schedule to match actual outcome.
+        """
+        recovered_rows: list[dict[str, Any]] = []
+
+        with self.conn.cursor() as cur:
+            # --- Pass 1: stale run_history stuck in 'running' ---
+            cur.execute(
+                """
+                WITH stale_runs AS (
+                    SELECT id, schedule_id
+                    FROM nexus.run_history
+                    WHERE status = 'running'
+                      AND schedule_id IS NOT NULL
+                      AND started_at < now() - (%s || ' minutes')::interval
+                ), updated_history AS (
+                    UPDATE nexus.run_history rh
+                    SET status = 'failed',
+                        completed_at = now(),
+                        duration_seconds = EXTRACT(EPOCH FROM (now() - rh.started_at)),
+                        error_message = COALESCE(rh.error_message, 'Schedule timeout - auto-recovered')
+                    FROM stale_runs sr
+                    WHERE rh.id = sr.id
+                    RETURNING sr.schedule_id
+                )
+                SELECT schedule_id, COUNT(*)::int AS recovered_count
+                FROM updated_history
+                GROUP BY schedule_id
+                """,
+                [timeout_minutes],
+            )
+            recovered_rows = [dict(r) for r in cur.fetchall()]
+
+            for row in recovered_rows:
+                schedule_id = row["schedule_id"]
+                recovered_count = row["recovered_count"]
+                cur.execute(
+                    """
+                    UPDATE nexus.schedules
+                    SET last_run_status = 'failed',
+                        run_count = run_count + %s,
+                        fail_count = fail_count + %s,
+                        consecutive_fails = consecutive_fails + %s
+                    WHERE id = %s
+                    """,
+                    [recovered_count, recovered_count, recovered_count, schedule_id],
+                )
+
+                cur.execute(
+                    """
+                    UPDATE nexus.schedules
+                    SET is_enabled = false
+                    WHERE id = %s AND consecutive_fails >= max_consecutive_fails
+                    """,
+                    [schedule_id],
+                )
+
+            # --- Pass 2: schedule shows 'running' but its most recent run_history is terminated ---
+            # This occurs when a DB transaction abort prevented the schedule status update
+            # after the run_history row was already finalized.
+            cur.execute(
+                """
+                WITH latest_run AS (
+                    SELECT DISTINCT ON (schedule_id)
+                        schedule_id, status AS run_status
+                    FROM nexus.run_history
+                    WHERE schedule_id IS NOT NULL
+                      AND status IN ('failed', 'completed')
+                    ORDER BY schedule_id, started_at DESC
+                )
+                UPDATE nexus.schedules s
+                SET last_run_status = lr.run_status,
+                    fail_count = CASE WHEN lr.run_status = 'failed'
+                                      THEN s.fail_count + 1 ELSE s.fail_count END,
+                    consecutive_fails = CASE WHEN lr.run_status = 'failed'
+                                             THEN s.consecutive_fails + 1
+                                             ELSE 0 END
+                FROM latest_run lr
+                WHERE s.id = lr.schedule_id
+                  AND s.last_run_status = 'running'
+                RETURNING s.id, s.name, lr.run_status
+                """
+            )
+            orphaned_rows = cur.fetchall()
+            for r in orphaned_rows:
+                # Apply circuit-breaker disable if threshold reached
+                cur.execute(
+                    """
+                    UPDATE nexus.schedules
+                    SET is_enabled = false
+                    WHERE id = %s AND consecutive_fails >= max_consecutive_fails
+                    """,
+                    [r["id"]],
+                )
+
+        self.conn.commit()
+        return sum(row["recovered_count"] for row in recovered_rows) + len(orphaned_rows)
 
     def save_analysis_result(
         self, run_id: int | None, ticker: str, analysis_type: str, parsed: dict
@@ -2651,6 +2753,43 @@ class NexusDB:
         preparation = data.get("preparation", {})
         summary = data.get("summary", {})
         probability = data.get("probability", {})
+        recommendation = data.get("recommendation", {}) if isinstance(data.get("recommendation"), dict) else {}
+
+        def _coerce_float(value: Any) -> float | None:
+            if isinstance(value, bool):
+                return None
+            if isinstance(value, (int, float)):
+                parsed = float(value)
+                return None if parsed != parsed else parsed
+            if isinstance(value, str):
+                stripped = value.strip()
+                if not stripped:
+                    return None
+                try:
+                    parsed = float(stripped)
+                except ValueError:
+                    return None
+                return None if parsed != parsed else parsed
+            return None
+
+        def _coerce_int(value: Any) -> int | None:
+            parsed = _coerce_float(value)
+            return int(parsed) if parsed is not None else None
+
+        confidence_level = (
+            _coerce_int(gate.get("confidence_actual"))
+            or _coerce_int(decision.get("confidence_pct"))
+            or _coerce_int(decision.get("confidence"))
+            or _coerce_int(probability.get("confidence_pct"))
+            or _coerce_int(recommendation.get("confidence"))
+        )
+
+        expected_value_pct = (
+            _coerce_float(gate.get("ev_actual"))
+            or _coerce_float(gate.get("expected_value_actual"))
+            or _coerce_float(decision.get("expected_value_pct"))
+            or _coerce_float(scenarios.get("expected_value"))
+        )
 
         # v2.6: scoring section added for consistency with stock-analysis
         scoring = data.get("scoring", {})
@@ -2730,12 +2869,10 @@ class NexusDB:
                     earnings_time,
                     days_to_earnings,
                     decision.get("recommendation"),
-                    # v2.5: confidence_pct, not just confidence
-                    decision.get("confidence_pct") or decision.get("confidence"),
+                    confidence_level,
                     # v2.5: probability.final_probability.p_beat
                     probability.get("final_probability", {}).get("p_beat") or probability.get("p_beat"),
-                    # v2.5: expected_value from scenarios section
-                    decision.get("expected_value_pct") or scenarios.get("expected_value"),
+                    expected_value_pct,
                     # v2.5: gate_result at ROOT, not under decision
                     gate.get("gate_result") or gate.get("result"),
                     # v2.5: case analyses at ROOT level

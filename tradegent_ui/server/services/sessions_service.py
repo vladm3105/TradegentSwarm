@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import Optional
+import re
 import uuid
 
 from fastapi import HTTPException
@@ -10,12 +11,25 @@ from ..auth import UserClaims
 from ..repositories import sessions_repository
 
 
+def _resolve_or_create_session_db_id(session_id: str, user_id: int, title: Optional[str] = None) -> int:
+    """Resolve DB session id by public id, creating the session when needed."""
+    db_session_id = sessions_repository.get_session_db_id(session_id, user_id)
+    if db_session_id is not None:
+        return db_session_id
+
+    created = sessions_repository.create_session(session_id, user_id, title)
+    return int(created["id"])
+
+
 def get_or_create_user_id(user: UserClaims) -> int:
-    """Resolve user id from auth subject with fallback for development sessions."""
+    """Resolve user id from auth subject.
+
+    Sessions are user-scoped data; do not fall back to another account.
+    """
     user_id = sessions_repository.get_user_id_by_sub(user.sub)
     if user_id is not None:
         return user_id
-    return sessions_repository.get_fallback_user_id()
+    raise HTTPException(status_code=403, detail="User is not provisioned")
 
 
 def list_sessions(limit: int, offset: int, include_archived: bool, user: UserClaims) -> dict:
@@ -109,6 +123,64 @@ def save_messages(session_id: str, messages: list, user: UserClaims) -> dict:
     sessions_repository.upsert_messages(db_session_id, payloads)
 
     return {"success": True, "messages_saved": len(messages)}
+
+
+def _default_user_email(auth_sub: str) -> str:
+    """Build a deterministic placeholder email when auth claims omit email."""
+    safe = re.sub(r"[^a-zA-Z0-9._-]", "_", auth_sub)
+    return f"{safe}@local.invalid"
+
+
+def persist_roundtrip_messages(
+    *,
+    auth_sub: str,
+    user_content: str,
+    assistant_content: str,
+    assistant_status: str,
+    assistant_error: Optional[str] = None,
+    assistant_a2ui: Optional[dict] = None,
+    task_id: Optional[str] = None,
+    session_id: Optional[str] = None,
+    user_email: Optional[str] = None,
+    user_name: Optional[str] = None,
+) -> dict:
+    """Persist one user/assistant chat roundtrip for server-side chat logging.
+
+    This function is intended for backend-authoritative chat logging in REST/WS
+    handlers and async task completion paths.
+    """
+    user_id = sessions_repository.upsert_user_by_sub(
+        auth0_sub=auth_sub,
+        email=user_email or _default_user_email(auth_sub),
+        name=user_name,
+    )
+
+    public_session_id = session_id or auth_sub
+    db_session_id = _resolve_or_create_session_db_id(public_session_id, user_id)
+
+    payloads: list[dict] = [
+        {
+            "message_id": str(uuid.uuid4()),
+            "role": "user",
+            "content": user_content,
+            "status": "complete",
+            "error": None,
+            "a2ui": None,
+            "task_id": task_id,
+        },
+        {
+            "message_id": str(uuid.uuid4()),
+            "role": "assistant",
+            "content": assistant_content,
+            "status": assistant_status,
+            "error": assistant_error,
+            "a2ui": assistant_a2ui,
+            "task_id": task_id,
+        },
+    ]
+
+    sessions_repository.upsert_messages(db_session_id, payloads)
+    return {"success": True, "messages_saved": len(payloads), "session_id": public_session_id}
 
 
 def update_session(

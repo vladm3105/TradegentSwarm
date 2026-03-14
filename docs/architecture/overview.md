@@ -270,6 +270,14 @@ Route handler -> Service -> Repository -> PostgreSQL
 - Session message persistence now wraps `a2ui` payloads as JSONB-compatible values.
 - Settings audit attribution no longer falls back to a synthetic user id.
 
+#### API and UX updates (March 12, 2026)
+
+- Schedules API added explicit enable/disable endpoints: `POST /api/schedules/{id}/enable` and `POST /api/schedules/{id}/disable`.
+- Schedule UI toggles now provide explicit button actions and confirmation toasts.
+- Watchlist API added direct entry creation via `POST /api/watchlist` (used by the Watchlist form dialog).
+- Watchlist entry responses now include enrichment fields used by UI cards, including `last_analysis_at`.
+- Agent chat formatting failures now return deterministic fallback A2UI payloads (tool-result summary) instead of a hard failure response.
+
 #### Validation scope
 
 - Service and route-integration test suite for migrated API slices passed after the refactor and hardening patches.

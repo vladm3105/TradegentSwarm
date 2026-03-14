@@ -8,6 +8,7 @@ interface UIState {
 
   // Chat panel state
   chatPanelOpen: boolean;
+  chatPanelWidth: number;
 
   // Theme
   theme: 'light' | 'dark' | 'system';
@@ -17,6 +18,7 @@ interface UIState {
   toggleSidebar: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   setChatPanelOpen: (open: boolean) => void;
+  setChatPanelWidth: (width: number) => void;
   toggleChatPanel: () => void;
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
 }
@@ -28,6 +30,7 @@ export const useUIStore = create<UIState>()(
       sidebarOpen: true,
       sidebarCollapsed: false,
       chatPanelOpen: false,
+      chatPanelWidth: 320,
       theme: 'system',
 
       // Actions
@@ -35,6 +38,7 @@ export const useUIStore = create<UIState>()(
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
       setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
       setChatPanelOpen: (open) => set({ chatPanelOpen: open }),
+      setChatPanelWidth: (width) => set({ chatPanelWidth: width }),
       toggleChatPanel: () =>
         set((state) => ({ chatPanelOpen: !state.chatPanelOpen })),
       setTheme: (theme) => {
@@ -54,6 +58,7 @@ export const useUIStore = create<UIState>()(
       name: 'tradegent-ui-storage',
       partialize: (state) => ({
         sidebarCollapsed: state.sidebarCollapsed,
+        chatPanelWidth: state.chatPanelWidth,
         theme: state.theme,
       }),
     }

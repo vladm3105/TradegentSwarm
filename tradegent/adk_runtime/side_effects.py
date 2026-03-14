@@ -8,7 +8,9 @@ This module provides replay-safe side-effect primitives used by the coordinator:
 from __future__ import annotations
 
 import json
+import math
 import os
+import hashlib
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -477,7 +479,125 @@ def _is_adk_runtime_payload(payload: dict[str, Any]) -> bool:
         return True
 
     entrypoint = _string_or_default(runtime_context.get("entrypoint"), "").strip()
+    if entrypoint:
+        return True
+
+    # Back-compat: unit/integration paths may pass phase-shaped payloads
+    # without explicit runtime metadata.
+    phase_keys = {"draft", "critique", "repair", "risk_gate", "summarize"}
+    if any(isinstance(payload.get(key), dict) for key in phase_keys):
+        return True
+
+    return False
+
+
+def _is_explicit_adk_runtime_payload(payload: dict[str, Any]) -> bool:
+    """Return True only when runtime metadata explicitly marks ADK execution."""
+    if not isinstance(payload, dict):
+        return False
+    runtime_context = _as_dict(payload.get("_runtime_context"))
+    selected_engine = _string_or_default(runtime_context.get("selected_engine"), "").strip().lower()
+    if selected_engine == "adk":
+        return True
+    entrypoint = _string_or_default(runtime_context.get("entrypoint"), "").strip()
     return bool(entrypoint)
+
+
+def _is_truthy_flag(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return False
+
+
+def _rollout_flag_enabled_for_run(
+    *,
+    env_enabled_key: str,
+    env_percent_key: str,
+    env_hash_key: str,
+    run_id: str,
+    ticker: str,
+) -> bool:
+    enabled_raw = os.getenv(env_enabled_key, "true").strip().lower()
+    if enabled_raw not in {"1", "true", "yes", "on"}:
+        return False
+
+    percent_raw = os.getenv(env_percent_key, "100").strip()
+    percent = 100
+    try:
+        parsed = int(percent_raw)
+        percent = max(0, min(100, parsed))
+    except ValueError:
+        percent = 100
+
+    if percent >= 100:
+        return True
+    if percent <= 0:
+        return False
+
+    hash_key = os.getenv(env_hash_key, "run_id").strip().lower()
+    if hash_key == "ticker":
+        seed = ticker.upper()
+    else:
+        seed = run_id
+
+    digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()
+    bucket = int(digest[:8], 16) % 100
+    return bucket < percent
+
+
+def _should_block_empty_adk_llm_content(payload: dict[str, Any]) -> bool:
+    """Return True when ADK payload should be blocked due to empty phase LLM content."""
+    block_enabled = os.getenv("ADK_EMPTY_LLM_BLOCK_ENABLED", "true").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if not block_enabled:
+        return False
+
+    if not _is_adk_runtime_payload(payload):
+        return False
+
+    runtime_context = _as_dict(payload.get("_runtime_context"))
+    selected_engine = _string_or_default(runtime_context.get("selected_engine"), "").strip().lower()
+    entrypoint = _string_or_default(runtime_context.get("entrypoint"), "").strip()
+
+    # Apply strict empty-LLM blocking only when payload is explicitly tagged as
+    # ADK runtime. Phase-shaped fixture payloads should not be blocked.
+    if selected_engine != "adk" and not entrypoint:
+        return False
+
+    if _has_real_llm_phase_content(payload):
+        return False
+
+    source_mode = _string_or_default(runtime_context.get("source_mode"), "").strip().lower()
+    fallback_mode = _string_or_default(runtime_context.get("fallback_mode"), "").strip().lower()
+    if source_mode in {"manual", "reindex", "replay"}:
+        return False
+    if fallback_mode == "deterministic":
+        return False
+
+    carveout_flags = (
+        payload.get("_deterministic_fallback"),
+        payload.get("_reindex_only"),
+        payload.get("_replay_only"),
+        payload.get("_manual_mode"),
+        payload.get("_allow_empty_llm_content"),
+        runtime_context.get("deterministic_fallback"),
+        runtime_context.get("reindex_only"),
+        runtime_context.get("replay_only"),
+        runtime_context.get("manual_mode"),
+        runtime_context.get("allow_empty_llm_content"),
+    )
+    if any(_is_truthy_flag(flag) for flag in carveout_flags):
+        return False
+
+    return True
 
 
 def _contains_placeholder_language(text: Any) -> bool:
@@ -1014,7 +1134,7 @@ def _build_stock_analysis_document(
     rec_confidence = int(
         _number_or_default(
             recommendation.get("confidence"),
-            _number_or_default(latest_recommendation.get("confidence"), 60),
+            _number_or_default(gate_override.get("confidence_actual"), 50),
         )
     )
 
@@ -1368,6 +1488,51 @@ def _build_stock_analysis_document(
         max_deviation_pct=max_key_level_deviation_pct,
     )
 
+    confidence_threshold = 60
+    ev_threshold = 5.0
+    rr_threshold = 2.0
+
+    ev_actual = _number_or_default(gate_override.get("ev_actual"), float("nan"))
+    if math.isnan(ev_actual):
+        ev_actual = _number_or_default(scenarios_payload.get("expected_value"), float("nan"))
+    if math.isnan(ev_actual):
+        ev_actual = 0.0
+
+    rr_actual = _number_or_default(gate_override.get("rr_actual"), float("nan"))
+    if math.isnan(rr_actual):
+        reward = target_level - entry_level
+        risk = entry_level - stop_level
+        if risk > 0:
+            rr_actual = reward / risk
+    if math.isnan(rr_actual):
+        rr_actual = 0.0
+
+    confidence_actual = int(_number_or_default(gate_override.get("confidence_actual"), rec_confidence))
+    confidence_passes = confidence_actual >= confidence_threshold
+    ev_passes = ev_actual >= ev_threshold
+    rr_passes = rr_actual >= rr_threshold
+
+    edge_exists_override = gate_override.get("edge_exists")
+    if isinstance(edge_exists_override, bool):
+        edge_exists = edge_exists_override
+    else:
+        edge_exists = ev_passes or rr_passes
+
+    gates_passed = (
+        1 if ev_passes else 0
+    ) + (
+        1 if confidence_passes else 0
+    ) + (
+        1 if rr_passes else 0
+    ) + (
+        1 if edge_exists else 0
+    )
+    if gate_override.get("gates_passed") is not None:
+        gates_passed = int(_number_or_default(gate_override.get("gates_passed"), gates_passed))
+
+    default_gate_result = "PASS" if gates_passed >= 4 else "MARGINAL" if gates_passed == 3 else "FAIL"
+    gate_result = _string_or_default(gate_override.get("gate_result"), default_gate_result)
+
     return {
         "_meta": {
             "id": f"{ticker.upper()}_{now.strftime('%Y%m%dT%H%M')}",
@@ -1410,13 +1575,22 @@ def _build_stock_analysis_document(
         },
         "bias_check": bias_check,
         "do_nothing_gate": {
-            "ev_threshold": 5.0,
-            "confidence_threshold": 60,
-            "rr_threshold": 2.0,
-            "gates_passed": int(_number_or_default(gate_override.get("gates_passed"), 3)),
-            "gate_result": _string_or_default(gate_override.get("gate_result"), "MARGINAL"),
-            "confidence_actual": 60,
-            "confidence_passes": True,
+            "ev_threshold": ev_threshold,
+            "ev_actual": round(ev_actual, 2),
+            "ev_passes": ev_passes,
+            "confidence_threshold": confidence_threshold,
+            "confidence_actual": confidence_actual,
+            "confidence_passes": confidence_passes,
+            "rr_threshold": rr_threshold,
+            "rr_actual": round(rr_actual, 2),
+            "rr_passes": rr_passes,
+            "edge_exists": edge_exists,
+            "edge_description": _string_or_default(
+                gate_override.get("edge_description"),
+                "Derived from EV/R:R/confluence checks in ADK side-effects synthesis.",
+            ),
+            "gates_passed": gates_passed,
+            "gate_result": gate_result,
         },
         "falsification": falsification,
         "recommendation": {"action": rec_action, "confidence": rec_confidence},
@@ -1540,7 +1714,19 @@ def _build_earnings_analysis_document(
     ]
 
     overrides = _collect_payload_overrides(payload)
-    current_price = _number_or_default(overrides.get("current_price"), 0.0)
+    runtime_context = _as_dict(overrides.get("_runtime_context"))
+    runtime_market_data = _as_dict(runtime_context.get("market_data"))
+    latest_doc = _extract_latest_document(runtime_context)
+
+    current_price = _number_or_default(runtime_market_data.get("current_price"), 0.0)
+    if current_price <= 0:
+        current_price = _number_or_default(overrides.get("current_price"), 0.0)
+    if current_price <= 0:
+        setup = _as_dict(overrides.get("setup"))
+        current_price = _number_or_default(setup.get("current_price"), 0.0)
+    if current_price <= 0:
+        current_price = _number_or_default(latest_doc.get("current_price"), 0.0)
+
     earnings_time = _string_or_default(overrides.get("earnings_time"), "AMC")
     days_to_earnings = int(_number_or_default(overrides.get("days_to_earnings"), 0))
     decision_override = _as_dict(overrides.get("decision"))
@@ -1556,6 +1742,67 @@ def _build_earnings_analysis_document(
     probability_adjustments = _as_dict(probability_override.get("adjustments"))
     final_probability = _as_dict(probability_override.get("final_probability"))
     summary_text = _string_or_default(summary_override.get("narrative"), summary_narrative)
+
+    confidence_threshold = 60
+    ev_threshold = 5.0
+    rr_threshold = 2.0
+
+    decision_confidence_raw = _number_or_default(decision_override.get("confidence_pct"), float("nan"))
+    if math.isnan(decision_confidence_raw) or decision_confidence_raw <= 0:
+        decision_confidence = int(_number_or_default(probability_override.get("confidence_pct"), 50))
+    else:
+        decision_confidence = int(decision_confidence_raw)
+
+    confidence_actual = int(_number_or_default(gate_override.get("confidence_actual"), decision_confidence))
+
+    ev_actual = _number_or_default(gate_override.get("ev_actual"), float("nan"))
+    if math.isnan(ev_actual):
+        ev_actual = _number_or_default(scenarios_override.get("expected_value"), 0.0)
+
+    rr_actual = _number_or_default(gate_override.get("rr_actual"), float("nan"))
+    if math.isnan(rr_actual):
+        summary_levels = _as_dict(summary_override.get("key_levels"))
+        entry_level = _number_or_default(summary_levels.get("entry"), 0.0)
+        stop_level = _number_or_default(summary_levels.get("stop"), 0.0)
+        target_level = _number_or_default(summary_levels.get("target_1"), 0.0)
+        if entry_level <= 0 or stop_level <= 0 or target_level <= 0:
+            latest_summary = _as_dict(latest_doc.get("summary"))
+            latest_levels = _as_dict(latest_summary.get("key_levels"))
+            entry_level = _number_or_default(latest_levels.get("entry"), entry_level)
+            stop_level = _number_or_default(latest_levels.get("stop"), stop_level)
+            target_level = _number_or_default(latest_levels.get("target_1"), target_level)
+
+        reward = target_level - entry_level
+        risk = entry_level - stop_level
+        if risk > 0:
+            rr_actual = reward / risk
+    if math.isnan(rr_actual):
+        rr_actual = 0.0
+
+    confidence_passes = confidence_actual >= confidence_threshold
+    ev_passes = ev_actual >= ev_threshold
+    rr_passes = rr_actual >= rr_threshold
+
+    edge_exists_override = gate_override.get("edge_exists")
+    if isinstance(edge_exists_override, bool):
+        edge_exists = edge_exists_override
+    else:
+        edge_exists = ev_passes or rr_passes
+
+    gates_passed = (
+        1 if ev_passes else 0
+    ) + (
+        1 if confidence_passes else 0
+    ) + (
+        1 if rr_passes else 0
+    ) + (
+        1 if edge_exists else 0
+    )
+    if gate_override.get("gates_passed") is not None:
+        gates_passed = int(_number_or_default(gate_override.get("gates_passed"), gates_passed))
+
+    default_gate_result = "PASS" if gates_passed >= 4 else "MARGINAL" if gates_passed == 3 else "FAIL"
+    gate_result = _string_or_default(gate_override.get("gate_result"), default_gate_result)
 
     def _scenario_payload(name: str, default_probability: float, default_move: float) -> dict[str, Any]:
         raw = scenarios_override.get(name)
@@ -1774,7 +2021,7 @@ def _build_earnings_analysis_document(
                 ),
             },
             "confidence": _string_or_default(probability_override.get("confidence"), "medium"),
-            "confidence_pct": int(_number_or_default(probability_override.get("confidence_pct"), 60)),
+            "confidence_pct": int(_number_or_default(probability_override.get("confidence_pct"), confidence_actual)),
         },
         "bull_case_analysis": {
             "strength": int(_number_or_default(bull_override.get("strength"), 6)),
@@ -1883,20 +2130,26 @@ def _build_earnings_analysis_document(
             "scoring_table": "Placeholder scoring table",
         },
         "do_nothing_gate": {
-            "ev_threshold": 5.0,
-            "ev_actual": _number_or_default(gate_override.get("ev_actual"), 5.0),
-            "ev_passes": True,
-            "confidence_threshold": 60,
-            "confidence_actual": int(_number_or_default(gate_override.get("confidence_actual"), 60)),
-            "confidence_passes": True,
-            "rr_threshold": 2.0,
-            "rr_actual": _number_or_default(gate_override.get("rr_actual"), 2.0),
-            "rr_passes": True,
-            "edge_exists": True,
-            "edge_description": "Placeholder edge pending full data integration",
-            "gates_passed": int(_number_or_default(gate_override.get("gates_passed"), 3)),
-            "gate_result": _string_or_default(gate_override.get("gate_result"), "PASS"),
-            "gate_reasoning": "Placeholder pass state while migration scaffolding is active.",
+            "ev_threshold": ev_threshold,
+            "ev_actual": round(ev_actual, 2),
+            "ev_passes": ev_passes,
+            "confidence_threshold": confidence_threshold,
+            "confidence_actual": confidence_actual,
+            "confidence_passes": confidence_passes,
+            "rr_threshold": rr_threshold,
+            "rr_actual": round(rr_actual, 2),
+            "rr_passes": rr_passes,
+            "edge_exists": edge_exists,
+            "edge_description": _string_or_default(
+                gate_override.get("edge_description"),
+                "Derived from EV/R:R/confluence checks in ADK side-effects synthesis.",
+            ),
+            "gates_passed": gates_passed,
+            "gate_result": gate_result,
+            "gate_reasoning": _string_or_default(
+                gate_override.get("gate_reasoning"),
+                "Computed from normalized earnings gate thresholds and pass flags.",
+            ),
         },
         "falsification": {
             "beat_thesis_wrong_if": ["Guidance deteriorates", "Key metric misses"],
@@ -1930,7 +2183,7 @@ def _build_earnings_analysis_document(
         },
         "decision": {
             "recommendation": _string_or_default(decision_override.get("recommendation"), "NEUTRAL"),
-            "confidence_pct": int(_number_or_default(decision_override.get("confidence_pct"), 60)),
+            "confidence_pct": confidence_actual,
             "rationale": _string_or_default(
                 decision_override.get("rationale"),
                 "Placeholder rationale pending full ADK data context integration.",
@@ -2189,30 +2442,20 @@ def _build_scanner_run_document(
             "universe_size": int(_number_or_default(summary_override.get("universe_size"), 0)),
             "passed_quality_filters": int(_number_or_default(summary_override.get("passed_quality_filters"), 0)),
             "passed_liquidity_filters": int(_number_or_default(summary_override.get("passed_liquidity_filters"), 0)),
-            "scored_candidates": int(_number_or_default(summary_override.get("scored_candidates"), 1)),
+            "scored_candidates": int(_number_or_default(summary_override.get("scored_candidates"), 0)),
             "high_score_count": int(_number_or_default(summary_override.get("high_score_count"), 0)),
-            "watchlist_count": int(_number_or_default(summary_override.get("watchlist_count"), 1)),
+            "watchlist_count": int(_number_or_default(summary_override.get("watchlist_count"), 0)),
             "skipped_count": int(_number_or_default(summary_override.get("skipped_count"), 0)),
         },
-        "candidates": overrides.get(
-            "candidates",
-            [
-                {
-                    "ticker": ticker.upper(),
-                    "score": 6.5,
-                    "action": "WATCHLIST",
-                    "analysis_type": "stock",
-                    "scoring": [{"criterion": "placeholder", "score": 6.5, "weight": 1.0, "weighted": 6.5}],
-                    "key_data": {"price": 0.0, "volume_vs_avg": 0.0, "gap_pct": 0.0, "catalyst": ""},
-                    "rationale": "Placeholder candidate from ADK scan migration path.",
-                }
-            ],
-        ),
+        # NOTE: When no real candidates are provided by ADK, emit an empty list.
+        # Using the scanner_code as a ticker in a placeholder entry caused auto-analyze
+        # to attempt analysis of the scanner name (e.g. HIGH_OPT_IMP_VOLAT) as a stock.
+        "candidates": overrides.get("candidates", []),
         "actions_taken": overrides.get(
             "actions_taken",
             {
                 "full_analyses_triggered": [],
-                "watchlist_entries_created": [{"ticker": ticker.upper(), "priority": "medium"}],
+                "watchlist_entries_created": [],
                 "skipped": [],
             },
         ),
@@ -2243,6 +2486,13 @@ def write_analysis_yaml(
     ts = datetime.now().strftime("%Y%m%dT%H%M")
     out_dir = _output_dir_for_skill(skill_name=skill_name, analysis_type=analysis_type)
     out_dir.mkdir(parents=True, exist_ok=True)
+    conf_gate_fix_enabled = _rollout_flag_enabled_for_run(
+        env_enabled_key="ADK_CONF_GATE_FIX_ENABLED",
+        env_percent_key="ADK_CONF_GATE_FIX_ROLLOUT_PERCENT",
+        env_hash_key="ADK_CONF_GATE_FIX_HASH_KEY",
+        run_id=run_id,
+        ticker=ticker,
+    )
     if (skill_name or "").strip().lower() == "scan":
         doc = _build_scanner_run_document(
             run_id=run_id,
@@ -2274,7 +2524,37 @@ def write_analysis_yaml(
                 payload=payload,
             )
 
-            if enforce_stock_quality_gate or _has_real_llm_phase_content(payload) or _is_adk_runtime_payload(payload):
+            adk_runtime = _as_dict(doc.get("adk_runtime"))
+            adk_runtime["conf_gate_fix_enabled"] = conf_gate_fix_enabled
+            adk_runtime["conf_gate_fix_rollout_hash_key"] = os.getenv(
+                "ADK_CONF_GATE_FIX_HASH_KEY", "run_id"
+            ).strip()
+            doc["adk_runtime"] = adk_runtime
+
+            if conf_gate_fix_enabled and _should_block_empty_adk_llm_content(payload):
+                quality_issues = ["adk payload has empty phase llm.content for all phases"]
+                declined_path = _persist_declined_analysis(
+                    out_path=out_path,
+                    doc=doc,
+                    reason="empty_adk_llm_content",
+                    quality_issues=quality_issues,
+                    reason_codes=["empty_adk_llm_content"],
+                )
+                return {
+                    "success": False,
+                    "status": "blocked_quality",
+                    "error": "ADK payload missing LLM content",
+                    "quality_issues": quality_issues,
+                    "reason_codes": ["empty_adk_llm_content"],
+                    "declined_file_path": str(declined_path),
+                    "declined_relative_path": str(declined_path.relative_to(_REPO_ROOT)),
+                }
+
+            if (
+                enforce_stock_quality_gate
+                or _has_real_llm_phase_content(payload)
+                or _is_explicit_adk_runtime_payload(payload)
+            ):
                 quality_issues = _stock_quality_issues(doc)
                 if quality_issues:
                     declined_path = _persist_declined_analysis(
@@ -2294,7 +2574,7 @@ def write_analysis_yaml(
                         "declined_relative_path": str(declined_path.relative_to(_REPO_ROOT)),
                     }
 
-            market_gate_enabled = os.getenv("ADK_MARKET_DATA_GATES_ENABLED", "true").strip().lower() in {
+            market_gate_enabled = os.getenv("ADK_MARKET_DATA_GATES_ENABLED", "false").strip().lower() in {
                 "1",
                 "true",
                 "yes",
@@ -2353,6 +2633,32 @@ def write_analysis_yaml(
                 skill_name=skill_name,
                 payload=payload,
             )
+
+            adk_runtime = _as_dict(doc.get("adk_runtime"))
+            adk_runtime["conf_gate_fix_enabled"] = conf_gate_fix_enabled
+            adk_runtime["conf_gate_fix_rollout_hash_key"] = os.getenv(
+                "ADK_CONF_GATE_FIX_HASH_KEY", "run_id"
+            ).strip()
+            doc["adk_runtime"] = adk_runtime
+
+            if conf_gate_fix_enabled and _should_block_empty_adk_llm_content(payload):
+                quality_issues = ["adk payload has empty phase llm.content for all phases"]
+                declined_path = _persist_declined_analysis(
+                    out_path=out_path,
+                    doc=doc,
+                    reason="empty_adk_llm_content",
+                    quality_issues=quality_issues,
+                    reason_codes=["empty_adk_llm_content"],
+                )
+                return {
+                    "success": False,
+                    "status": "blocked_quality",
+                    "error": "ADK payload missing LLM content",
+                    "quality_issues": quality_issues,
+                    "reason_codes": ["empty_adk_llm_content"],
+                    "declined_file_path": str(declined_path),
+                    "declined_relative_path": str(declined_path.relative_to(_REPO_ROOT)),
+                }
 
     out_path.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
     return {"success": True, "file_path": str(out_path), "relative_path": str(out_path.relative_to(_REPO_ROOT))}

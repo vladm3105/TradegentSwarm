@@ -54,8 +54,12 @@ npm install
 # Start development server (port 3001)
 npm run dev
 
-# Open http://localhost:3001
+# Open http://debian:3001 (or http://localhost:3001)
 ```
+
+Note:
+- Dev and start scripts bind to `0.0.0.0` by default.
+- In multi-host setups, use the same DNS host for login/callback flows (for example, `debian`) to avoid cookie-domain mismatches.
 
 ### Built-in Accounts
 
@@ -98,6 +102,7 @@ frontend/
 │       ├── watchlist/      # Watchlist tracking
 │       ├── charts/         # Performance charts
 │       ├── scanner/        # Market scanners
+│       ├── schedules/      # Schedule management + history
 │       ├── knowledge/      # Knowledge base
 │       └── settings/       # User settings
 ├── components/
@@ -154,14 +159,20 @@ NEXT_PUBLIC_AUTH0_CONFIGURED=false
 | Route | Page | Description |
 |-------|------|-------------|
 | `/` | Dashboard | Portfolio overview, P&L summary, quick actions |
-| `/analysis` | Analysis | View and manage stock analyses |
+| `/analysis` | Analysis | View and manage stock analyses with date+time timestamps |
 | `/trades` | Trade Journal | Trade history and journal entries |
 | `/watchlist` | Watchlist | Active watchlist with triggers |
 | `/charts` | Charts | Performance analytics and Grafana |
-| `/scanner` | Scanner | Market scanners and opportunities |
+| `/scanner` | Scanner | Market scanners, run history, and opportunities |
+| `/schedules` | Schedules | Create/edit schedules, enable/disable, and run now |
+| `/schedules/history` | Schedule History | View recent execution history by schedule |
 | `/knowledge` | Knowledge | RAG search and knowledge base |
 | `/settings` | Settings | User preferences and system config |
 | `/login` | Login | Authentication page |
+
+Notes:
+- The Analysis table Date column renders full timestamp (date and time) to distinguish multiple reports created on the same day.
+- Scanner result rendering expects a non-null `scanner_code`; backend responses now normalize this from stored run metadata.
 
 ## A2UI Components
 
@@ -200,8 +211,10 @@ Trading-specific components rendered by the agent chat:
 | `Alt+4` | Watchlist |
 | `Alt+5` | Charts |
 | `Alt+6` | Scanner |
-| `Alt+7` | Knowledge |
-| `Alt+8` | Settings |
+| `Alt+7` | Schedules |
+| `Alt+8` | Schedule History |
+| `Alt+9` | Knowledge |
+| `Alt+0` | Settings |
 
 ## Docker
 

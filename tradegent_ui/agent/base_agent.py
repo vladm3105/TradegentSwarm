@@ -1,4 +1,5 @@
 """Base agent class with MCP integration."""
+import json
 import os
 import time
 import structlog
@@ -511,7 +512,81 @@ class BaseAgent(ABC):
                 error_type=type(e).__name__,
                 duration_ms=round(duration_ms, 2),
             )
-            raise
+            return self._build_fallback_a2ui(query, tool_results, str(e))
+
+    def _build_fallback_a2ui(
+        self,
+        query: str,
+        tool_results: dict[str, Any],
+        error: str,
+    ) -> dict[str, Any]:
+        """Build a deterministic fallback A2UI payload when LLM formatting fails."""
+        lines: list[str] = [
+            "AI formatting is temporarily unavailable. Showing direct tool results.",
+            f"Agent: {self.agent_type}",
+            f"Query: {query}",
+            "",
+        ]
+
+        for name, result in tool_results.items():
+            lines.append(f"{name}:")
+            lines.append(self._summarize_tool_result(result))
+            lines.append("")
+
+        lines.append(f"Formatting error: {error}")
+        text = "\n".join(lines).strip()
+
+        return {
+            "type": "a2ui",
+            "text": text,
+            "components": [
+                {
+                    "type": "TextCard",
+                    "props": {
+                        "title": f"{self.agent_type.title()} Response (Fallback)",
+                        "content": text,
+                    },
+                }
+            ],
+        }
+
+    @staticmethod
+    def _summarize_tool_result(result: Any) -> str:
+        """Create a concise, deterministic text summary for tool results."""
+        if result is None:
+            return "  (no result)"
+
+        if isinstance(result, str):
+            snippet = result.strip()
+            if len(snippet) > 600:
+                snippet = snippet[:600] + "..."
+            return f"  {snippet}" if snippet else "  (empty string)"
+
+        if isinstance(result, (int, float, bool)):
+            return f"  {result}"
+
+        if isinstance(result, list):
+            preview = result[:5]
+            encoded = json.dumps(preview, default=str, ensure_ascii=True, indent=2)
+            suffix = "\n  ..." if len(result) > 5 else ""
+            return f"  list[{len(result)}]:\n{encoded}{suffix}"
+
+        if isinstance(result, dict):
+            # Limit large nested payloads while preserving key visibility.
+            limited: dict[str, Any] = {}
+            for idx, key in enumerate(result.keys()):
+                if idx >= 10:
+                    limited["..."] = "truncated"
+                    break
+                value = result[key]
+                if isinstance(value, (list, dict)):
+                    limited[key] = f"<{type(value).__name__}>"
+                else:
+                    limited[key] = value
+            encoded = json.dumps(limited, default=str, ensure_ascii=True, indent=2)
+            return f"  dict:\n{encoded}"
+
+        return f"  {str(result)}"
 
     def get_available_tools(self) -> list[str]:
         """Get list of available tool names.

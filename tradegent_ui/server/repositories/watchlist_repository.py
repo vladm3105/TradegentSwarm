@@ -103,6 +103,50 @@ def create_watchlist(name: str, description: str | None, color: str | None, is_p
     return result
 
 
+def create_watchlist_entry(data: dict[str, Any]) -> dict[str, Any] | None:
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO nexus.watchlist (
+                    watchlist_id,
+                    ticker,
+                    entry_trigger,
+                    entry_price,
+                    invalidation,
+                    invalidation_price,
+                    expires_at,
+                    priority,
+                    status,
+                    source,
+                    source_analysis,
+                    notes
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'active', %s, %s, %s)
+                RETURNING id
+                """,
+                (
+                    data.get("watchlist_id"),
+                    data["ticker"],
+                    data["entry_trigger"],
+                    data.get("entry_price"),
+                    data.get("invalidation"),
+                    data.get("invalidation_price"),
+                    data.get("expires_at"),
+                    data.get("priority", "medium"),
+                    data.get("source"),
+                    data.get("source_analysis"),
+                    data.get("notes"),
+                ),
+            )
+            inserted = cur.fetchone()
+        conn.commit()
+
+    if not inserted:
+        return None
+    return get_watchlist_entry(int(inserted["id"]))
+
+
 def update_watchlist(watchlist_id: int, updates: dict[str, Any]) -> dict[str, Any] | None:
     if not updates:
         return None
@@ -221,6 +265,11 @@ def list_watchlist_entries(
                     w.source_analysis,
                     w.notes,
                     w.created_at,
+                    COALESCE(
+                        GREATEST(stock_last.last_stock_analysis_at, earnings_last.last_earnings_analysis_at),
+                        stock_last.last_stock_analysis_at,
+                        earnings_last.last_earnings_analysis_at
+                    ) AS last_analysis_at,
                     CASE
                         WHEN w.expires_at IS NOT NULL THEN
                             EXTRACT(DAY FROM w.expires_at - CURRENT_TIMESTAMP)::int
@@ -228,6 +277,16 @@ def list_watchlist_entries(
                     END as days_until_expiry
                 FROM nexus.watchlist w
                 LEFT JOIN nexus.watchlists wl ON wl.id = w.watchlist_id
+                LEFT JOIN LATERAL (
+                    SELECT MAX(sa.analysis_date) AS last_stock_analysis_at
+                    FROM nexus.kb_stock_analyses sa
+                    WHERE sa.ticker = w.ticker
+                ) stock_last ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT MAX(ea.analysis_date) AS last_earnings_analysis_at
+                    FROM nexus.kb_earnings_analyses ea
+                    WHERE ea.ticker = w.ticker
+                ) earnings_last ON TRUE
                 {where_clause}
                 ORDER BY
                     CASE w.priority
@@ -302,6 +361,11 @@ def get_watchlist_entry(entry_id: int) -> dict[str, Any] | None:
                     w.source_analysis,
                     w.notes,
                     w.created_at,
+                    COALESCE(
+                        GREATEST(stock_last.last_stock_analysis_at, earnings_last.last_earnings_analysis_at),
+                        stock_last.last_stock_analysis_at,
+                        earnings_last.last_earnings_analysis_at
+                    ) AS last_analysis_at,
                     CASE
                         WHEN w.expires_at IS NOT NULL THEN
                             EXTRACT(DAY FROM w.expires_at - CURRENT_TIMESTAMP)::int
@@ -309,6 +373,16 @@ def get_watchlist_entry(entry_id: int) -> dict[str, Any] | None:
                     END as days_until_expiry
                 FROM nexus.watchlist w
                 LEFT JOIN nexus.watchlists wl ON wl.id = w.watchlist_id
+                LEFT JOIN LATERAL (
+                    SELECT MAX(sa.analysis_date) AS last_stock_analysis_at
+                    FROM nexus.kb_stock_analyses sa
+                    WHERE sa.ticker = w.ticker
+                ) stock_last ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT MAX(ea.analysis_date) AS last_earnings_analysis_at
+                    FROM nexus.kb_earnings_analyses ea
+                    WHERE ea.ticker = w.ticker
+                ) earnings_last ON TRUE
                 WHERE w.id = %s
                 """,
                 (entry_id,),

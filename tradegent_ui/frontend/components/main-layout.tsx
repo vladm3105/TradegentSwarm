@@ -15,7 +15,7 @@ interface MainLayoutProps {
 
 export function MainLayout({ children }: MainLayoutProps) {
   const pathname = usePathname();
-  const { sidebarCollapsed, chatPanelOpen } = useUIStore();
+  const { sidebarCollapsed, chatPanelOpen, chatPanelWidth } = useUIStore();
   const isAuthRoute = pathname === '/login' || pathname.startsWith('/verify-email');
 
   // Enable keyboard shortcuts
@@ -38,9 +38,9 @@ export function MainLayout({ children }: MainLayoutProps) {
       <main
         className={cn(
           'min-h-screen pt-16 transition-all duration-300',
-          sidebarCollapsed ? 'pl-16' : 'pl-64',
-          chatPanelOpen && 'pr-80'
+          sidebarCollapsed ? 'pl-16' : 'pl-64'
         )}
+        style={{ paddingRight: chatPanelOpen ? `${chatPanelWidth}px` : undefined }}
       >
         {children}
       </main>

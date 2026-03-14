@@ -21,6 +21,111 @@ class PortfolioAgent(BaseAgent):
     def __init__(self):
         super().__init__("portfolio")
 
+    @staticmethod
+    def _safe_number(value) -> float | None:
+        try:
+            if value is None:
+                return None
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _safe_string(value) -> str:
+        if value is None:
+            return ""
+        return str(value)
+
+    @staticmethod
+    def _as_list(value) -> list:
+        if isinstance(value, list):
+            return value
+        if isinstance(value, dict):
+            for key in ("positions", "items", "data", "result"):
+                nested = value.get(key)
+                if isinstance(nested, list):
+                    return nested
+        return []
+
+    def _build_portfolio_fallback(self, tool_results: dict, formatting_error: str) -> dict:
+        """Build deterministic portfolio response when LLM formatting is unavailable."""
+        lines: list[str] = [
+            "AI formatting is temporarily unavailable. Showing a direct portfolio summary.",
+        ]
+
+        pnl_data = tool_results.get("pnl")
+        if isinstance(pnl_data, dict):
+            total = self._safe_number(
+                pnl_data.get("total_pnl")
+                or pnl_data.get("totalPnL")
+                or pnl_data.get("unrealized_pnl")
+                or pnl_data.get("unrealizedPnL")
+            )
+            daily = self._safe_number(pnl_data.get("daily_pnl") or pnl_data.get("dailyPnL"))
+
+            pnl_bits: list[str] = []
+            if total is not None:
+                pnl_bits.append(f"Total P&L: {total:,.2f}")
+            if daily is not None:
+                pnl_bits.append(f"Daily P&L: {daily:,.2f}")
+            if pnl_bits:
+                lines.append(" | ".join(pnl_bits))
+
+        positions_data = tool_results.get("positions")
+        positions = self._as_list(positions_data)
+        if positions:
+            lines.append(f"Open positions: {len(positions)}")
+            for pos in positions[:8]:
+                if not isinstance(pos, dict):
+                    continue
+                ticker = self._safe_string(pos.get("ticker") or pos.get("symbol") or pos.get("contract")) or "UNKNOWN"
+                qty = pos.get("position") or pos.get("quantity") or pos.get("qty") or pos.get("size")
+                current_price = self._safe_number(pos.get("current_price") or pos.get("marketPrice") or pos.get("last_price"))
+                unrealized = self._safe_number(pos.get("unrealized_pnl") or pos.get("unrealizedPnL") or pos.get("pnl"))
+
+                row_bits = [ticker]
+                if qty is not None:
+                    row_bits.append(f"qty {qty}")
+                if current_price is not None:
+                    row_bits.append(f"px {current_price:,.2f}")
+                if unrealized is not None:
+                    row_bits.append(f"uPnL {unrealized:,.2f}")
+                lines.append("- " + ", ".join(row_bits))
+        elif "positions" in tool_results:
+            lines.append("Open positions: none")
+
+        account_data = tool_results.get("account")
+        if isinstance(account_data, dict):
+            net_liq = self._safe_number(account_data.get("net_liquidation") or account_data.get("netLiquidation"))
+            buying_power = self._safe_number(account_data.get("buying_power") or account_data.get("buyingPower"))
+            account_bits: list[str] = []
+            if net_liq is not None:
+                account_bits.append(f"Net liq: {net_liq:,.2f}")
+            if buying_power is not None:
+                account_bits.append(f"Buying power: {buying_power:,.2f}")
+            if account_bits:
+                lines.append(" | ".join(account_bits))
+
+        if len(lines) == 1:
+            lines.append("Portfolio data was retrieved, but no structured fields were available to render.")
+
+        lines.append(f"Formatting error: {formatting_error}")
+
+        text = "\n".join(lines)
+        return {
+            "type": "a2ui",
+            "text": text,
+            "components": [
+                {
+                    "type": "TextCard",
+                    "props": {
+                        "title": "Portfolio Summary (Fallback)",
+                        "content": text,
+                    },
+                }
+            ],
+        }
+
     async def process(
         self,
         query: str,
@@ -145,9 +250,10 @@ class PortfolioAgent(BaseAgent):
             )
         except Exception as e:
             log.error("Failed to generate portfolio response", error=str(e))
+            fallback_a2ui = self._build_portfolio_fallback(tool_results, str(e))
             return AgentResponse(
-                success=False,
-                text=f"Portfolio data retrieved but failed to format: {e}",
+                success=True,
+                text=fallback_a2ui.get("text", ""),
+                a2ui=fallback_a2ui,
                 tool_results=tool_results,
-                error=str(e),
             )

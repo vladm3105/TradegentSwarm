@@ -2,6 +2,7 @@
 
 import logging
 from typing import Any, Optional
+from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -49,6 +50,21 @@ class UpdateWatchlistRequest(BaseModel):
     is_pinned: Optional[bool] = None
 
 
+class CreateWatchlistEntryRequest(BaseModel):
+    """Create a watchlist entry."""
+    watchlist_id: Optional[int] = Field(default=None, ge=1)
+    ticker: str = Field(min_length=1, max_length=10)
+    entry_trigger: str = Field(min_length=1)
+    entry_price: Optional[float] = None
+    invalidation: Optional[str] = None
+    invalidation_price: Optional[float] = None
+    expires_at: Optional[datetime] = None
+    priority: str = Field(default="medium", pattern="^(high|medium|low)$")
+    source: Optional[str] = None
+    source_analysis: Optional[str] = None
+    notes: Optional[str] = None
+
+
 class WatchlistEntry(BaseModel):
     """Watchlist entry summary."""
     id: int
@@ -68,6 +84,7 @@ class WatchlistEntry(BaseModel):
     source_analysis: Optional[str] = None
     notes: Optional[str] = None
     created_at: str
+    last_analysis_at: Optional[str] = None
     days_until_expiry: Optional[int] = None
 
 
@@ -126,6 +143,7 @@ def serialize_entry(row: dict[str, Any]) -> WatchlistEntry:
         source_analysis=row["source_analysis"],
         notes=row["notes"],
         created_at=row["created_at"].isoformat() if row["created_at"] else "",
+        last_analysis_at=row["last_analysis_at"].isoformat() if row.get("last_analysis_at") else None,
         days_until_expiry=row["days_until_expiry"],
     )
 
@@ -184,6 +202,31 @@ async def delete_watchlist(watchlist_id: int):
         raise
     except Exception as e:
         log.error(f"Failed to delete watchlist {watchlist_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/watchlist", response_model=WatchlistEntry)
+async def create_watchlist_entry(payload: CreateWatchlistEntryRequest):
+    """Create a watchlist entry."""
+    try:
+        row = watchlist_service.create_watchlist_entry(
+            watchlist_id=payload.watchlist_id,
+            ticker=payload.ticker,
+            entry_trigger=payload.entry_trigger,
+            entry_price=payload.entry_price,
+            invalidation=payload.invalidation,
+            invalidation_price=payload.invalidation_price,
+            expires_at=payload.expires_at,
+            priority=payload.priority,
+            source=payload.source,
+            source_analysis=payload.source_analysis,
+            notes=payload.notes,
+        )
+        return serialize_entry(row)
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error(f"Failed to create watchlist entry: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

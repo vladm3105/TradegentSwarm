@@ -154,6 +154,21 @@ function resolveDefaultAccessByEmail(email?: string | null): {
   return { roles: ['trader'], permissions: TRADER_PERMISSIONS };
 }
 
+function getSafeCallbackPath(raw: string | null): string {
+  if (!raw) {
+    return '/';
+  }
+
+  const decoded = decodeURIComponent(raw);
+
+  // Only allow same-origin relative paths to prevent open redirects.
+  if (decoded.startsWith('/') && !decoded.startsWith('//')) {
+    return decoded;
+  }
+
+  return '/';
+}
+
 /**
  * Refresh an expired access token using Auth0
  */
@@ -279,7 +294,8 @@ export const authConfig: NextAuthConfig = {
       // Allow login and verify-email pages
       if (isOnLogin || isOnVerifyEmail) {
         if (isLoggedIn && !isOnVerifyEmail) {
-          return Response.redirect(new URL('/', nextUrl));
+          const callbackPath = getSafeCallbackPath(nextUrl.searchParams.get('callbackUrl'));
+          return Response.redirect(new URL(callbackPath, nextUrl));
         }
         return true;
       }

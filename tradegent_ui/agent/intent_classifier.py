@@ -30,6 +30,11 @@ INTENT_PATTERNS: dict[Intent, list[str]] = {
         "do nothing gate",
         "expected value",
         "recommendation",
+        "recomendation",
+        "recommendations",
+        "consensus",
+        "average recommendation",
+        "average recomendation",
     ],
     Intent.TRADE: [
         "buy",
@@ -90,11 +95,38 @@ INTENT_PATTERNS: dict[Intent, list[str]] = {
         "version",
         "connected",
         "restart",
+        "hello",
+        "hi",
+        "hey",
+        "how are you",
+        "date",
+        "time",
+        "today",
+        "how many",
+        "report",
+        "reports",
+        "database",
+        "analyses",
+        "count",
+        "do you have",
+        "automation",
+        "trading mode",
+        "pause trading",
+        "resume trading",
+        "dry run",
+        "paper mode",
+        "live mode",
+        "schedule",
+        "schedules",
+        "enable schedule",
+        "disable schedule",
+        "run schedule",
     ],
 }
 
-# Ticker pattern: 1-5 uppercase letters
-TICKER_PATTERN = re.compile(r"\b([A-Z]{1,5})\b")
+# Ticker-like token pattern (case-insensitive). Final filtering is applied in
+# extract_tickers to reduce false positives in plain chat messages.
+TICKER_PATTERN = re.compile(r"\b([A-Za-z]{1,5})\b")
 
 # Common words to exclude from ticker detection
 TICKER_EXCLUSIONS = {
@@ -176,13 +208,112 @@ def extract_tickers(query: str) -> list[str]:
         List of potential tickers (deduplicated, ordered by appearance)
     """
     matches = TICKER_PATTERN.findall(query)
+    query_lower = query.lower()
+    analysis_context = any(
+        kw in query_lower
+        for kw in (
+            "analyze",
+            "analysis",
+            "stock",
+            "ticker",
+            "latest",
+            "about",
+            "research",
+            "compare",
+            "forecast",
+            "report",
+            "reports",
+            "database",
+            "count",
+            "how many",
+            "only",
+            "recommendation",
+            "recomendation",
+            "consensus",
+        )
+    )
+
+    non_ticker_words = {
+        "HELLO",
+        "HI",
+        "HEY",
+        "WHAT",
+        "WHEN",
+        "WHERE",
+        "WHY",
+        "HOW",
+        "MANY",
+        "TODAY",
+        "DATE",
+        "TIME",
+        "LATEST",
+        "SHOW",
+        "YOUR",
+        "PLEASE",
+        "ONLY",
+        # common English modals / auxiliary verbs / pronouns
+        "CAN",
+        "YOU",
+        "ARE",
+        "WAS",
+        "HAS",
+        "HAD",
+        "DID",
+        "GET",
+        "GOT",
+        "WILL",
+        "WOULD",
+        "COULD",
+        "SHOULD",
+        "MAY",
+        "HAVE",
+        "GIVE",
+        "TELL",
+        "HELP",
+        "MAKE",
+        "LOOK",
+        "KNOW",
+        "FROM",
+        "ABOUT",
+        "WITH",
+        "THAT",
+        "THIS",
+        "THEM",
+        "THEY",
+        "WE",
+        "HIM",
+        "HER",
+        "OUR",
+        "YOUR",
+        "THEIR",
+        "ITS",
+        "ANY",
+        "ALL",
+        "NEW",
+        "OLD",
+        "NOT",
+        "MORE",
+        "MOST",
+        "SOME",
+    }
+
     tickers = []
     seen = set()
 
     for match in matches:
-        if match not in TICKER_EXCLUSIONS and match not in seen:
-            tickers.append(match)
-            seen.add(match)
+        symbol = match.upper()
+
+        if symbol in TICKER_EXCLUSIONS or symbol in non_ticker_words:
+            continue
+
+        token_match = re.search(rf"\b{re.escape(match)}\b", query)
+        is_upper_token = bool(token_match and token_match.group(0).isupper())
+        if not is_upper_token and not analysis_context:
+            continue
+
+        if symbol not in seen:
+            tickers.append(symbol)
+            seen.add(symbol)
 
     return tickers
 

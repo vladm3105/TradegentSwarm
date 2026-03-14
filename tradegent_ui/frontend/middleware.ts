@@ -7,6 +7,21 @@ const PUBLIC_PATHS = ['/login', '/api/auth', '/verify-email'];
 // Paths that require admin role
 const ADMIN_PATHS = ['/admin'];
 
+function getSafeCallbackPath(raw: string | null): string {
+  if (!raw) {
+    return '/';
+  }
+
+  const decoded = decodeURIComponent(raw);
+
+  // Only allow same-origin relative paths to prevent open redirects.
+  if (decoded.startsWith('/') && !decoded.startsWith('//')) {
+    return decoded;
+  }
+
+  return '/';
+}
+
 export default auth((req) => {
   const { pathname } = req.nextUrl;
   const isLoggedIn = !!req.auth;
@@ -18,7 +33,8 @@ export default auth((req) => {
   if (isPublicPath) {
     // If logged in and on login page, redirect to home
     if (isLoggedIn && pathname === '/login') {
-      return NextResponse.redirect(new URL('/', req.nextUrl));
+      const callbackPath = getSafeCallbackPath(req.nextUrl.searchParams.get('callbackUrl'));
+      return NextResponse.redirect(new URL(callbackPath, req.nextUrl));
     }
     return NextResponse.next();
   }
