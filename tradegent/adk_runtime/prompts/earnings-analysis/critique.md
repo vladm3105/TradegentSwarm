@@ -1,52 +1,30 @@
-Critique the draft earnings analysis for missing v2.6 requirements, weak scenario logic, and gate inconsistency.
-Return structured issues and corrected payload keys.
+# Earnings Critique Prompt
 
-from pathlib import Path
-from typing import Any
+Critique the earnings draft for scenario rigor, gate consistency, and v2.6 completeness.
+Focus on event timing assumptions, implied move interpretation, and outcome logic.
 
-_PHASES = ("draft", "critique", "repair", "risk_gate", "summarize")
+Hard checks:
 
+- Verify scoring, do_nothing_gate, and all required scenario branches are present.
+- Verify scenario probabilities and expected move logic are internally consistent.
+- Verify bull/base/bear argument quality and non-placeholder specificity.
 
-def load_phase_prompt_specs(skill_name: str) -> dict[str, str]:
-    root = Path(__file__).resolve().parents[1] / "prompts" / skill_name
-    specs: dict[str, str] = {}
-    for phase in _PHASES:
-        path = root / f"{phase}.md"
-        if path.exists():
-            specs[phase] = path.read_text(encoding="utf-8").strip()
-    return specs
+Return JSON payload with this exact shape:
 
+- section_scores: object
+  - evidence: number (0-10)
+  - consistency: number (0-10)
+  - actionability: number (0-10)
+- failed_sections: array of section names where score < 7.0
+- failed_section_reasons: object mapping failed section name -> concise reason
+- issues: array of issue objects
+  - path: string
+  - issue: string
+  - severity: one of [low, medium, high]
+  - fix_hint: string
 
-def validate_skill_phase_outputs(*, skill_name: str, outputs: dict[str, Any]) -> list[str]:
-    """Return contract violations for phase outputs.
+Rules:
 
-    This validator is intentionally strict on shape but shallow on semantics,
-    leaving domain-depth checks to schema validation and quality gates.
-    """
-    violations: list[str] = []
-    if not isinstance(outputs, dict) or not outputs:
-        return ["phase_outputs_missing"]
-
-    for phase in _PHASES:
-        phase_obj = outputs.get(phase)
-        if not isinstance(phase_obj, dict):
-            violations.append(f"{phase}_missing")
-            continue
-        payload = phase_obj.get("payload")
-        if not isinstance(payload, dict):
-            violations.append(f"{phase}_payload_missing")
-
-    draft = outputs.get("draft")
-    if isinstance(draft, dict):
-        payload = draft.get("payload")
-        if isinstance(payload, dict):
-            if skill_name == "stock-analysis":
-                for key in ("summary", "recommendation", "alert_levels"):
-                    if key not in payload:
-                        violations.append(f"stock_draft_missing_{key}")
-            elif skill_name == "earnings-analysis":
-                for key in ("summary", "scoring", "do_nothing_gate"):
-                    if key not in payload:
-                        violations.append(f"earnings_draft_missing_{key}")
-
-    return sorted(set(violations))
+- If any section score is below 7.0, include it in failed_sections.
+- Every failed section must have a failed_section_reasons entry.
+- Avoid markdown; return structured JSON-style content only.

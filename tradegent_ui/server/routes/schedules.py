@@ -57,6 +57,9 @@ class ScheduleResponse(BaseModel):
     last_run_status: Optional[str]
     fail_count: Optional[int]
     consecutive_fails: Optional[int]
+    active_started_at: Optional[datetime] = None
+    active_task_label: Optional[str] = None
+    active_heartbeat_at: Optional[datetime] = None
 
 
 class ScheduleUpdateRequest(BaseModel):

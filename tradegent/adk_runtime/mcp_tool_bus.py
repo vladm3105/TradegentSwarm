@@ -212,6 +212,15 @@ class MCPToolBus:
 
         pattern = f"{ticker}_*.yaml"
         candidates = [p for p in search_dir.glob(pattern) if p.is_file()]
+        active_only = os.getenv("ADK_CONTEXT_ACTIVE_ONLY", "false").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        include_non_active = not active_only
+        if active_only:
+            candidates = [p for p in candidates if self._is_active_analysis_artifact(p)]
         if not candidates:
             return {
                 "success": True,
@@ -220,7 +229,7 @@ class MCPToolBus:
                     "source": None,
                     "latest_document": None,
                     "market_data": market_data,
-                    "warnings": ["no_prior_document"],
+                    "warnings": ["no_prior_document" if include_non_active else "no_active_document"],
                     "cache_hit": False,
                 },
             }
@@ -253,6 +262,19 @@ class MCPToolBus:
                 "cache_hit": False,
             },
         }
+
+    @staticmethod
+    def _is_active_analysis_artifact(file_path: Path) -> bool:
+        try:
+            document = yaml.safe_load(file_path.read_text(encoding="utf-8"))
+        except Exception:
+            return False
+        if not isinstance(document, dict):
+            return False
+        meta = document.get("_meta")
+        if not isinstance(meta, dict):
+            return False
+        return str(meta.get("status", "")).strip().lower() == "active"
 
     def _fetch_live_market_data(self, ticker: str) -> dict[str, Any] | None:
         """Best-effort live quote snapshot for downstream stock data-quality guards."""

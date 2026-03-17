@@ -175,6 +175,48 @@ jobs:
           cd tradegent
           pytest -m "not integration" --cov=rag --cov=graph --cov-report=xml -v
 
+      - name: Run ADK benchmark gate
+        env:
+          ADK_BENCHMARK_PATH: tradegent/logs/adk_benchmark_metrics.jsonl
+        run: |
+          python tradegent/scripts/aggregate_adk_quality_kpis.py "$ADK_BENCHMARK_PATH" \
+            --output tradegent/logs/adk_quality_kpis.json
+
+          # build_benchmark_report returns non-zero on FAIL; keep artifact generation non-blocking here
+          python tradegent/scripts/build_benchmark_report.py "$ADK_BENCHMARK_PATH" \
+            --output tradegent/logs/adk_benchmark_report.json \
+            --min-records 10 || true
+
+          python tradegent/scripts/run_calibration_update.py \
+            tradegent/logs/calibration_outcomes.jsonl \
+            --report-output tradegent/logs/calibration_report.json
+
+          set +e
+          python tradegent/adk_runtime/benchmark_gate.py "$ADK_BENCHMARK_PATH" --min-records 10
+          rc=$?
+          set -e
+
+          # benchmark_gate exit codes:
+          # 0=PASS/SKIP, 1=FAIL (block), 2=WARNING (allow)
+          if [ "$rc" -eq 1 ]; then
+            echo "Benchmark gate hard-failed; blocking CI."
+            exit 1
+          fi
+          if [ "$rc" -eq 2 ]; then
+            echo "Benchmark gate warning zone; merge allowed."
+          fi
+
+      - name: Upload ADK quality artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: adk-quality-artifacts
+          path: |
+            tradegent/logs/adk_quality_kpis.json
+            tradegent/logs/adk_benchmark_report.json
+            tradegent/logs/calibration_report.json
+          if-no-files-found: warn
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:

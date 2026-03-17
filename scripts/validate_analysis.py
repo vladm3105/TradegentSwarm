@@ -138,7 +138,8 @@ class ValidationResult:
             print(f"Version: {self.version}")
 
         if self.is_valid:
-            print(f"\n[PASS] Document is valid v2.6 stock analysis")
+            version_label = f"v{self.version}" if self.version is not None else "stock"
+            print(f"\n[PASS] Document is valid {version_label} stock analysis")
         else:
             print(f"\n[FAIL] {len(self.errors)} validation error(s)")
 

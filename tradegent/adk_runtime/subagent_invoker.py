@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 import json
 import os
 from typing import Any
@@ -65,6 +65,9 @@ class SubagentInvoker:
             enable_litellm = os.getenv("ADK_SUBAGENT_LLM_ENABLED", "false").strip().lower() == "true"
         self.enable_litellm = enable_litellm
         self.gateway = gateway or LiteLLMGatewayClient.from_env()
+        self.phase_timeout_seconds = float(
+            os.getenv("ADK_SUBAGENT_PHASE_TIMEOUT_SECONDS", "120") or 120
+        )
 
     def run(self, plan: SkillExecutionPlan, payload: dict[str, Any]) -> dict[str, Any]:
         outputs: dict[str, Any] = {}
@@ -131,7 +134,14 @@ class SubagentInvoker:
         ]
 
         async def _call() -> dict[str, Any]:
-            res = await self.gateway.chat_json(role_alias=role_alias, messages=messages, temperature=0.1)
+            res = await asyncio.wait_for(
+                self.gateway.chat_json(
+                    role_alias=role_alias,
+                    messages=messages,
+                    temperature=0.1,
+                ),
+                timeout=self.phase_timeout_seconds,
+            )
             return {
                 "content": res.content,
                 "model_alias": res.model_alias,
@@ -149,7 +159,13 @@ class SubagentInvoker:
         if running_loop and running_loop.is_running():
             with ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(lambda: asyncio.run(_call()))
-                return future.result()
+                try:
+                    return future.result(timeout=self.phase_timeout_seconds + 5)
+                except FuturesTimeoutError as exc:
+                    future.cancel()
+                    raise RuntimeError(
+                        f"subagent_phase_timeout:{phase}:{self.phase_timeout_seconds:.0f}s"
+                    ) from exc
 
         # Safe in the current sync orchestrator path.
         return asyncio.run(_call())
@@ -296,7 +312,11 @@ class SubagentInvoker:
             }
 
         reference_context: dict[str, Any] | None = latest_document
-        if isinstance(reference_context, dict) and "summary" in reference_context:
+        # Phase 1 (draft) is a fresh analysis — skip the full prior document to keep
+        # prompt size manageable for local LLMs (the 26KB context can cause timeouts).
+        if phase == "draft":
+            reference_context = None
+        elif isinstance(reference_context, dict) and "summary" in reference_context:
             summary = reference_context.get("summary")
             if isinstance(summary, dict):
                 thesis = str(summary.get("thesis", "")).lower()

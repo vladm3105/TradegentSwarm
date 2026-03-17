@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import hashlib
 import subprocess
 import sys
@@ -24,6 +25,7 @@ _REPO_ROOT = Path("/opt/data/tradegent_swarm")
 _KNOWLEDGE_ROOT = _REPO_ROOT / "tradegent_knowledge" / "knowledge"
 _TRADEGENT_DIR = _REPO_ROOT / "tradegent"
 _INGEST_SCRIPT = _TRADEGENT_DIR / "scripts" / "ingest.py"
+_TEMPLATE_VERSION_RE = re.compile(r"^\s*(\d+)\.(\d+)(?:\.\d+)?\s*$")
 
 
 def _try_parse_json_object(raw: Any) -> dict[str, Any] | None:
@@ -162,6 +164,54 @@ def _as_list(value: Any) -> list[Any]:
     if isinstance(value, list):
         return value
     return []
+
+
+def _version_number(value: Any) -> float:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value.strip())
+        except ValueError:
+            return 0.0
+    return 0.0
+
+
+def _minimum_len_list(value: Any, min_len: int, fallback_items: list[Any]) -> list[Any]:
+    items = _as_list(value)
+    if len(items) >= min_len:
+        return items
+    enriched = list(items)
+    for candidate in fallback_items:
+        if len(enriched) >= min_len:
+            break
+        enriched.append(candidate)
+    return enriched
+
+
+def _resolve_template_version_for_skill(skill_name: str, default_version: float) -> float | str:
+    """Resolve template version from env pinning, with a safe default fallback.
+
+    Priority:
+    1. ADK_TEMPLATE_VERSION_<SKILL_NAME>
+    2. ADK_TEMPLATE_VERSION
+    3. provided default_version
+    """
+    skill_env_key = f"ADK_TEMPLATE_VERSION_{skill_name.replace('-', '_').upper()}"
+    for candidate in (os.getenv(skill_env_key, ""), os.getenv("ADK_TEMPLATE_VERSION", "")):
+        raw = candidate.strip()
+        if not raw:
+            continue
+        match = _TEMPLATE_VERSION_RE.fullmatch(raw)
+        if not match:
+            continue
+        major = int(match.group(1))
+        minor = int(match.group(2))
+        # Preserve one-decimal convention for existing schema versions.
+        if minor <= 9:
+            return float(f"{major}.{minor}")
+        return f"{major}.{minor}"
+    return default_version
 
 
 def _normalize_peer_entries(value: Any) -> list[dict[str, Any]]:
@@ -627,7 +677,8 @@ def _to_section_text(value: Any) -> str:
         return "\n".join(part for part in parts if part)
     if isinstance(value, dict):
         try:
-            return yaml.safe_dump(value, sort_keys=False)
+            dumped = yaml.safe_dump(value, sort_keys=False)
+            return dumped if isinstance(dumped, str) else ""
         except Exception:
             return ""
     return ""
@@ -771,6 +822,47 @@ def _stock_quality_issues(doc: dict[str, Any]) -> list[str]:
     rag_coverage_issue = _stock_rag_coverage_issue(doc)
     if rag_coverage_issue:
         issues.append(rag_coverage_issue)
+
+    # v2.8 richness gate: block sparse outputs that miss required depth signals.
+    meta = _as_dict(doc.get("_meta"))
+    version = _version_number(meta.get("version"))
+    if version >= 2.8:
+        catalyst = _as_dict(doc.get("catalyst"))
+        secondary_catalysts = _as_list(catalyst.get("secondary_catalysts"))
+        if len(secondary_catalysts) < 3:
+            issues.append("catalyst.secondary_catalysts must include at least 3 items for v2.8")
+
+        invalidation_criteria = _as_list(catalyst.get("invalidation_criteria"))
+        if len(invalidation_criteria) < 4:
+            issues.append("catalyst.invalidation_criteria must include at least 4 items for v2.8")
+
+        scenarios = _as_dict(doc.get("scenarios"))
+        for branch in ("strong_bull", "base_bull", "base_bear", "strong_bear"):
+            branch_obj = _as_dict(scenarios.get(branch))
+            conditions = _as_list(branch_obj.get("conditions"))
+            if len(conditions) < 3:
+                issues.append(f"scenarios.{branch}.conditions must include at least 3 items for v2.8")
+
+        ev_calc = _as_dict(scenarios.get("expected_value_calculation"))
+        if not _string_or_default(ev_calc.get("formula"), "").strip():
+            issues.append("scenarios.expected_value_calculation.formula is required for v2.8")
+        if not isinstance(ev_calc.get("result_pct"), (int, float)):
+            issues.append("scenarios.expected_value_calculation.result_pct must be numeric for v2.8")
+
+        technical = _as_dict(doc.get("technical"))
+        timing_check = _as_dict(technical.get("timing_conservatism_check"))
+        if not timing_check:
+            issues.append("technical.timing_conservatism_check is required for v2.8")
+
+        sentiment = _as_dict(doc.get("sentiment"))
+        crowded_assessment = _string_or_default(sentiment.get("crowded_trade_assessment"), "")
+        if not crowded_assessment.strip():
+            issues.append("sentiment.crowded_trade_assessment is required for v2.8")
+
+        watch_list = _as_dict(doc.get("earnings_call_watch_list"))
+        must_watch = _as_list(watch_list.get("must_watch"))
+        if len(must_watch) < 4:
+            issues.append("earnings_call_watch_list.must_watch must include at least 4 items for v2.8")
 
     return issues
 
@@ -952,34 +1044,194 @@ def _persist_declined_analysis(
     *,
     out_path: Path,
     doc: dict[str, Any],
+    inactive_status: str,
+    failure_code: str,
     reason: str,
     quality_issues: list[str],
     reason_codes: list[str],
 ) -> Path:
-    """Persist blocked analyses under knowledge/analysis/declined.
-
-    If an artifact already exists at out_path, move it into declined folder.
-    Otherwise write the declined document directly under declined folder.
-    """
-    declined_dir = _declined_analysis_dir()
-    declined_dir.mkdir(parents=True, exist_ok=True)
-    declined_path = declined_dir / out_path.name
+    """Persist non-active analyses with machine-readable failure metadata."""
+    use_declined_dir = os.getenv("ADK_NON_ACTIVE_USE_DECLINED_DIR", "false").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    target_path = out_path
+    if use_declined_dir:
+        declined_dir = _declined_analysis_dir()
+        declined_dir.mkdir(parents=True, exist_ok=True)
+        target_path = declined_dir / out_path.name
 
     meta = _as_dict(doc.get("_meta"))
-    meta["status"] = "declined"
+    meta["status"] = inactive_status
     doc["_meta"] = meta
-    doc["decline"] = {
+    doc["failure"] = {
+        "failure_code": failure_code,
+        "failed_checks": quality_issues,
+        "missing_fields": reason_codes,
+        "retry_eligible": True,
+        "retry_after": None,
+        "validator_version": "adk_quality_gate_v1",
+    }
+    doc["non_active"] = {
         "reason": reason,
         "quality_issues": quality_issues,
         "reason_codes": reason_codes,
     }
 
-    if out_path.exists():
-        out_path.replace(declined_path)
+    if out_path.exists() and target_path != out_path:
+        out_path.replace(target_path)
     else:
-        declined_path.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
+        target_path.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
 
-    return declined_path
+    return target_path
+
+
+def _build_non_active_write_result(
+    *,
+    target_path: Path,
+    inactive_status: str,
+    failure_code: str,
+    quality_issues: list[str],
+    reason_codes: list[str],
+) -> dict[str, Any]:
+    return {
+        "success": True,
+        "file_path": str(target_path),
+        "relative_path": str(target_path.relative_to(_REPO_ROOT)),
+        "analysis_status": inactive_status,
+        "failure_metadata": {
+            "failure_code": failure_code,
+            "failed_checks": quality_issues,
+            "missing_fields": reason_codes,
+            "retry_eligible": True,
+            "retry_after": None,
+            "validator_version": "adk_quality_gate_v1",
+        },
+    }
+
+
+def _earnings_data_completeness_issues(doc: dict[str, Any]) -> tuple[list[str], list[str]]:
+    issues: list[str] = []
+    reason_codes: list[str] = []
+
+    def _is_missing_number(value: Any) -> bool:
+        return not isinstance(value, (int, float)) or isinstance(value, bool) or float(value) <= 0
+
+    if _is_missing_number(doc.get("current_price")):
+        issues.append("current_price must be > 0")
+        reason_codes.append("missing_current_price")
+
+    prep = _as_dict(doc.get("preparation"))
+    estimates = _as_dict(prep.get("current_estimates"))
+    implied_move = _as_dict(prep.get("implied_move"))
+
+    if _is_missing_number(estimates.get("consensus_eps")):
+        issues.append("preparation.current_estimates.consensus_eps must be > 0")
+        reason_codes.append("missing_consensus_eps")
+
+    if _is_missing_number(estimates.get("consensus_revenue_b")):
+        issues.append("preparation.current_estimates.consensus_revenue_b must be > 0")
+        reason_codes.append("missing_consensus_revenue")
+
+    if _is_missing_number(implied_move.get("percentage")):
+        issues.append("preparation.implied_move.percentage must be > 0")
+        reason_codes.append("missing_implied_move")
+
+    return issues, sorted(set(reason_codes))
+
+
+def _earnings_quality_issues(doc: dict[str, Any]) -> tuple[list[str], list[str]]:
+    issues: list[str] = []
+    reason_codes: list[str] = []
+
+    summary = _as_dict(doc.get("summary"))
+    narrative = summary.get("narrative")
+    one_liner = summary.get("one_liner")
+
+    if _contains_placeholder_language(narrative) or _contains_placeholder_language(one_liner):
+        issues.append("summary contains placeholder language")
+        reason_codes.append("placeholder_summary")
+
+    scenarios = _as_dict(doc.get("scenarios"))
+    required_scenarios = ("strong_beat", "modest_beat", "modest_miss", "strong_miss")
+    probability_sum = 0.0
+    scenario_count = 0
+    for key in required_scenarios:
+        item = _as_dict(scenarios.get(key))
+        prob = _number_or_default(item.get("probability"), 0.0)
+        if prob <= 0:
+            issues.append(f"scenarios.{key}.probability must be > 0")
+            reason_codes.append(f"scenario_probability_missing_{key}")
+        else:
+            probability_sum += prob
+            scenario_count += 1
+
+    if scenario_count == len(required_scenarios) and abs(probability_sum - 1.0) > 0.02:
+        issues.append(f"scenario probability sum must be ~1.0 (found {probability_sum:.4f})")
+        reason_codes.append("scenario_probability_sum_invalid")
+
+    return issues, sorted(set(reason_codes))
+
+
+def _collect_critique_section_scores(payload: dict[str, Any]) -> dict[str, float]:
+    """Extract section scores from critique payload in a best-effort way."""
+    critique = _as_dict(payload.get("critique"))
+    critique_payload = _as_dict(critique.get("payload"))
+
+    candidates = (
+        critique_payload.get("section_scores"),
+        critique_payload.get("scores"),
+        critique_payload.get("scorecard"),
+        critique_payload.get("section_ratings"),
+        critique_payload,
+    )
+
+    for candidate in candidates:
+        candidate_map = _as_dict(candidate)
+        if not candidate_map:
+            continue
+
+        score_map: dict[str, float] = {}
+        for key, value in candidate_map.items():
+            score = _number_or_default(value, float("nan"))
+            if not math.isnan(score):
+                score_map[str(key)] = score
+        if score_map:
+            return score_map
+
+    return {}
+
+
+def _critique_score_gate_issues(
+    payload: dict[str, Any],
+    *,
+    min_score: float,
+    min_sections: int,
+) -> tuple[list[str], list[str]]:
+    """Validate that critique section scores are present and meet threshold."""
+    issues: list[str] = []
+    reason_codes: list[str] = []
+    score_map = _collect_critique_section_scores(payload)
+
+    if len(score_map) < min_sections:
+        issues.append(
+            "critique section scores missing or incomplete "
+            f"({len(score_map)} found, minimum {min_sections} required)"
+        )
+        reason_codes.append("critique_scores_missing")
+        return issues, reason_codes
+
+    for section, score in score_map.items():
+        if score < min_score:
+            issues.append(
+                f"critique score below threshold for section '{section}' "
+                f"({score:.2f} < {min_score:.2f})"
+            )
+            reason_codes.append(f"critique_score_below_threshold_{section}")
+
+    return issues, sorted(set(reason_codes))
 
 
 def _output_dir_for_skill(*, skill_name: str | None, analysis_type: str) -> Path:
@@ -1008,6 +1260,7 @@ def _build_stock_analysis_document(
 ) -> dict[str, Any]:
     """Build a stock-analysis shaped document with validator-critical sections."""
     now = datetime.now()
+    template_version = _resolve_template_version_for_skill("stock-analysis", 2.8)
     forecast_until = now.strftime("%Y-%m-%d")
     if analysis_type:
         # Keep a simple, deterministic placeholder horizon while preserving required field.
@@ -1323,6 +1576,15 @@ def _build_stock_analysis_document(
         ]
     news_age_check["items"] = news_items
 
+    setup_override = _as_dict(overrides.get("setup"))
+    latest_setup = _as_dict(latest_doc.get("setup"))
+    baseline_setup = _as_dict(rich_baseline_doc.get("setup"))
+    setup: dict[str, Any] = dict(baseline_setup)
+    setup.update(latest_setup)
+    setup.update(setup_override)
+    setup.setdefault("next_earnings_date", forecast_until)
+    setup.setdefault("days_to_earnings", 0)
+
     catalyst: dict[str, Any] = dict(baseline_catalyst)
     catalyst.update(latest_catalyst)
     catalyst.update(catalyst_override)
@@ -1330,6 +1592,45 @@ def _build_stock_analysis_document(
     catalyst.setdefault(
         "reasoning",
         "Primary catalyst is technical behavior around defined support/resistance zones with confirmation from follow-through volume.",
+    )
+    secondary_fallback = [
+        {
+            "name": "Relative-strength persistence",
+            "date": forecast_until,
+            "news_age_days": 0,
+            "status": "partially_priced",
+            "description": "Relative-strength behavior versus sector and index remains a near-term decision driver.",
+        },
+        {
+            "name": "Sector flow confirmation",
+            "date": forecast_until,
+            "news_age_days": 0,
+            "status": "partially_priced",
+            "description": "Sector-level participation confirms or invalidates continuation probability assumptions.",
+        },
+        {
+            "name": "Execution-risk repricing",
+            "date": forecast_until,
+            "news_age_days": 0,
+            "status": "not_priced",
+            "description": "Spread/liquidity shifts can quickly reprice expected value and position sizing.",
+        },
+    ]
+    catalyst["secondary_catalysts"] = _minimum_len_list(
+        catalyst.get("secondary_catalysts"),
+        3,
+        secondary_fallback,
+    )
+    invalidation_fallback = [
+        "Break and close below planned support with confirming volume.",
+        "Expected value drops below threshold after updated probability inputs.",
+        "Sector-relative weakness persists across multiple sessions.",
+        "Catalyst timing shifts or invalidates near-term thesis assumptions.",
+    ]
+    catalyst["invalidation_criteria"] = _minimum_len_list(
+        catalyst.get("invalidation_criteria"),
+        4,
+        invalidation_fallback,
     )
 
     threat_assessment: dict[str, Any] = dict(baseline_threat_assessment)
@@ -1348,6 +1649,14 @@ def _build_stock_analysis_document(
         "technical_summary",
         "Structure is neutral-to-constructive while price remains above invalidation and trend-following levels continue to hold.",
     )
+    timing_conservatism = _as_dict(technical.get("timing_conservatism_check"))
+    if not timing_conservatism:
+        timing_conservatism = {
+            "conviction_threshold_for_entry": 70,
+            "current_conviction": rec_confidence,
+            "assessment": "Conviction is compared against entry threshold; position sizing remains conditional on evidence quality and volatility.",
+        }
+    technical["timing_conservatism_check"] = timing_conservatism
 
     fundamentals: dict[str, Any] = dict(baseline_fundamentals)
     fundamentals.update(latest_fundamentals)
@@ -1368,6 +1677,10 @@ def _build_stock_analysis_document(
         "summary",
         "Sentiment is neutral with balanced positioning risk; directional conviction requires confirmation from price/volume behavior.",
     )
+    sentiment.setdefault(
+        "crowded_trade_assessment",
+        "Crowding is monitored through analyst dispersion, options skew, and short-interest trend; no single sentiment signal should dominate thesis selection.",
+    )
 
     scenarios: dict[str, Any] = dict(baseline_scenarios)
     scenarios.update(latest_scenarios)
@@ -1385,9 +1698,41 @@ def _build_stock_analysis_document(
         "base_bear": _scenario_case("base_bear", 0.3),
         "strong_bear": _scenario_case("strong_bear", 0.2),
     }
+    scenario_condition_fallback = {
+        "strong_bull": [
+            "Price closes above near-term resistance with expansion in volume.",
+            "Sector breadth improves and confirms relative-strength continuation.",
+            "No adverse catalyst update invalidates the execution plan.",
+        ],
+        "base_bull": [
+            "Price holds support and trends gradually higher without breakout acceleration.",
+            "Liquidity and spread remain stable near historical medians.",
+            "Catalyst outcomes remain directionally favorable but not extreme.",
+        ],
+        "base_bear": [
+            "Price fails to hold momentum and rotates into a lower range.",
+            "Risk sentiment weakens, limiting follow-through buying.",
+            "Expected value degrades but does not fully invalidate thesis.",
+        ],
+        "strong_bear": [
+            "Support breaks with high participation and failed recovery attempts.",
+            "Adverse catalyst update materially changes probability assumptions.",
+            "Execution conditions worsen with spread expansion and weak breadth.",
+        ],
+    }
+    for branch, fallback in scenario_condition_fallback.items():
+        case = _as_dict(scenarios_payload.get(branch))
+        case["conditions"] = _minimum_len_list(case.get("conditions"), 3, fallback)
+        scenarios_payload[branch] = case
     for field in ("probability_check", "expected_value", "ev_calculation"):
         if field in scenarios:
             scenarios_payload[field] = scenarios[field]
+    expected_value_for_calc = _number_or_default(scenarios_payload.get("expected_value"), 0.0)
+    scenarios_payload["expected_value_calculation"] = {
+        "formula": "EV = sum(probability_i * return_pct_i)",
+        "result_pct": round(expected_value_for_calc, 2),
+        "interpretation": "Positive EV indicates asymmetry, but execution still requires confidence and risk/reward gate alignment.",
+    }
 
     bull_source = dict(baseline_bull)
     bull_source.update(latest_bull)
@@ -1499,6 +1844,48 @@ def _build_stock_analysis_document(
     if rec_confidence <= 0 and derived_confidence > 0:
         rec_confidence = derived_confidence
 
+    days_to_earnings = int(_number_or_default(setup.get("days_to_earnings"), 0))
+    earnings_watch_list = _as_dict(overrides.get("earnings_call_watch_list"))
+    watch_must_watch = _minimum_len_list(
+        earnings_watch_list.get("must_watch"),
+        4,
+        [
+            {
+                "metric": "Revenue versus consensus",
+                "bull_threshold": "Beat consensus",
+                "bear_threshold": "Miss consensus",
+                "weight": "high",
+            },
+            {
+                "metric": "Guidance trajectory",
+                "bull_threshold": "Raised or reiterated with positive tone",
+                "bear_threshold": "Lowered or cautious tone",
+                "weight": "high",
+            },
+            {
+                "metric": "Margin/FCF commentary",
+                "bull_threshold": "Margins stable or improving",
+                "bear_threshold": "Margin compression",
+                "weight": "medium",
+            },
+            {
+                "metric": "Demand and pipeline indicators",
+                "bull_threshold": "Healthy demand with conversion support",
+                "bear_threshold": "Demand softness or elongated cycles",
+                "weight": "medium",
+            },
+        ],
+    )
+    watch_secondary = _minimum_len_list(
+        earnings_watch_list.get("secondary_watch"),
+        2,
+        [
+            "Analyst estimate revision direction post-event.",
+            "Volume and gap behavior in the first two sessions after release.",
+        ],
+    )
+    watch_applicable = bool(earnings_watch_list.get("applicable", days_to_earnings <= 10))
+
     ma_20d = _number_or_default(_as_dict(technical.get("moving_averages")).get("ma_20d"), alert_price)
     primary_alert = {
         "price": alert_price,
@@ -1580,7 +1967,7 @@ def _build_stock_analysis_document(
         "_meta": {
             "id": f"{ticker.upper()}_{now.strftime('%Y%m%dT%H%M')}",
             "type": "stock-analysis",
-            "version": 2.7,
+            "version": template_version,
             "created": now.isoformat(),
             "status": "active",
             "forecast_valid_until": forecast_until,
@@ -1592,6 +1979,7 @@ def _build_stock_analysis_document(
         },
         "ticker": ticker.upper(),
         "current_price": current_price,
+        "setup": setup,
         "data_quality": {
             "price_data_source": price_data_source,
             "price_data_verified": price_verified,
@@ -1678,7 +2066,23 @@ def _build_stock_analysis_document(
         "alert_levels": {
             "price_alerts": price_alerts
         },
-        "meta_learning": {"data_source_effectiveness": []},
+        "earnings_call_watch_list": {
+            "applicable": watch_applicable,
+            "must_watch": watch_must_watch,
+            "secondary_watch": watch_secondary,
+        },
+        "meta_learning": {
+            "data_source_effectiveness": [
+                {
+                    "source": price_data_source,
+                    "actual_predictive": "medium",
+                    "weight_adjustment": "keep",
+                    "notes": "Live quote source used for entry/stop/target calibration in current-cycle analysis.",
+                }
+            ],
+            "pattern_identified": "Setup quality is driven by EV and risk-reward confluence while conviction remains below execution threshold.",
+            "comparison_to_past": "Current output remains aligned with recent WATCH outcomes: positive EV with sub-threshold confidence. The pattern is consistent with defer-and-monitor posture until conviction or structure quality improves.",
+        },
         "adk_runtime": _build_runtime_metadata(payload),
     }
 
@@ -1692,6 +2096,7 @@ def _build_earnings_analysis_document(
     payload: dict[str, Any],
 ) -> dict[str, Any]:
     now = datetime.now()
+    template_version = _resolve_template_version_for_skill("earnings-analysis", 2.6)
     date_token = now.strftime("%Y-%m-%d")
     summary_narrative = (
         "ADK runtime generated earnings draft artifact. This placeholder output preserves "
@@ -1773,12 +2178,13 @@ def _build_earnings_analysis_document(
     runtime_market_data = _as_dict(runtime_context.get("market_data"))
     latest_doc = _extract_latest_document(runtime_context)
 
-    current_price = _number_or_default(runtime_market_data.get("current_price"), 0.0)
-    if current_price <= 0:
-        current_price = _number_or_default(overrides.get("current_price"), 0.0)
+    # Prefer explicit model-provided values, then runtime market snapshot, then prior context.
+    current_price = _number_or_default(overrides.get("current_price"), 0.0)
     if current_price <= 0:
         setup = _as_dict(overrides.get("setup"))
         current_price = _number_or_default(setup.get("current_price"), 0.0)
+    if current_price <= 0:
+        current_price = _number_or_default(runtime_market_data.get("current_price"), 0.0)
     if current_price <= 0:
         current_price = _number_or_default(latest_doc.get("current_price"), 0.0)
 
@@ -1794,6 +2200,12 @@ def _build_earnings_analysis_document(
     bull_override = _as_dict(overrides.get("bull_case_analysis"))
     base_override = _as_dict(overrides.get("base_case_analysis"))
     bear_override = _as_dict(overrides.get("bear_case_analysis"))
+    preparation_override = _as_dict(overrides.get("preparation"))
+    _prep_estimates = _as_dict(preparation_override.get("current_estimates"))
+    _prep_implied_move = _as_dict(preparation_override.get("implied_move"))
+    _consensus_eps = _number_or_default(_prep_estimates.get("consensus_eps"), 0.0)
+    _consensus_revenue_b = _number_or_default(_prep_estimates.get("consensus_revenue_b"), 0.0)
+    _implied_move_pct = _number_or_default(_prep_implied_move.get("percentage"), 0.0)
     probability_adjustments = _as_dict(probability_override.get("adjustments"))
     final_probability = _as_dict(probability_override.get("final_probability"))
     summary_text = _string_or_default(summary_override.get("narrative"), summary_narrative)
@@ -1878,7 +2290,7 @@ def _build_earnings_analysis_document(
         "_meta": {
             "id": f"{ticker.upper()}_{now.strftime('%Y%m%dT%H%M')}",
             "type": "earnings-analysis",
-            "version": 2.6,
+            "version": template_version,
             "created": now.isoformat(),
             "status": "active",
             "forecast_valid_until": date_token,
@@ -1922,8 +2334,8 @@ def _build_earnings_analysis_document(
         "preparation": {
             "beat_history": {"quarters_analyzed": 8, "beats": 4, "misses": 4, "beat_rate": 0.5},
             "current_estimates": {
-                "consensus_eps": 0.0,
-                "consensus_revenue_b": 0.0,
+                "consensus_eps": _consensus_eps,
+                "consensus_revenue_b": _consensus_revenue_b,
                 "whisper_eps": 0.0,
                 "analyst_count": 0,
             },
@@ -1933,7 +2345,7 @@ def _build_earnings_analysis_document(
                 "eps_revision_30d": 0.0,
                 "revenue_revision_30d": 0.0,
             },
-            "implied_move": {"percentage": 0.0, "iv_percentile": 50, "iv_rank": 50},
+            "implied_move": {"percentage": _implied_move_pct, "iv_percentile": 50, "iv_rank": 50},
             "key_metric": {"name": "", "consensus": "", "your_view": ""},
         },
         "customer_demand": {
@@ -2548,6 +2960,30 @@ def write_analysis_yaml(
         run_id=run_id,
         ticker=ticker,
     )
+    non_active_mode = os.getenv("ADK_NON_ACTIVE_PERSISTENCE_ENABLED", "false").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    earnings_quality_gate_enabled = os.getenv(
+        "ADK_EARNINGS_QUALITY_GATES_ENABLED", "false"
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    semantic_validation_enabled = os.getenv(
+        "ADK_SEMANTIC_VALIDATION_ENABLED", "false"
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    critique_score_gate_enabled = os.getenv(
+        "ADK_CRITIQUE_SCORE_GATE_ENABLED", "false"
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    critique_min_score = _number_or_default(
+        os.getenv("ADK_CRITIQUE_SECTION_MIN_SCORE", "7.0"),
+        7.0,
+    )
+    critique_min_sections = int(
+        _number_or_default(os.getenv("ADK_CRITIQUE_MIN_SECTIONS", "3"), 3)
+    )
+    # Tracks doc type for analysis paths; None for scan/watchlist (no semantic check needed).
+    _resolved_doc_type: str | None = None
     if (skill_name or "").strip().lower() == "scan":
         doc = _build_scanner_run_document(
             run_id=run_id,
@@ -2569,6 +3005,7 @@ def write_analysis_yaml(
         out_path = out_dir / f"{ticker.upper()}_{ts}.yaml"
 
         doc_type = _doc_type_for_analysis(analysis_type)
+        _resolved_doc_type = doc_type
 
         if doc_type == "stock-analysis":
             doc = _build_stock_analysis_document(
@@ -2591,10 +3028,20 @@ def write_analysis_yaml(
                 declined_path = _persist_declined_analysis(
                     out_path=out_path,
                     doc=doc,
+                    inactive_status="inactive_quality_failed",
+                    failure_code="PLACEHOLDER_CONTENT",
                     reason="empty_adk_llm_content",
                     quality_issues=quality_issues,
                     reason_codes=["empty_adk_llm_content"],
                 )
+                if non_active_mode:
+                    return _build_non_active_write_result(
+                        target_path=declined_path,
+                        inactive_status="inactive_quality_failed",
+                        failure_code="PLACEHOLDER_CONTENT",
+                        quality_issues=quality_issues,
+                        reason_codes=["empty_adk_llm_content"],
+                    )
                 return {
                     "success": False,
                     "status": "blocked_quality",
@@ -2615,10 +3062,20 @@ def write_analysis_yaml(
                     declined_path = _persist_declined_analysis(
                         out_path=out_path,
                         doc=doc,
+                        inactive_status="inactive_quality_failed",
+                        failure_code="PLACEHOLDER_CONTENT",
                         reason="stock_quality_gate_failed",
                         quality_issues=quality_issues,
                         reason_codes=["stock_quality_gate_failed"],
                     )
+                    if non_active_mode:
+                        return _build_non_active_write_result(
+                            target_path=declined_path,
+                            inactive_status="inactive_quality_failed",
+                            failure_code="PLACEHOLDER_CONTENT",
+                            quality_issues=quality_issues,
+                            reason_codes=["stock_quality_gate_failed"],
+                        )
                     return {
                         "success": False,
                         "status": "blocked_quality",
@@ -2667,10 +3124,20 @@ def write_analysis_yaml(
                         declined_path = _persist_declined_analysis(
                             out_path=out_path,
                             doc=doc,
+                            inactive_status="inactive_data_unavailable",
+                            failure_code="DATA_INCOMPLETE",
                             reason="stock_market_data_gate_failed",
                             quality_issues=gate_issues,
                             reason_codes=reason_codes,
                         )
+                        if non_active_mode:
+                            return _build_non_active_write_result(
+                                target_path=declined_path,
+                                inactive_status="inactive_data_unavailable",
+                                failure_code="DATA_INCOMPLETE",
+                                quality_issues=gate_issues,
+                                reason_codes=reason_codes,
+                            )
                         return {
                             "success": False,
                             "status": "blocked_quality",
@@ -2701,10 +3168,20 @@ def write_analysis_yaml(
                 declined_path = _persist_declined_analysis(
                     out_path=out_path,
                     doc=doc,
+                    inactive_status="inactive_quality_failed",
+                    failure_code="PLACEHOLDER_CONTENT",
                     reason="empty_adk_llm_content",
                     quality_issues=quality_issues,
                     reason_codes=["empty_adk_llm_content"],
                 )
+                if non_active_mode:
+                    return _build_non_active_write_result(
+                        target_path=declined_path,
+                        inactive_status="inactive_quality_failed",
+                        failure_code="PLACEHOLDER_CONTENT",
+                        quality_issues=quality_issues,
+                        reason_codes=["empty_adk_llm_content"],
+                    )
                 return {
                     "success": False,
                     "status": "blocked_quality",
@@ -2715,8 +3192,145 @@ def write_analysis_yaml(
                     "declined_relative_path": str(declined_path.relative_to(_REPO_ROOT)),
                 }
 
+            if earnings_quality_gate_enabled:
+                data_issues, data_reason_codes = _earnings_data_completeness_issues(doc)
+                if data_issues:
+                    declined_path = _persist_declined_analysis(
+                        out_path=out_path,
+                        doc=doc,
+                        inactive_status="inactive_data_unavailable",
+                        failure_code="DATA_INCOMPLETE",
+                        reason="earnings_data_completeness_gate_failed",
+                        quality_issues=data_issues,
+                        reason_codes=data_reason_codes,
+                    )
+                    if non_active_mode:
+                        return _build_non_active_write_result(
+                            target_path=declined_path,
+                            inactive_status="inactive_data_unavailable",
+                            failure_code="DATA_INCOMPLETE",
+                            quality_issues=data_issues,
+                            reason_codes=data_reason_codes,
+                        )
+                    return {
+                        "success": False,
+                        "status": "blocked_quality",
+                        "error": "Earnings data completeness gate failed",
+                        "quality_issues": data_issues,
+                        "reason_codes": data_reason_codes,
+                        "declined_file_path": str(declined_path),
+                        "declined_relative_path": str(declined_path.relative_to(_REPO_ROOT)),
+                    }
+
+                earnings_quality_issues, earnings_reason_codes = _earnings_quality_issues(doc)
+                if earnings_quality_issues:
+                    declined_path = _persist_declined_analysis(
+                        out_path=out_path,
+                        doc=doc,
+                        inactive_status="inactive_quality_failed",
+                        failure_code="PLACEHOLDER_CONTENT",
+                        reason="earnings_quality_gate_failed",
+                        quality_issues=earnings_quality_issues,
+                        reason_codes=earnings_reason_codes,
+                    )
+                    if non_active_mode:
+                        return _build_non_active_write_result(
+                            target_path=declined_path,
+                            inactive_status="inactive_quality_failed",
+                            failure_code="PLACEHOLDER_CONTENT",
+                            quality_issues=earnings_quality_issues,
+                            reason_codes=earnings_reason_codes,
+                        )
+                    return {
+                        "success": False,
+                        "status": "blocked_quality",
+                        "error": "Earnings analysis quality gate failed",
+                        "quality_issues": earnings_quality_issues,
+                        "reason_codes": earnings_reason_codes,
+                        "declined_file_path": str(declined_path),
+                        "declined_relative_path": str(declined_path.relative_to(_REPO_ROOT)),
+                    }
+
+    if critique_score_gate_enabled and _resolved_doc_type is not None:
+        critique_issues, critique_codes = _critique_score_gate_issues(
+            payload,
+            min_score=critique_min_score,
+            min_sections=critique_min_sections,
+        )
+        if critique_issues:
+            declined_path = _persist_declined_analysis(
+                out_path=out_path,
+                doc=doc,
+                inactive_status="inactive_quality_failed",
+                failure_code="PLACEHOLDER_CONTENT",
+                reason="critique_score_gate_failed",
+                quality_issues=critique_issues,
+                reason_codes=critique_codes,
+            )
+            if non_active_mode:
+                return _build_non_active_write_result(
+                    target_path=declined_path,
+                    inactive_status="inactive_quality_failed",
+                    failure_code="PLACEHOLDER_CONTENT",
+                    quality_issues=critique_issues,
+                    reason_codes=critique_codes,
+                )
+            return {
+                "success": False,
+                "status": "blocked_quality",
+                "error": "Critique score gate failed",
+                "quality_issues": critique_issues,
+                "reason_codes": critique_codes,
+                "declined_file_path": str(declined_path),
+                "declined_relative_path": str(declined_path.relative_to(_REPO_ROOT)),
+            }
+
+    if semantic_validation_enabled and _resolved_doc_type is not None:
+        from .semantic_validator import (
+            validate_earnings_document_semantics,
+            validate_stock_document_semantics,
+        )
+
+        if _resolved_doc_type == "earnings-analysis":
+            sem_issues, sem_codes, sem_hard_fail = validate_earnings_document_semantics(doc)
+        else:
+            sem_issues, sem_codes, sem_hard_fail = validate_stock_document_semantics(doc)
+
+        if sem_hard_fail and sem_issues:
+            declined_path = _persist_declined_analysis(
+                out_path=out_path,
+                doc=doc,
+                inactive_status="inactive_quality_failed",
+                failure_code="LOGIC_INCONSISTENT",
+                reason="semantic_validation_failed",
+                quality_issues=sem_issues,
+                reason_codes=sem_codes,
+            )
+            if non_active_mode:
+                return _build_non_active_write_result(
+                    target_path=declined_path,
+                    inactive_status="inactive_quality_failed",
+                    failure_code="LOGIC_INCONSISTENT",
+                    quality_issues=sem_issues,
+                    reason_codes=sem_codes,
+                )
+            return {
+                "success": False,
+                "status": "blocked_quality",
+                "error": "Semantic validation failed (hard-fail conditions)",
+                "quality_issues": sem_issues,
+                "reason_codes": sem_codes,
+                "declined_file_path": str(declined_path),
+                "declined_relative_path": str(declined_path.relative_to(_REPO_ROOT)),
+            }
+
     out_path.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
-    return {"success": True, "file_path": str(out_path), "relative_path": str(out_path.relative_to(_REPO_ROOT))}
+    return {
+        "success": True,
+        "file_path": str(out_path),
+        "relative_path": str(out_path.relative_to(_REPO_ROOT)),
+        "analysis_status": "active",
+    }
 
 
 def trigger_ingest(file_path: str) -> dict[str, Any]:

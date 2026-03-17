@@ -21,9 +21,18 @@ class _FakeSubagents:
                 "prior_close": 405.0,
             },
         }
+        critique_payload = {
+            "section_scores": {
+                "catalyst": 8.5,
+                "technical": 8.0,
+                "risk_management": 8.0,
+                "scenarios": 8.0,
+                "summary": 8.0,
+            },
+        }
         return {
             "draft": {"status": "ok", "payload": base_payload, "routing": {"role_alias": "reasoning_standard", "model": "openai/gpt-4o-mini", "provider": "openai"}},
-            "critique": {"status": "ok", "payload": base_payload, "routing": {"role_alias": "critic_model", "model": "openai/gpt-4o-mini", "provider": "openai"}},
+            "critique": {"status": "ok", "payload": critique_payload, "routing": {"role_alias": "critic_model", "model": "openai/gpt-4o-mini", "provider": "openai"}},
             "repair": {"status": "ok", "payload": base_payload, "routing": {"role_alias": "reasoning_standard", "model": "openai/gpt-4o-mini", "provider": "openai"}},
             "risk_gate": {"status": "ok", "payload": base_payload, "routing": {"role_alias": "reasoning_premium", "model": "openai/gpt-4o", "provider": "openai"}},
             "summarize": {"status": "ok", "payload": base_payload, "routing": {"role_alias": "summarizer_fast", "model": "openai/gpt-4o-mini", "provider": "openai"}},
@@ -67,6 +76,15 @@ def test_stock_adapter_backfills_data_quality_from_context() -> None:
         def run(self, plan: SkillExecutionPlan, payload: dict[str, object]) -> dict[str, object]:
             _ = plan
             _ = payload
+            critique_payload = {
+                "section_scores": {
+                    "catalyst": 8.5,
+                    "technical": 8.0,
+                    "risk_management": 8.0,
+                    "scenarios": 8.0,
+                    "summary": 8.0,
+                },
+            }
             return {
                 "draft": {
                     "status": "ok",
@@ -76,7 +94,7 @@ def test_stock_adapter_backfills_data_quality_from_context() -> None:
                         "alert_levels": {"price_alerts": [{"price": 410.0}]},
                     },
                 },
-                "critique": {"status": "ok", "payload": {}},
+                "critique": {"status": "ok", "payload": critique_payload},
                 "repair": {"status": "ok", "payload": {}},
                 "risk_gate": {"status": "ok", "payload": {}},
                 "summarize": {"status": "ok", "payload": {}},

@@ -8,10 +8,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import yaml  # type: ignore[import-untyped]
 
 from adk_runtime.contracts import RequestEnvelope
-from adk_runtime.skill_router import SkillRouter
+from adk_runtime.skill_router import SkillRouter, _select_template_file
 
 
 def _expected_semver_from_template(template_path: Path) -> str:
@@ -33,29 +34,53 @@ def _expected_semver_from_template(template_path: Path) -> str:
 
 
 def test_skill_router_wave1_versions_match_templates() -> None:
-    repo_root = Path(__file__).resolve().parents[2]
     router = SkillRouter()
 
-    cases: list[tuple[RequestEnvelope, Path]] = [
+    cases: list[tuple[RequestEnvelope, str]] = [
         (
             {"intent": "analysis", "analysis_type": "stock"},
-            repo_root / "tradegent_knowledge" / "skills" / "stock-analysis" / "template.yaml",
+            "stock-analysis",
         ),
         (
             {"intent": "analysis", "analysis_type": "earnings"},
-            repo_root / "tradegent_knowledge" / "skills" / "earnings-analysis" / "template.yaml",
+            "earnings-analysis",
         ),
         (
             {"intent": "watchlist", "analysis_type": "stock"},
-            repo_root / "tradegent_knowledge" / "skills" / "watchlist" / "template.yaml",
+            "watchlist",
         ),
         (
             {"intent": "scan", "analysis_type": "stock"},
-            repo_root / "tradegent_knowledge" / "skills" / "market-scanning" / "template.yaml",
+            "scan",
         ),
     ]
 
-    for request, template_path in cases:
+    for request, skill_name in cases:
         plan = router.resolve(request)
+        template_path = _select_template_file(skill_name)
         assert template_path.exists(), f"Missing template: {template_path}"
         assert plan.skill_version == _expected_semver_from_template(template_path)
+
+
+def test_select_template_file_prefers_latest_versioned_stock_template() -> None:
+    selected = _select_template_file("stock-analysis")
+    assert selected.name == "template.v2.8.yaml"
+
+
+def test_select_template_file_prefers_latest_versioned_earnings_template() -> None:
+    selected = _select_template_file("earnings-analysis")
+    assert selected.name == "template.v2.8.yaml"
+
+
+@pytest.mark.usefixtures("monkeypatch")
+def test_select_template_file_honors_earnings_pin_to_legacy_template(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ADK_TEMPLATE_VERSION_EARNINGS_ANALYSIS", "2.6")
+    selected = _select_template_file("earnings-analysis")
+    assert selected.name == "template.yaml"
+
+
+@pytest.mark.usefixtures("monkeypatch")
+def test_select_template_file_honors_global_pin_for_earnings(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ADK_TEMPLATE_VERSION", "2.8")
+    selected = _select_template_file("earnings-analysis")
+    assert selected.name == "template.v2.8.yaml"

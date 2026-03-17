@@ -17,9 +17,17 @@ AI-driven trading platform using Claude Code CLI, Interactive Brokers, and a hyb
 
 ---
 
-## Recent Updates (2026-03-14)
+## Recent Updates (2026-03-17)
+
+- Added v2.8 upgrade comparison documentation versus v2.7:
+  - [v2.8 vs v2.7 Upgrade Notes](development/v2.8-vs-v2.7.md)
+- IPLAN-005 close-out status now records v2.8 plan compliance and completion evidence.
+
+## Previous Updates (2026-03-14)
 
 - Confidence fallback behavior updated: if confidence is missing or cannot be calculated, output is `0` (obsolete `50` baseline removed).
+- Stock confidence derivation expanded: when explicit confidence fields are missing, runtime derives confidence from scoring signals before using `0` fallback.
+- Stock rationale handling updated: runtime emits top-level `rationale`, and UI parsers apply rationale fallbacks for legacy rows with missing top-level rationale.
 - Stock v2.7 case-strength validation documented and enforced for:
   - `bull_case_analysis.strength`
   - `base_case_analysis.strength`
@@ -85,6 +93,7 @@ For contributors and developers.
 | [API Reference](development/api-reference.md) | Python API documentation |
 | [Testing](development/testing.md) | Test framework and coverage |
 | [Contributing](development/contributing.md) | Development workflow |
+| [v2.8 vs v2.7 Upgrade Notes](development/v2.8-vs-v2.7.md) | Runtime/CI/calibration delta summary |
 
 ---
 

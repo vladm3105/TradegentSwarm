@@ -346,15 +346,23 @@ export const authConfig: NextAuthConfig = {
           return {
             ...token,
             accessToken: builtinToken,
+            // Store the prefixed subject so the renewal path can use it.
+            builtinSub: subject,
+            expiresAt: Math.floor(Date.now() / 1000) + 24 * 60 * 60,
             roles: defaults.roles,
             permissions: defaults.permissions,
             emailVerified: true,
           };
         }
 
-        // Credentials login (demo)
+        // Credentials login (builtin admin/demo)
+        // createBuiltinAccessToken maps id='admin' → sub='builtin|admin',
+        // id='demo' → sub='builtin|demo'. Store that mapping in builtinSub.
+        const credentialsId = String(user.id);
+        const credentialsBuiltinSub =
+          credentialsId === 'admin' ? 'builtin|admin' : 'builtin|demo';
         const builtinToken = await createBuiltinAccessToken({
-          id: String(user.id),
+          id: credentialsId,
           email: user.email,
           name: user.name,
           roles: (user as { roles?: string[] }).roles || [],
@@ -364,6 +372,8 @@ export const authConfig: NextAuthConfig = {
         return {
           ...token,
           accessToken: builtinToken,
+          builtinSub: credentialsBuiltinSub,
+          expiresAt: Math.floor(Date.now() / 1000) + 24 * 60 * 60,
           roles: (user as { roles?: string[] }).roles || [],
           permissions: (user as { permissions?: string[] }).permissions || [],
           emailVerified: true,
@@ -380,7 +390,41 @@ export const authConfig: NextAuthConfig = {
         return await refreshAccessToken(token);
       }
 
-      return token;
+      // Regenerate builtin access token (credentials/google users have no refreshToken).
+      // This handles: (a) existing sessions missing expiresAt, and (b) expired builtin tokens.
+      // builtinSub holds the correctly-prefixed subject ('builtin|admin', 'google|xxx', etc.).
+      // Fall back to deriving it from token.sub for legacy sessions without builtinSub.
+      // Validate that builtinSub is properly prefixed; re-derive if it's a raw id
+      // (handles legacy sessions and the brief window where a bad value may have been stored).
+      const rawBuiltinSub = token.builtinSub as string | undefined;
+      const builtinSub =
+        rawBuiltinSub &&
+        (rawBuiltinSub.startsWith('builtin|') || rawBuiltinSub.startsWith('google|'))
+          ? rawBuiltinSub
+          : (() => {
+              const s = token.sub ?? '';
+              if (s === 'admin' || s === 'builtin') return 'builtin|admin';
+              if (s === 'demo') return 'builtin|demo';
+              return s; // already a prefixed id (e.g. 'builtin|admin')
+            })();
+      try {
+        const renewedToken = await createBuiltinAccessToken({
+          id: builtinSub,
+          subject: builtinSub,
+          email: token.email as string | null,
+          name: token.name as string | null,
+          roles: (token.roles as string[]) || [],
+          permissions: (token.permissions as string[]) || [],
+        });
+        return {
+          ...token,
+          accessToken: renewedToken,
+          builtinSub,
+          expiresAt: Math.floor(Date.now() / 1000) + 24 * 60 * 60,
+        };
+      } catch {
+        return { ...token, error: 'RefreshAccessTokenError' };
+      }
     },
 
     async session({ session, token }) {

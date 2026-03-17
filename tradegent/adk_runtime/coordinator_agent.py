@@ -29,6 +29,7 @@ from .validators import validate_request_envelope, validate_response_envelope
 from .versioning import ensure_compatible_contract_version
 
 CURRENT_CONTRACT_VERSION = "1.0.0"
+_KNOWLEDGE_FAILURE_DIR = Path("/opt/data/tradegent_swarm/tradegent_knowledge/knowledge/analysis/failures")
 
 # USD per 1M tokens for known benchmark models (input, output).
 _TOKEN_PRICING_PER_M: dict[str, tuple[float, float]] = {
@@ -158,6 +159,9 @@ class CoordinatorAgent:
                 retrieval_context=context,
                 subagent_outputs=subagent_outputs,
             )
+            artifact_status = artifacts.get("analysis_artifact_status")
+            if isinstance(artifact_status, str) and artifact_status.startswith("inactive_"):
+                final_state = "failed"
             validation = artifacts.get("contract_validation")
             if isinstance(validation, dict) and validation.get("status") == "error":
                 final_state = "failed"
@@ -236,6 +240,19 @@ class CoordinatorAgent:
             "estimated_cost_usd": llm.get("estimated_cost_usd"),
         }
 
+        # Quality gate telemetry: capture artifact classification and failure details
+        # for placeholder-rate and validation-fail-rate KPI tracking.
+        artifacts_dict = response.get("artifacts")
+        if isinstance(artifacts_dict, dict):
+            artifact_status = artifacts_dict.get("analysis_artifact_status")
+            if isinstance(artifact_status, str):
+                record["analysis_artifact_status"] = artifact_status
+                record["artifact_inactive"] = artifact_status.startswith("inactive_")
+            gate_report = artifacts_dict.get("quality_gate_report")
+            if isinstance(gate_report, dict):
+                record["quality_failure_code"] = gate_report.get("failure_code")
+                record["quality_failed_checks"] = gate_report.get("failed_checks")
+
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
             with target.open("a", encoding="utf-8") as fp:
@@ -256,6 +273,8 @@ class CoordinatorAgent:
         """Execute mutable operations with marker-based replay protection."""
         artifacts: dict[str, Any] = {}
         contract_valid = True
+        write_success = False
+        yaml_file_path: str | None = None
 
         if self.state_store.claim_side_effect_marker(run_id, "persist", "write_yaml"):
             yaml_result = self.tool_bus.call(
@@ -279,21 +298,51 @@ class CoordinatorAgent:
             )
             artifacts["yaml_write"] = yaml_result
 
+            write_success = str(yaml_result.get("status", "")).lower() == "ok"
+            yaml_payload = yaml_result.get("payload") if isinstance(yaml_result, dict) else None
+            if isinstance(yaml_payload, dict):
+                yaml_file_path = yaml_payload.get("file_path") if isinstance(yaml_payload.get("file_path"), str) else None
+                analysis_status = yaml_payload.get("analysis_status")
+                if isinstance(analysis_status, str) and analysis_status:
+                    artifacts["analysis_artifact_status"] = analysis_status
+
+                failure_metadata = yaml_payload.get("failure_metadata")
+                if isinstance(failure_metadata, dict):
+                    artifacts["quality_gate_report"] = {
+                        "failure_code": failure_metadata.get("failure_code"),
+                        "failed_checks": failure_metadata.get("failed_checks", []),
+                        "missing_fields": failure_metadata.get("missing_fields", []),
+                        "retry_eligible": failure_metadata.get("retry_eligible", True),
+                        "retry_after": failure_metadata.get("retry_after"),
+                        "validator_version": failure_metadata.get("validator_version", "adk_quality_gate_v1"),
+                    }
+
             # Validate earnings artifacts before ingest to prevent indexing invalid payloads.
             skill_name = str(getattr(plan, "skill_name", "") or "")
-            if skill_name == "earnings-analysis":
+            if write_success and skill_name == "earnings-analysis":
                 validation = self._validate_written_earnings_yaml(yaml_result)
                 artifacts["contract_validation"] = validation
                 contract_valid = validation.get("status") == "ok"
+                if not contract_valid and isinstance(validation.get("errors"), list):
+                    schema_failure = self._persist_schema_failure_envelope(
+                        run_id=run_id,
+                        request=request,
+                        plan=plan,
+                        yaml_result=yaml_result,
+                        errors=[str(item) for item in validation.get("errors", [])],
+                    )
+                    artifacts["schema_failure_envelope"] = schema_failure
+                    artifacts["analysis_artifact_status"] = "inactive_schema_failed"
+                    artifacts["quality_gate_report"] = {
+                        "failure_code": "SCHEMA_INVALID",
+                        "failed_checks": [str(item) for item in validation.get("errors", [])],
+                        "missing_fields": [],
+                        "retry_eligible": True,
+                        "retry_after": None,
+                        "validator_version": "earnings_v26_contract_v1",
+                    }
 
-        if contract_valid and self.state_store.claim_side_effect_marker(run_id, "index", "trigger_ingest"):
-            yaml_file_path = None
-            yaml_payload = artifacts.get("yaml_write")
-            if isinstance(yaml_payload, dict):
-                nested = yaml_payload.get("payload")
-                if isinstance(nested, dict):
-                    yaml_file_path = nested.get("file_path")
-
+        if write_success and contract_valid and self.state_store.claim_side_effect_marker(run_id, "index", "trigger_ingest"):
             ingest_result = self.tool_bus.call(
                 "trigger_ingest",
                 {
@@ -306,6 +355,62 @@ class CoordinatorAgent:
             artifacts["ingest"] = ingest_result
 
         return artifacts
+
+    @staticmethod
+    def _persist_schema_failure_envelope(
+        *,
+        run_id: str,
+        request: RequestEnvelope,
+        plan: Any,
+        yaml_result: dict[str, Any],
+        errors: list[str],
+    ) -> dict[str, Any]:
+        payload = yaml_result.get("payload") if isinstance(yaml_result, dict) else None
+        yaml_path = payload.get("file_path") if isinstance(payload, dict) else None
+        target_file = Path(str(yaml_path)) if isinstance(yaml_path, str) and yaml_path else None
+
+        raw_excerpt = ""
+        if target_file is not None and target_file.exists():
+            try:
+                raw_excerpt = target_file.read_text(encoding="utf-8")[:8000]
+                target_file.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+        _KNOWLEDGE_FAILURE_DIR.mkdir(parents=True, exist_ok=True)
+        ticker = str(request.get("ticker", "UNKNOWN") or "UNKNOWN").upper()
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+        envelope_path = _KNOWLEDGE_FAILURE_DIR / f"{ticker}_{stamp}_schema_failure.yaml"
+        envelope = {
+            "_meta": {
+                "id": f"{ticker}_{stamp}_schema_failure",
+                "type": "analysis-failure-envelope",
+                "version": "1.0",
+                "status": "inactive_schema_failed",
+                "created": datetime.now(timezone.utc).isoformat(),
+                "run_id": run_id,
+                "source": "adk_runtime",
+                "skill": str(getattr(plan, "skill_name", "") or ""),
+            },
+            "ticker": ticker,
+            "analysis_type": str(request.get("analysis_type", "")),
+            "failure": {
+                "failure_code": "SCHEMA_INVALID",
+                "failed_checks": errors,
+                "missing_fields": [],
+                "retry_eligible": True,
+                "retry_after": None,
+                "validator_version": "earnings_v26_contract_v1",
+            },
+            "raw_output_excerpt": raw_excerpt,
+            "raw_output_ref": str(target_file) if target_file is not None else None,
+        }
+        envelope_path.write_text(yaml.safe_dump(envelope, sort_keys=False), encoding="utf-8")
+        return {
+            "status": "ok",
+            "file_path": str(envelope_path),
+            "relative_path": str(envelope_path.relative_to(Path("/opt/data/tradegent_swarm"))),
+        }
 
     @staticmethod
     def _validate_written_earnings_yaml(yaml_result: dict[str, Any]) -> dict[str, Any]:

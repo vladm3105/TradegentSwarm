@@ -43,6 +43,13 @@ function formatRelativeTime(dateString: string | null): string {
   }
 }
 
+function getNextRunLabel(schedule: Schedule): string {
+  if (schedule.last_run_status === 'running') {
+    return 'after current run';
+  }
+  return formatRelativeTime(schedule.next_run_at);
+}
+
 const statusColors: Record<string, string> = {
   success: 'bg-green-500',
   completed: 'bg-green-500',
@@ -463,8 +470,17 @@ export function ScheduleManager() {
                         {schedule.frequency}
                       </span>
                       <span>Task: {schedule.task_type}</span>
+                      {schedule.last_run_status === 'running' && schedule.active_task_label && (
+                        <span>Running: {schedule.active_task_label}</span>
+                      )}
+                      {schedule.last_run_status === 'running' && schedule.active_started_at && (
+                        <span>Started: {formatDateTime(schedule.active_started_at)}</span>
+                      )}
+                      {schedule.last_run_status === 'running' && schedule.active_heartbeat_at && (
+                        <span>Heartbeat: {formatDateTime(schedule.active_heartbeat_at)}</span>
+                      )}
                       <span>Last run: {formatRelativeTime(schedule.last_run_at)}</span>
-                      <span>Next: {formatRelativeTime(schedule.next_run_at)}</span>
+                      <span>Next: {getNextRunLabel(schedule)}</span>
                     </div>
                   </div>
 

@@ -27,15 +27,17 @@ type RegistryKey = string;
 const REGISTRY = new Map<RegistryKey, AnalysisParser>([
   ['stock-analysis:2.6',    stockParserV26],
   ['stock-analysis:2.7',    stockParserV27],
+  ['stock-analysis:2.8',    stockParserV27],
   ['earnings-analysis:2.3', earningsParserV23],
   ['earnings-analysis:2.5', earningsParserV25],
   ['earnings-analysis:2.6', earningsParserV26],
+  ['earnings-analysis:2.8', earningsParserV26],
 ]);
 
 // Fallback parsers by type if exact version is not registered
 const TYPE_FALLBACKS: Record<string, AnalysisParser> = {
-  'stock-analysis':    stockParserV26,
-  'earnings-analysis': earningsParserV25,
+  'stock-analysis':    stockParserV27,
+  'earnings-analysis': earningsParserV26,
 };
 
 function resolveType(yaml: Record<string, unknown>): string {

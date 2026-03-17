@@ -80,6 +80,20 @@ The Tradegent Agent UI provides a comprehensive trading dashboard with real-time
 - Toggle actions now show explicit `Enable`/`Disable` buttons.
 - Success/failure toast notifications are shown after each toggle.
 
+**Live Execution Display (March 2026):**
+
+When a schedule is running, the UI shows three additional fields sourced from `nexus.run_history` and `nexus.service_status`:
+
+| Field | Source | Description |
+|-------|--------|-------------|
+| `active_task_label` | `service_status.current_task` (or `task_type` fallback) | Current task in progress (e.g. `schedule 2 watchlist 22/27 OWLT`) |
+| `active_started_at` | `run_history.started_at` | When the current run started |
+| `active_heartbeat_at` | `service_status.last_heartbeat` | Last heartbeat timestamp from the daemon |
+
+The "Next" field shows `after current run` instead of a past-relative time while the schedule status is `running`. This is computed client-side in `getNextRunLabel()` (`schedule-manager.tsx`).
+
+**Backend pattern:** `schedules_repository.py` uses a `LATERAL JOIN` on `nexus.run_history` (to detect `status='running'` rows) combined with a `LEFT JOIN` on `nexus.service_status id=1` to pull `current_task` and `last_heartbeat`.
+
 ### 6.1 Watchlist Entry Management
 
 | Feature | Description | API Endpoint |
@@ -94,6 +108,7 @@ The Tradegent Agent UI provides a comprehensive trading dashboard with real-time
 |---------|-------------|--------------|
 | Analysis Timestamp Precision | Analysis table displays date and time for each report row | `GET /api/analyses/list` |
 | Scanner Result Identity Normalization | Scanner results always include a non-null `scanner_code` resolved from run metadata | `GET /api/scanners/results` |
+| Open-Trade Gate Column | The gate result column in `/analysis` is labelled **"Open-Trade Gate"** (previously "Gate") to clarify it represents the 4-condition threshold (EV >5%, Confidence >60%, R:R >2:1, setup quality) that must pass before opening a trade | `GET /api/analyses/list` |
 
 ### 7. Dashboard Customization
 

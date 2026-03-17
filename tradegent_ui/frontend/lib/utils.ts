@@ -150,8 +150,17 @@ export function getGateClass(result: string): string {
 /**
  * Get analysis status badge class
  */
-export function getStatusClass(status: string): string {
-  switch (status.toLowerCase()) {
+export function getStatusClass(status: unknown): string {
+  if (typeof status !== 'string' || !status.trim()) {
+    return 'text-muted-foreground border-muted';
+  }
+
+  const normalized = status.toLowerCase();
+  if (normalized.startsWith('inactive_')) {
+    return 'text-red-700 border-red-300 bg-red-50 dark:text-red-400 dark:border-red-800 dark:bg-red-950/30';
+  }
+
+  switch (normalized) {
     case 'completed':
     case 'active':   return 'text-green-700 border-green-300 bg-green-50 dark:text-green-400 dark:border-green-800 dark:bg-green-950/30';
     case 'expired':  return 'text-muted-foreground border-muted';

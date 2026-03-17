@@ -279,6 +279,49 @@ sum(rate(tradegent_tool_calls_total[$__interval])) by (tool)
 "LLM Call Duration by Phase (p95)"
 "Tool Calls per Hour"
 
+---
+
+## ADK Quality KPI Dashboard Runbook
+
+Use this runbook for IPLAN-005 quality regression monitoring.
+
+### Data Sources
+
+- Telemetry JSONL: `tradegent/logs/adk_benchmark_metrics.jsonl`
+- Daily KPI aggregate: `tradegent/logs/adk_quality_kpis.json`
+- Benchmark report: `tradegent/logs/adk_benchmark_report.json`
+
+### KPI Definitions
+
+- Placeholder rate: inactive artifacts / total runs
+- Validation fail rate: runs with `quality_failure_code` / total runs
+- Retry count per run: extra attempts beyond first run-id occurrence
+- Section-score distribution: failed critique section counts
+- Prediction calibration drift: realized rate minus predicted probability (from calibration report)
+
+### Thresholds
+
+- Benchmark score `< 0.85`: fail (block)
+- Benchmark score `>= 0.85` and `< 0.88`: warning
+- Benchmark score `>= 0.88`: pass
+- Placeholder rate `> 0.10`: warning
+- Placeholder rate `> 0.15`: critical
+- Validation fail rate `> 0.10`: warning
+- Validation fail rate `> 0.15`: critical
+
+### Alert Routing
+
+- Warning: engineering channel and daily triage queue
+- Critical: page on-call plus engineering channel
+
+### Remediation Checklist
+
+1. Run `python tradegent/scripts/aggregate_adk_quality_kpis.py tradegent/logs/adk_benchmark_metrics.jsonl`.
+2. Run `python tradegent/scripts/build_benchmark_report.py tradegent/logs/adk_benchmark_metrics.jsonl`.
+3. Review dominant failure checks and critique section failures.
+4. If benchmark status is fail, disable risky rollout flags and rerun canary batch.
+5. Attach benchmark report and KPI snapshot to release notes.
+
 # Bad
 "Duration"
 "Calls"

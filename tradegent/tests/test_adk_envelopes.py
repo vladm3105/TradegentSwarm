@@ -11,6 +11,7 @@ from adk_runtime.mcp_tool_bus import MCPToolBus
 from adk_runtime.policy_gate import PolicyGate
 from adk_runtime.run_state_store import RunStateStore
 from adk_runtime.skill_router import SkillRouter
+from adk_runtime.skills.contracts import validate_skill_phase_outputs
 from adk_runtime.subagent_invoker import SubagentInvoker
 from adk_runtime.validators import (
     EnvelopeValidationError,
@@ -79,7 +80,7 @@ def _valid_request() -> RequestEnvelope:
 def _build_coordinator() -> CoordinatorAgent:
     return CoordinatorAgent(
         router=SkillRouter(),
-        tool_bus=MCPToolBus(),
+        tool_bus=TrackingToolBus(),
         subagents=SubagentInvoker(),
         policy_gate=PolicyGate(),
         state_store=RunStateStore(use_db=False),
@@ -167,7 +168,7 @@ def test_coordinator_initializes_run_before_dedup_claim() -> None:
     state_store = OrderedCallRunStateStore()
     coordinator = CoordinatorAgent(
         router=SkillRouter(),
-        tool_bus=MCPToolBus(),
+        tool_bus=TrackingToolBus(),
         subagents=SubagentInvoker(),
         policy_gate=PolicyGate(),
         state_store=state_store,
@@ -495,3 +496,63 @@ def test_coordinator_includes_aggregated_telemetry_in_response() -> None:
     assert "openai/gpt-4o-mini" in models
     assert isinstance(telemetry.get("duration_ms"), int)
     assert isinstance(telemetry.get("side_effect_latency_ms"), int)
+
+
+def test_validate_skill_phase_outputs_rejects_missing_critique_score_shape() -> None:
+    outputs = {
+        "draft": {
+            "payload": {
+                "summary": {},
+                "recommendation": {},
+                "alert_levels": {},
+                "data_quality": {
+                    "price_data_source": "ib_mcp",
+                    "quote_timestamp": "2026-03-17T14:30:00Z",
+                    "prior_close": 101.2,
+                },
+            }
+        },
+        "critique": {"payload": {"issues": []}},
+        "repair": {"payload": {}},
+        "risk_gate": {"payload": {}},
+        "summarize": {"payload": {}},
+    }
+
+    violations = validate_skill_phase_outputs(skill_name="stock-analysis", outputs=outputs)
+
+    assert "critique_payload_missing_section_scores" in violations
+
+
+def test_validate_skill_phase_outputs_accepts_valid_critique_scores_with_reasons() -> None:
+    outputs = {
+        "draft": {
+            "payload": {
+                "summary": {},
+                "scoring": {},
+                "do_nothing_gate": {},
+            }
+        },
+        "critique": {
+            "payload": {
+                "section_scores": {
+                    "evidence": 8.2,
+                    "consistency": 6.9,
+                    "actionability": 7.4,
+                },
+                "failed_sections": ["consistency"],
+                "failed_section_reasons": {
+                    "consistency": "Scenario weights conflict with gate narrative.",
+                },
+                "issues": [],
+            }
+        },
+        "repair": {"payload": {}},
+        "risk_gate": {"payload": {}},
+        "summarize": {"payload": {}},
+    }
+
+    violations = validate_skill_phase_outputs(skill_name="earnings-analysis", outputs=outputs)
+
+    assert "critique_payload_missing_section_scores" not in violations
+    assert "critique_missing_failed_sections" not in violations
+    assert "critique_missing_failed_section_reasons" not in violations

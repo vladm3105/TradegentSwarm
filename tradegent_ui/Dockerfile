@@ -15,7 +15,7 @@ COPY server/ ./server/
 COPY schemas/ ./schemas/
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir .
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app

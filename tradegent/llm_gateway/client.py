@@ -59,6 +59,7 @@ class LiteLLMGatewayClient:
     def from_env(cls, *, timeout: float = 120.0, max_retries: int = 2) -> "LiteLLMGatewayClient":
         """Load routes from runtime env (single shared source) and build client."""
         load_runtime_env()
+        timeout = float(os.getenv("LITELLM_TIMEOUT", str(timeout)) or timeout)
         default_model = os.getenv("LLM_MODEL", "gpt-4o-mini")
 
         routes: dict[str, list[str]] = {}

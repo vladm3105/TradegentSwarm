@@ -19,6 +19,10 @@ def mock_env(monkeypatch):
     monkeypatch.setenv("NEO4J_URI", "bolt://localhost:7688")
     monkeypatch.setenv("NEO4J_USER", "neo4j")
     monkeypatch.setenv("NEO4J_PASS", "testpass")
+    # Prevent load_dotenv (called inside LiteLLMGatewayClient.from_env) from
+    # loading ADK_SUBAGENT_LLM_ENABLED=true from the project .env file.
+    # monkeypatch sets the value first; load_dotenv won't override it.
+    monkeypatch.setenv("ADK_SUBAGENT_LLM_ENABLED", "false")
 
 
 # ─── Database Fixtures ───────────────────────────────────────────────────────

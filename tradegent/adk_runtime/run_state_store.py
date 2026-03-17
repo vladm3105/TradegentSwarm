@@ -66,6 +66,25 @@ class RunStateStore:
             log.warning("run_state_store.db_unavailable_fallback_memory: error=%s", str(exc))
             return False
 
+    @staticmethod
+    def _normalize_ticker(ticker: str | None) -> str | None:
+        """Normalize ticker-like token to fit DB schema limits (varchar(20))."""
+        if ticker is None:
+            return None
+        token = str(ticker).strip()
+        if not token:
+            return None
+        return token[:20]
+
+    def _rollback_db_connection(self) -> None:
+        """Best-effort rollback to clear aborted psycopg transaction state."""
+        if self._db is None:
+            return
+        try:
+            self._db.conn.rollback()
+        except Exception:
+            return
+
     def init_run(
         self,
         run_id: str,
@@ -79,6 +98,7 @@ class RunStateStore:
         effective_config_hash: str | None = None,
     ) -> None:
         self._states[run_id] = "requested"
+        normalized_ticker = self._normalize_ticker(ticker)
 
         if not self._ensure_db():
             return
@@ -90,13 +110,14 @@ class RunStateStore:
                 status="requested",
                 parent_run_id=parent_run_id,
                 intent=intent,
-                ticker=ticker,
+                ticker=normalized_ticker,
                 analysis_type=analysis_type,
                 contract_version=contract_version,
                 routing_policy_version=routing_policy_version,
                 effective_config_hash=effective_config_hash,
             )
         except Exception as exc:
+            self._rollback_db_connection()
             self._db_failed = True
             log.warning(
                 "run_state_store.create_run_failed_fallback_memory: run_id=%s error=%s",
@@ -147,6 +168,7 @@ class RunStateStore:
                 policy_decisions=policy_decisions,
             )
         except Exception as exc:
+            self._rollback_db_connection()
             self._db_failed = True
             log.warning(
                 "run_state_store.append_event_failed_fallback_memory: run_id=%s from=%s to=%s error=%s",
@@ -185,6 +207,7 @@ class RunStateStore:
             db_existing = self._db.get_run_dedup(dedup_key)
             return False, db_existing
         except Exception as exc:
+            self._rollback_db_connection()
             self._db_failed = True
             log.warning("run_state_store.dedup_claim_failed_fallback_memory: error=%s", str(exc))
             self._dedup[dedup_key] = {"run_id": run_id, "status": "in_progress", "response_json": None}
@@ -201,6 +224,7 @@ class RunStateStore:
             assert self._db is not None
             self._db.finalize_run_dedup(dedup_key, status=status, response=response)
         except Exception as exc:
+            self._rollback_db_connection()
             self._db_failed = True
             log.warning("run_state_store.dedup_finalize_failed_fallback_memory: error=%s", str(exc))
 
@@ -221,6 +245,7 @@ class RunStateStore:
                 self._side_effect_markers.add(marker)
             return inserted
         except Exception as exc:
+            self._rollback_db_connection()
             self._db_failed = True
             log.warning("run_state_store.side_effect_claim_failed_fallback_memory: error=%s", str(exc))
             self._side_effect_markers.add(marker)

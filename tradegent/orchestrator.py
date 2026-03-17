@@ -33,7 +33,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import structlog
 import yaml  # type: ignore[import-untyped]
@@ -398,7 +398,21 @@ def _run_adk_scan_generation(
             "idempotency_key": f"scan:{scanner.scanner_code}:{datetime.now().strftime('%Y%m%dT%H%M%S')}",
         }
 
-        response = coordinator.handle(request)
+        scan_timeout = int(
+            cfg._get("scan_adk_timeout_seconds", "scheduler", "180")
+        )
+        response, timeout_error = _run_with_timeout(
+            coordinator.handle,
+            scan_timeout,
+            f"{entrypoint}:coordinator_handle",
+            request,
+        )
+        if timeout_error:
+            log.error("[%s] ADK scan timed out: %s", entrypoint, timeout_error)
+            return ""
+        if not isinstance(response, dict):
+            log.error("[%s] ADK scan returned invalid response type", entrypoint)
+            return ""
         validate_response_envelope(response)
 
         run_id = str(response.get("run_id", "unknown"))
@@ -556,6 +570,7 @@ def _generate_analysis_output(
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from db_layer import IBScanner, NexusDB, Schedule, Stock
+from timezone_config import now_tradegent
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 
@@ -869,6 +884,7 @@ class AnalysisResult:
     expected_value: float
     raw_output: str
     parsed_json: dict | None = None
+    gate_result: str = "FAIL"
 
 
 @dataclass
@@ -1646,6 +1662,7 @@ def _phase1_fresh_analysis(
         type=analysis_type,
         filepath=filepath,
         gate_passed=parsed.get("gate_passed", False) if parsed else False,
+        gate_result=(parsed.get("gate_result", "FAIL") if parsed else "FAIL"),
         recommendation=parsed.get("recommendation", "UNKNOWN") if parsed else "UNKNOWN",
         confidence=parsed.get("confidence", 0) if parsed else 0,
         expected_value=parsed.get("expected_value_pct", 0.0) if parsed else 0.0,
@@ -2390,18 +2407,34 @@ def extract_chain_data(analysis_path: Path) -> AnalysisChainData | None:
             data = parsed
 
         # Extract recommendation
-        recommendation = data.get('recommendation', 'NEUTRAL')
+        recommendation_raw = data.get('recommendation', 'NEUTRAL')
+        if isinstance(recommendation_raw, dict):
+            recommendation = str(recommendation_raw.get('action', 'NEUTRAL'))
+        else:
+            recommendation = str(recommendation_raw)
 
         # Extract confidence
         conf_obj = data.get('confidence', {})
         if isinstance(conf_obj, dict):
             confidence = conf_obj.get('level', 50)
+        elif isinstance(conf_obj, (int, float)):
+            confidence = conf_obj
+        elif isinstance(recommendation_raw, dict):
+            confidence = recommendation_raw.get('confidence', 50)
         else:
-            confidence = conf_obj if isinstance(conf_obj, int) else 50
+            confidence = 50
+
+        try:
+            confidence = int(round(float(confidence)))
+        except (TypeError, ValueError):
+            confidence = 50
 
         # Extract gate
         gate = data.get('do_nothing_gate', {})
-        gate_result = gate.get('gate_result', 'FAIL') if isinstance(gate, dict) else 'FAIL'
+        if isinstance(gate, dict):
+            gate_result = str(gate.get('gate_result', data.get('gate_result', 'FAIL')))
+        else:
+            gate_result = str(data.get('gate_result', 'FAIL'))
 
         # Extract trade plan
         trade_plan = data.get('trade_plan', {})
@@ -2424,11 +2457,11 @@ def extract_chain_data(analysis_path: Path) -> AnalysisChainData | None:
         # Extract expected value
         scenarios = data.get('scenarios', {})
         if isinstance(scenarios, dict):
-            ev = scenarios.get('expected_value', 0)
+            ev = scenarios.get('expected_value', data.get('expected_value_pct', 0))
             if isinstance(ev, dict):
-                ev = ev.get('total', 0)
+                ev = ev.get('total', data.get('expected_value_pct', 0))
         else:
-            ev = 0
+            ev = data.get('expected_value_pct', 0)
 
         return AnalysisChainData(
             ticker=data.get('ticker', ''),
@@ -2598,7 +2631,7 @@ def _post_analysis_workflow(
             recommendation = result.recommendation
             entry_price = result.parsed_json.get("entry_price")
             invalidation = result.parsed_json.get("rationale_summary", "")
-            gate_result = "PASS" if result.gate_passed else "FAIL"
+            gate_result = str(result.parsed_json.get("gate_result", result.gate_result)).strip().upper()
         else:
             log.debug("Could not extract chain data, skipping workflow")
             return
@@ -2848,7 +2881,7 @@ def _run_analysis_4phase_traced(
                 _safe_db_rollback(db, "post_analysis_workflow_traced")
 
             log.info(
-                f"╚═══ 4-PHASE COMPLETE ═══ {ticker} | Gate: {'PASS' if result.gate_passed else 'FAIL'} | "
+                f"╚═══ 4-PHASE COMPLETE ═══ {ticker} | Gate: {result.gate_result} | "
                 f"Rec: {result.recommendation} | Conf: {result.confidence}% [{trace_id}]"
             )
             return result
@@ -2975,7 +3008,7 @@ def _run_analysis_4phase_untraced(
             _safe_db_rollback(db, "post_analysis_workflow_untraced")
 
         log.info(
-            f"╚═══ 4-PHASE COMPLETE ═══ {ticker} | Gate: {'PASS' if result.gate_passed else 'FAIL'} | "
+            f"╚═══ 4-PHASE COMPLETE ═══ {ticker} | Gate: {result.gate_result} | "
             f"Rec: {result.recommendation} | Conf: {result.confidence}% [{trace_id}]"
         )
         return result
@@ -3036,6 +3069,7 @@ def _legacy_run_analysis(
         type=analysis_type,
         filepath=filepath,
         gate_passed=parsed.get("gate_passed", False) if parsed else False,
+        gate_result=(parsed.get("gate_result", "FAIL") if parsed else "FAIL"),
         recommendation=parsed.get("recommendation", "UNKNOWN") if parsed else "UNKNOWN",
         confidence=parsed.get("confidence", 0) if parsed else 0,
         expected_value=parsed.get("expected_value_pct", 0.0) if parsed else 0.0,
@@ -3088,7 +3122,7 @@ def _legacy_run_analysis(
         _safe_db_rollback(db, "post_analysis_workflow_legacy")
 
     log.info(
-        f"Analysis: {ticker} | Gate: {'PASS' if result.gate_passed else 'FAIL'} | "
+        f"Analysis: {ticker} | Gate: {result.gate_result} | "
         f"Rec: {result.recommendation} | Conf: {result.confidence}%"
     )
     return result
@@ -3277,6 +3311,7 @@ def _handle_parallel_shutdown(signum, frame):
 def run_analyses_parallel(
     tasks: list[tuple[str, "AnalysisType", bool]],
     source_scanner: str | None = None,
+    progress_callback: Callable[[str, str, int, int], None] | None = None,
 ) -> ParallelBatchResult:
     """
     Execute multiple analyses in parallel, respecting max_concurrent_runs.
@@ -3379,26 +3414,39 @@ def run_analyses_parallel(
         _parallel_futures = [_parallel_executor.submit(worker, task) for task in tasks]
         futures_map = {f: tasks[i][0] for i, f in enumerate(_parallel_futures)}
 
+        completed = 0
         for future in as_completed(_parallel_futures):
             ticker = futures_map[future]
+            status = "failed"
             try:
                 if future.cancelled():
                     result.skipped += 1
+                    status = "skipped"
                     log.warning(f"[{ticker}] Cancelled")
-                    continue
-
-                _, success, error = future.result()
-                if success:
-                    result.succeeded += 1
-                    log.info(f"[{ticker}] ✓ Completed")
-                elif error == "Daily limit reached":
-                    result.skipped += 1
                 else:
-                    result.failed += 1
-                    log.error(f"[{ticker}] ✗ Failed: {error}")
+                    _, success, error = future.result()
+                    if success:
+                        result.succeeded += 1
+                        status = "completed"
+                        log.info(f"[{ticker}] ✓ Completed")
+                    elif error == "Daily limit reached":
+                        result.skipped += 1
+                        status = "skipped"
+                    else:
+                        result.failed += 1
+                        status = "failed"
+                        log.error(f"[{ticker}] ✗ Failed: {error}")
             except Exception as e:
                 result.failed += 1
+                status = "failed"
                 log.error(f"[{ticker}] ✗ Exception: {e}")
+            finally:
+                completed += 1
+                if progress_callback:
+                    try:
+                        progress_callback(ticker, status, completed, result.total)
+                    except Exception as progress_error:
+                        log.debug("Progress callback failed for %s: %s", ticker, progress_error)
 
         _parallel_executor.shutdown(wait=True)
 
@@ -3421,6 +3469,7 @@ def run_analyses_parallel(
 def _run_analyses_sequential(
     tasks: list[tuple[str, "AnalysisType", bool]],
     source_scanner: str | None = None,
+    progress_callback: Callable[[str, str, int, int], None] | None = None,
 ) -> ParallelBatchResult:
     """Fallback sequential execution."""
     result = ParallelBatchResult(total=len(tasks))
@@ -3430,7 +3479,9 @@ def _run_analyses_sequential(
     seq_db = NexusDB()
     seq_db.connect()
     try:
+        completed = 0
         for ticker, analysis_type, auto_execute in tasks:
+            status = "failed"
             try:
                 run_pipeline(
                     seq_db, ticker, analysis_type,
@@ -3438,9 +3489,18 @@ def _run_analyses_sequential(
                     source_scanner=source_scanner
                 )
                 result.succeeded += 1
+                status = "completed"
             except Exception as e:
                 log.error(f"[{ticker}] Sequential analysis failed: {e}")
                 result.failed += 1
+                status = "failed"
+            finally:
+                completed += 1
+                if progress_callback:
+                    try:
+                        progress_callback(ticker, status, completed, result.total)
+                    except Exception as progress_error:
+                        log.debug("Progress callback failed for %s: %s", ticker, progress_error)
     finally:
         seq_db.close()
 
@@ -3448,7 +3508,11 @@ def _run_analyses_sequential(
     return result
 
 
-def run_watchlist(db: NexusDB, auto_execute: bool = False):
+def run_watchlist(
+    db: NexusDB,
+    auto_execute: bool = False,
+    progress_callback: Callable[[str, str, int, int], None] | None = None,
+):
     """Analyze all enabled stocks (parallel if enabled)."""
     stocks = db.get_enabled_stocks()
     remaining = cfg.max_daily_analyses - db.get_today_run_count()
@@ -3471,7 +3535,7 @@ def run_watchlist(db: NexusDB, auto_execute: bool = False):
         return
 
     # Execute (parallel or sequential based on config)
-    results = run_analyses_parallel(tasks)
+    results = run_analyses_parallel(tasks, progress_callback=progress_callback)
     log.info(f"Watchlist complete: {results.succeeded}/{results.total} succeeded, "
              f"{results.failed} failed, {results.skipped} skipped")
 
@@ -3495,7 +3559,11 @@ def run_scanners(db: NexusDB, scanner_code: str | None = None):
     for scanner in scanners:
         log.info(f"Scanner: {scanner.display_name}")
         run_id = db.start_scanner_run(scanner.scanner_code)
-
+        final_status = "failed"
+        final_error: str | None = "Scanner run did not finalize"
+        final_candidates: list[dict[str, Any]] = []
+        final_scanner_code = scanner.scanner_code
+        final_scan_time: str | None = None
         try:
             if engine == "adk":
                 output = _run_adk_scan_generation(
@@ -3510,14 +3578,10 @@ def run_scanners(db: NexusDB, scanner_code: str | None = None):
                     f"SCAN-{scanner.scanner_code}",
                 )
             if not output:
-                db.complete_scanner_run(
-                    run_id, "failed",
-                    scanner_code=scanner.scanner_code,
-                    error=(
-                        "ADK scan generation returned empty"
-                        if engine == "adk"
-                        else "Claude Code returned empty"
-                    ),
+                final_error = (
+                    "ADK scan generation returned empty"
+                    if engine == "adk"
+                    else "Claude Code returned empty"
                 )
                 continue
 
@@ -3527,20 +3591,17 @@ def run_scanners(db: NexusDB, scanner_code: str | None = None):
 
             parsed = parse_json_block(output)
             if not parsed or "candidates" not in parsed:
-                db.complete_scanner_run(
-                    run_id, "completed",
-                    scanner_code=scanner.scanner_code
-                )
+                final_status = "completed"
+                final_error = None
                 continue
 
             candidates = parsed["candidates"]
             log.info(f"  {len(candidates)} candidates found")
-            db.complete_scanner_run(
-                run_id, "completed",
-                candidates=candidates,
-                scanner_code=parsed.get("scanner", scanner.scanner_code),
-                scan_time=parsed.get("scan_time"),
-            )
+            final_candidates = candidates
+            final_scanner_code = parsed.get("scanner", scanner.scanner_code)
+            final_scan_time = parsed.get("scan_time")
+            final_status = "completed"
+            final_error = None
 
             valid_candidates = _filter_valid_scanner_candidates(candidates, scanner.scanner_code)
             skipped = len(candidates) - len(valid_candidates)
@@ -3565,19 +3626,45 @@ def run_scanners(db: NexusDB, scanner_code: str | None = None):
         except Exception as e:
             log.error(f"Scanner {scanner.scanner_code} failed: {e}")
             _safe_db_rollback(db, f"scanner_{scanner.scanner_code}_failure")
+            final_status = "failed"
+            final_error = str(e)
+        finally:
+            # Ensure child run_scanner row is always finalized exactly once.
+            if final_status != "completed":
+                final_candidates = []
             try:
                 db.complete_scanner_run(
-                    run_id, "failed",
-                    scanner_code=scanner.scanner_code,
-                    error=str(e)
+                    run_id,
+                    final_status,
+                    candidates=final_candidates,
+                    scanner_code=final_scanner_code,
+                    scan_time=final_scan_time,
+                    error=final_error,
                 )
             except Exception as complete_err:
                 log.error(
-                    "Failed to mark scanner run failed (%s): %s",
+                    "Failed to finalize scanner run (%s): %s",
                     scanner.scanner_code,
                     complete_err,
                 )
-                _safe_db_rollback(db, f"scanner_{scanner.scanner_code}_mark_failed")
+                _safe_db_rollback(db, f"scanner_{scanner.scanner_code}_finalize_failed")
+                # Retry once after rollback to reduce stale running rows.
+                try:
+                    db.complete_scanner_run(
+                        run_id,
+                        final_status,
+                        candidates=final_candidates,
+                        scanner_code=final_scanner_code,
+                        scan_time=final_scan_time,
+                        error=final_error,
+                    )
+                except Exception as retry_err:
+                    log.error(
+                        "Retry finalization failed for scanner run (%s): %s",
+                        scanner.scanner_code,
+                        retry_err,
+                    )
+                    _safe_db_rollback(db, f"scanner_{scanner.scanner_code}_finalize_retry_failed")
 
 
 @dataclass
@@ -4294,6 +4381,72 @@ def run_earnings_check(db: NexusDB):
             )
 
 
+def run_calibration_update_task(timeout_seconds: int | None = None) -> None:
+    """Run monthly calibration update script and persist calibration artifacts."""
+    outcomes_setting = cfg._get(
+        "calibration_outcomes_path",
+        None,
+        "tradegent/logs/calibration_outcomes.jsonl",
+    )
+    report_setting = cfg._get(
+        "calibration_report_path",
+        None,
+        "tradegent/logs/calibration_report.json",
+    )
+    priors_setting = cfg._get(
+        "calibration_priors_path",
+        None,
+        "tradegent_knowledge/knowledge/learnings/calibration/earnings_priors.latest.json",
+    )
+    sample_floor = int(cfg._get("calibration_sample_floor", None, 30))
+    apply_priors = _coerce_bool(cfg._get("calibration_apply_priors", None, False))
+
+    def _resolve_repo_path(value: Any) -> Path:
+        path = Path(str(value))
+        if path.is_absolute():
+            return path
+        return (BASE_DIR.parent / path).resolve()
+
+    outcomes_path = _resolve_repo_path(outcomes_setting)
+    report_path = _resolve_repo_path(report_setting)
+    priors_path = _resolve_repo_path(priors_setting)
+    script_path = (BASE_DIR / "scripts" / "run_calibration_update.py").resolve()
+
+    command = [
+        sys.executable,
+        str(script_path),
+        str(outcomes_path),
+        "--report-output",
+        str(report_path),
+        "--priors-output",
+        str(priors_path),
+        "--sample-floor",
+        str(sample_floor),
+    ]
+    if apply_priors:
+        command.append("--apply-priors")
+
+    completed = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        timeout=int(timeout_seconds or 600),
+        cwd=BASE_DIR.parent,
+    )
+    if completed.returncode != 0:
+        stderr = completed.stderr.strip()
+        stdout = completed.stdout.strip()
+        detail = stderr or stdout or "unknown error"
+        raise RuntimeError(f"Calibration update failed: {detail}")
+
+    log.info(
+        "Calibration update completed: report=%s priors=%s apply_priors=%s",
+        report_path,
+        priors_path,
+        apply_priors,
+    )
+
+
 def run_due_schedules(db: NexusDB):
     """Execute all schedules that are due."""
     schedule_timeout = int(cfg._get("task_timeout_minutes", "scheduler", "120"))
@@ -4304,6 +4457,14 @@ def run_due_schedules(db: NexusDB):
             recovered,
         )
 
+    current_time = now_tradegent()
+    if current_time.weekday() >= 5:
+        log.info(
+            "Weekend detected (%s); skipping due schedule execution",
+            current_time.strftime("%A"),
+        )
+        return
+
     schedules = db.get_due_schedules()
     log.info(f"═══ DUE SCHEDULES: {len(schedules)} ═══")
 
@@ -4312,11 +4473,41 @@ def run_due_schedules(db: NexusDB):
         log.info("Daily analysis limit reached — skipping due schedules")
         return
 
+    def _emit_schedule_heartbeat(s: Schedule, message: str) -> None:
+        """Best-effort heartbeat update while long-running schedule tasks are active."""
+        try:
+            db.heartbeat("running", current_task=message[:200])
+        except Exception as heartbeat_error:
+            log.warning(
+                "Heartbeat update failed for schedule %s (%s): %s",
+                s.id,
+                s.task_type,
+                heartbeat_error,
+            )
+
     def _run_scanner_task(s: Schedule) -> None:
         if s.target_scanner_id:
             scanner = db.get_scanner(s.target_scanner_id)
             if scanner:
                 run_scanners(db, scanner.scanner_code)
+
+    def _run_watchlist_task(s: Schedule) -> None:
+        def _on_watchlist_progress(
+            ticker: str,
+            status: str,
+            completed: int,
+            total: int,
+        ) -> None:
+            _emit_schedule_heartbeat(
+                s,
+                f"schedule {s.id} watchlist {completed}/{total} {ticker} ({status})",
+            )
+
+        run_watchlist(
+            db,
+            s.auto_execute,
+            progress_callback=_on_watchlist_progress,
+        )
 
     def _run_custom_task(s: Schedule) -> None:
         if not s.custom_prompt:
@@ -4328,11 +4519,27 @@ def run_due_schedules(db: NexusDB):
             ts = datetime.now().strftime("%Y%m%dT%H%M")
             (cfg.analyses_dir / f"custom_{s.id}_{ts}.md").write_text(output)
 
-    def _run_with_schedule_tracking(s: Schedule, task_fn) -> None:
+    def _run_with_schedule_tracking(
+        s: Schedule,
+        task_fn,
+        *,
+        enforce_timeout: bool = False,
+    ) -> None:
         """Record start/completion for tasks that do not pass schedule_id downstream."""
         run_id = db.mark_schedule_started(s.id)
+        _emit_schedule_heartbeat(s, f"schedule {s.id} {s.task_type} started")
         try:
-            task_fn()
+            if enforce_timeout:
+                schedule_timeout = int(s.timeout_seconds or 600)
+                _, task_error = _run_with_timeout(
+                    task_fn,
+                    schedule_timeout,
+                    f"schedule-{s.id}:{s.task_type}",
+                )
+                if task_error:
+                    raise TimeoutError(task_error)
+            else:
+                task_fn()
         except Exception as e:
             _safe_db_rollback(db, f"schedule_{s.id}_task_failure")
             try:
@@ -4348,6 +4555,7 @@ def run_due_schedules(db: NexusDB):
 
         try:
             db.mark_schedule_completed(s.id, run_id, "completed")
+            _emit_schedule_heartbeat(s, f"schedule {s.id} {s.task_type} completed")
         except Exception as completion_err:
             log.error("Failed to mark schedule %s completed: %s", s.id, completion_err)
             _safe_db_rollback(db, f"schedule_{s.id}_mark_completed")
@@ -4360,12 +4568,16 @@ def run_due_schedules(db: NexusDB):
         if s.target_ticker
         else None,
         "analyze_watchlist": lambda s: _run_with_schedule_tracking(
-            s, lambda: run_watchlist(db, s.auto_execute)
+            s, lambda: _run_watchlist_task(s), enforce_timeout=False
         ),
         "run_scanner": lambda s: _run_with_schedule_tracking(
-            s, lambda: _run_scanner_task(s)
+            s, lambda: _run_scanner_task(s), enforce_timeout=True
         ),
-        "run_all_scanners": lambda s: _run_with_schedule_tracking(s, lambda: run_scanners(db)),
+        "run_all_scanners": lambda s: _run_with_schedule_tracking(
+            s,
+            lambda: run_scanners(db),
+            enforce_timeout=True,
+        ),
         "pipeline": lambda s: run_pipeline(
             db, s.target_ticker, AnalysisType(s.analysis_type), s.auto_execute, s.id
         )
@@ -4375,7 +4587,16 @@ def run_due_schedules(db: NexusDB):
         "postmortem": lambda s: run_analysis(db, s.target_ticker, AnalysisType.POSTMORTEM, s.id)
         if s.target_ticker
         else None,
-        "custom": lambda s: _run_with_schedule_tracking(s, lambda: _run_custom_task(s)),
+        "custom": lambda s: _run_with_schedule_tracking(
+            s,
+            lambda: _run_custom_task(s),
+            enforce_timeout=True,
+        ),
+        "run_calibration_update": lambda s: _run_with_schedule_tracking(
+            s,
+            lambda: run_calibration_update_task(s.timeout_seconds),
+            enforce_timeout=False,
+        ),
     }
 
     executed = 0
@@ -5242,7 +5463,7 @@ def main():
             )
             if r:
                 print(
-                    f"File: {r.filepath}\nGate: {'PASS' if r.gate_passed else 'FAIL'}\nRec: {r.recommendation} ({r.confidence}%)"
+                    f"File: {r.filepath}\nGate: {r.gate_result}\nRec: {r.recommendation} ({r.confidence}%)"
                 )
 
         elif args.cmd == "execute":

@@ -82,7 +82,7 @@ Skill Output (YAML)
 | `_meta.version` | `schema_version` | VARCHAR(10) | e.g., "2.7" |
 | `current_price` | `current_price` | DECIMAL(12,4) | |
 | `recommendation` | `recommendation` | VARCHAR(20) | STRONG_BUY, BUY, WATCH, etc. |
-| `confidence.level` | `confidence` | INTEGER | 0-100 (0 when missing/uncomputable) |
+| `recommendation.confidence` / `do_nothing_gate.confidence_actual` / `decision.confidence_pct` / `probability.confidence_pct` | `confidence` | INTEGER | 0-100 (0 only when all calculated sources are unavailable) |
 | `do_nothing_gate.ev_actual` | `expected_value_pct` | DECIMAL(8,4) | |
 | `do_nothing_gate.gate_result` | `gate_result` | VARCHAR(20) | PASS, MARGINAL, FAIL |
 | `do_nothing_gate.gates_passed` | `gate_criteria_met` | INTEGER | 0-4 |
@@ -119,12 +119,15 @@ These fields are stored but NOT extracted to columns:
 | `alert_levels.price_alerts[]` | `yaml_content->'alert_levels'->'price_alerts'` |
 | `base_case_analysis.strength` | `yaml_content->'base_case_analysis'->>'strength'` |
 | `summary.key_levels.*_derivation` | `yaml_content->'summary'->'key_levels'->'entry_derivation'` |
+| `rationale` | `yaml_content->>'rationale'` |
 | `falsification.criteria[]` | `yaml_content->'falsification'->'criteria'` |
 | `thesis_reversal.conditions_to_flip[]` | `yaml_content->'thesis_reversal'->'conditions_to_flip'` |
 | `meta_learning.new_rule` | `yaml_content->'meta_learning'->'new_rule'` |
 | `bias_check.*` | `yaml_content->'bias_check'` |
 
 Note: v2.7 validation requires `bull_case_analysis.strength`, `base_case_analysis.strength`, and `bear_case_analysis.strength` in the range 1-10. Only bull/bear are extracted into dedicated DB columns; base remains JSONB-only.
+
+Confidence precedence note: stock ingestion prefers explicit recommendation/gate confidence when present; runtime synthesis now derives confidence from score signals before falling back to 0.
 
 ---
 

@@ -60,12 +60,40 @@ def list_schedules() -> list[dict[str, Any]]:
             cur.execute(
                 """
                 SELECT
-                    id, name, task_type, frequency,
-                    is_enabled, time_of_day, day_of_week, interval_minutes,
-                    next_run_at, last_run_at, last_run_status,
-                    fail_count, consecutive_fails
-                FROM nexus.schedules
-                ORDER BY next_run_at ASC NULLS LAST
+                    s.id,
+                    s.name,
+                    s.task_type,
+                    s.frequency,
+                    s.is_enabled,
+                    s.time_of_day,
+                    s.day_of_week,
+                    s.interval_minutes,
+                    s.next_run_at,
+                    s.last_run_at,
+                    s.last_run_status,
+                    s.fail_count,
+                    s.consecutive_fails,
+                    ar.active_started_at,
+                    CASE
+                        WHEN ar.active_started_at IS NOT NULL THEN COALESCE(ss.current_task, s.task_type)
+                        ELSE NULL
+                    END AS active_task_label,
+                    CASE
+                        WHEN ar.active_started_at IS NOT NULL THEN ss.last_heartbeat
+                        ELSE NULL
+                    END AS active_heartbeat_at
+                FROM nexus.schedules AS s
+                LEFT JOIN LATERAL (
+                    SELECT rh.started_at AS active_started_at
+                    FROM nexus.run_history AS rh
+                    WHERE rh.schedule_id = s.id
+                      AND rh.status = 'running'
+                    ORDER BY rh.started_at DESC
+                    LIMIT 1
+                ) AS ar ON TRUE
+                LEFT JOIN nexus.service_status AS ss
+                    ON ss.id = 1
+                ORDER BY s.next_run_at ASC NULLS LAST
                 """
             )
             return cast(list[dict[str, Any]], cur.fetchall())
@@ -77,12 +105,40 @@ def get_schedule(schedule_id: int) -> dict[str, Any] | None:
             cur.execute(
                 """
                 SELECT
-                    id, name, task_type, frequency,
-                    is_enabled, time_of_day, day_of_week, interval_minutes,
-                    next_run_at, last_run_at, last_run_status,
-                    fail_count, consecutive_fails
-                FROM nexus.schedules
-                WHERE id = %s
+                    s.id,
+                    s.name,
+                    s.task_type,
+                    s.frequency,
+                    s.is_enabled,
+                    s.time_of_day,
+                    s.day_of_week,
+                    s.interval_minutes,
+                    s.next_run_at,
+                    s.last_run_at,
+                    s.last_run_status,
+                    s.fail_count,
+                    s.consecutive_fails,
+                    ar.active_started_at,
+                    CASE
+                        WHEN ar.active_started_at IS NOT NULL THEN COALESCE(ss.current_task, s.task_type)
+                        ELSE NULL
+                    END AS active_task_label,
+                    CASE
+                        WHEN ar.active_started_at IS NOT NULL THEN ss.last_heartbeat
+                        ELSE NULL
+                    END AS active_heartbeat_at
+                FROM nexus.schedules AS s
+                LEFT JOIN LATERAL (
+                    SELECT rh.started_at AS active_started_at
+                    FROM nexus.run_history AS rh
+                    WHERE rh.schedule_id = s.id
+                      AND rh.status = 'running'
+                    ORDER BY rh.started_at DESC
+                    LIMIT 1
+                ) AS ar ON TRUE
+                LEFT JOIN nexus.service_status AS ss
+                    ON ss.id = 1
+                WHERE s.id = %s
                 """,
                 (schedule_id,),
             )

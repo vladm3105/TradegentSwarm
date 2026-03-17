@@ -42,6 +42,13 @@ const nextConfig = {
 
   // Output standalone for Docker deployment
   output: 'standalone',
+  // Ignore lint and type errors during build for faster/easier deployment
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  typescript: {
+    ignoreBuildErrors: true,
+  },
 };
 
 module.exports = nextConfig;

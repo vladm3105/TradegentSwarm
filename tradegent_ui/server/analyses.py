@@ -173,6 +173,9 @@ def _collect_declined_rows(
                 created_iso = created_raw
 
         file_name = path.name
+        raw_status = str(meta.get("status") or "declined").strip().lower()
+        status_value = raw_status if raw_status.startswith("inactive_") else "declined"
+
         rows.append(
             {
                 "id": _declined_analysis_id(file_name),
@@ -188,7 +191,7 @@ def _collect_declined_rows(
                 "current_price": payload.get("current_price"),
                 "yaml_content": payload,
                 "analysis_type": str(meta.get("type") or "stock-analysis"),
-                "status": "declined",
+                "status": status_value,
                 "decline_reason": decline.get("reason"),
             }
         )
@@ -321,7 +324,13 @@ class AnalysisDetailResponse(BaseModel):
 
 @router.get("/list", response_model=AnalysisListResponse)
 async def list_analyses(
-    status: Optional[str] = Query(None, pattern="^(completed|expired|declined|error|all)$"),
+    status: Optional[str] = Query(
+        None,
+        pattern=(
+            "^(completed|expired|declined|error|all|"
+            "inactive_quality_failed|inactive_data_unavailable|inactive_schema_failed)$"
+        ),
+    ),
     analysis_type: str = Query("all", pattern="^(stock|earnings|all)$"),
     include_declined: bool = Query(True),
     limit: int = Query(50, ge=1, le=100),
@@ -339,14 +348,30 @@ async def list_analyses(
                 if status == "completed":
                     # Completed: recent analysis, not explicitly declined or error
                     conditions.append("analysis_date >= CURRENT_DATE - INTERVAL '30 days'")
-                    conditions.append("COALESCE(yaml_content->'_meta'->>'status', '') NOT IN ('declined', 'error')")
+                    conditions.append(
+                        "COALESCE(yaml_content->'_meta'->>'status', '') NOT IN "
+                        "('declined', 'error', 'inactive_quality_failed', 'inactive_data_unavailable', 'inactive_schema_failed')"
+                    )
                 elif status == "expired":
                     conditions.append("analysis_date < CURRENT_DATE - INTERVAL '30 days'")
-                    conditions.append("COALESCE(yaml_content->'_meta'->>'status', '') NOT IN ('declined', 'error')")
+                    conditions.append(
+                        "COALESCE(yaml_content->'_meta'->>'status', '') NOT IN "
+                        "('declined', 'error', 'inactive_quality_failed', 'inactive_data_unavailable', 'inactive_schema_failed')"
+                    )
                 elif status == "declined":
-                    conditions.append("yaml_content->'_meta'->>'status' = 'declined'")
+                    conditions.append(
+                        "yaml_content->'_meta'->>'status' IN "
+                        "('declined', 'inactive_quality_failed', 'inactive_data_unavailable', 'inactive_schema_failed')"
+                    )
                 elif status == "error":
                     conditions.append("yaml_content->'_meta'->>'status' = 'error'")
+                elif status in {
+                    "inactive_quality_failed",
+                    "inactive_data_unavailable",
+                    "inactive_schema_failed",
+                }:
+                    conditions.append("yaml_content->'_meta'->>'status' = %s")
+                    params.append(status)
                 where_clause = "WHERE " + " AND ".join(conditions)
 
                 # Declined folder files: show to all authenticated users
@@ -379,7 +404,15 @@ async def list_analyses(
                             yaml_content,
                             COALESCE(yaml_content->>'analysis_type', 'stock') as analysis_type,
                             CASE
-                                WHEN yaml_content->'_meta'->>'status' IN ('declined', 'error', 'completed', 'expired')
+                                WHEN yaml_content->'_meta'->>'status' IN (
+                                    'declined',
+                                    'error',
+                                    'completed',
+                                    'expired',
+                                    'inactive_quality_failed',
+                                    'inactive_data_unavailable',
+                                    'inactive_schema_failed'
+                                )
                                     THEN yaml_content->'_meta'->>'status'
                                 WHEN analysis_date >= CURRENT_DATE - INTERVAL '30 days' THEN 'completed'
                                 ELSE 'expired'
@@ -413,7 +446,15 @@ async def list_analyses(
                             yaml_content,
                             COALESCE(yaml_content->>'analysis_type', 'earnings') as analysis_type,
                             CASE
-                                WHEN yaml_content->'_meta'->>'status' IN ('declined', 'error', 'completed', 'expired')
+                                WHEN yaml_content->'_meta'->>'status' IN (
+                                    'declined',
+                                    'error',
+                                    'completed',
+                                    'expired',
+                                    'inactive_quality_failed',
+                                    'inactive_data_unavailable',
+                                    'inactive_schema_failed'
+                                )
                                     THEN yaml_content->'_meta'->>'status'
                                 WHEN analysis_date >= CURRENT_DATE - INTERVAL '30 days' THEN 'completed'
                                 ELSE 'expired'

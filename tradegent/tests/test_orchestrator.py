@@ -1,5 +1,6 @@
 """Tests for tradegent/orchestrator.py"""
 
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -247,6 +248,31 @@ class TestStockCommands:
 class TestScheduleExecution:
     """Test schedule execution logic."""
 
+    @pytest.fixture(autouse=True)
+    def _force_weekday_time(self):
+        """Keep schedule execution tests deterministic regardless of wall-clock day."""
+        weekday_now = datetime(2026, 3, 13, 10, 0, 0)  # Friday
+        with patch("orchestrator.now_tradegent", return_value=weekday_now):
+            yield
+
+    def test_run_due_schedules_skips_weekends(self, mock_nexus_db):
+        """All due schedule execution is skipped on weekends."""
+        mock_nexus_db.recover_stuck_schedule_runs = MagicMock(return_value=0)
+        mock_nexus_db.get_due_schedules = MagicMock(return_value=[MagicMock()])
+        mock_nexus_db.get_today_run_count = MagicMock(return_value=0)
+
+        from orchestrator import run_due_schedules
+
+        weekend_now = datetime(2026, 3, 15, 10, 0, 0)  # Sunday
+        with patch("orchestrator.now_tradegent", return_value=weekend_now):
+            with patch("orchestrator.cfg") as mock_cfg:
+                mock_cfg.max_daily_analyses = 15
+                mock_cfg._get = MagicMock(return_value="120")
+                run_due_schedules(mock_nexus_db)
+
+        mock_nexus_db.recover_stuck_schedule_runs.assert_called_once_with(120)
+        mock_nexus_db.get_due_schedules.assert_not_called()
+
     def test_run_due_schedules_empty(self, mock_nexus_db):
         """Test running when no schedules are due."""
         mock_nexus_db.get_due_schedules = MagicMock(return_value=[])
@@ -321,7 +347,10 @@ class TestScheduleExecution:
             with patch("orchestrator.run_watchlist") as mock_run_watchlist:
                 run_due_schedules(mock_nexus_db)
 
-        mock_run_watchlist.assert_called_once_with(mock_nexus_db, False)
+        mock_run_watchlist.assert_called_once()
+        call_args, call_kwargs = mock_run_watchlist.call_args
+        assert call_args == (mock_nexus_db, False)
+        assert "progress_callback" in call_kwargs
         mock_nexus_db.mark_schedule_started.assert_called_once_with(2)
         mock_nexus_db.mark_schedule_completed.assert_called_once_with(2, 200, "completed")
 
@@ -349,6 +378,32 @@ class TestScheduleExecution:
         mock_run_scanners.assert_called_once_with(mock_nexus_db)
         mock_nexus_db.mark_schedule_started.assert_called_once_with(1)
         mock_nexus_db.mark_schedule_completed.assert_called_once_with(1, 100, "completed")
+
+    def test_run_due_schedules_tracks_calibration_update(self, mock_nexus_db):
+        """Calibration schedules must run via tracked schedule lifecycle."""
+        sched = MagicMock(
+            id=7,
+            name="Monthly Calibration Update",
+            task_type="run_calibration_update",
+            timeout_seconds=900,
+        )
+        mock_nexus_db.get_due_schedules = MagicMock(return_value=[sched])
+        mock_nexus_db.get_today_run_count = MagicMock(return_value=0)
+        mock_nexus_db.calculate_next_run = MagicMock(return_value=None)
+        mock_nexus_db.update_next_run = MagicMock()
+        mock_nexus_db.mark_schedule_started = MagicMock(return_value=700)
+        mock_nexus_db.mark_schedule_completed = MagicMock()
+
+        from orchestrator import run_due_schedules
+
+        with patch("orchestrator.cfg") as mock_cfg:
+            mock_cfg.max_daily_analyses = 15
+            with patch("orchestrator.run_calibration_update_task") as mock_calibration:
+                run_due_schedules(mock_nexus_db)
+
+        mock_calibration.assert_called_once_with(900)
+        mock_nexus_db.mark_schedule_started.assert_called_once_with(7)
+        mock_nexus_db.mark_schedule_completed.assert_called_once_with(7, 700, "completed")
 
 
 class TestScannerRuntimeSelection:

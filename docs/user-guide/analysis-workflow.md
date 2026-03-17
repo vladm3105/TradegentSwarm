@@ -6,6 +6,10 @@ Step-by-step guide to running stock and earnings analyses.
 
 ## Overview
 
+Version context:
+
+- For runtime and policy differences between current v2.8 behavior and prior v2.7 behavior, see [v2.8 vs v2.7 Upgrade Notes](../development/v2.8-vs-v2.7.md).
+
 ```
 ┌───────────────────────────────────────────────────────────────────┐
 │                      Analysis Pipeline                            │
@@ -181,9 +185,16 @@ Must pass ALL checks:
 | SKIP | No action |
 
 Confidence output rules:
-- Use calculated/model confidence when available.
-- If confidence is missing or cannot be calculated, confidence is set to `0`.
+- Use calculated confidence from structured phase output when available (`recommendation.confidence`, `do_nothing_gate.confidence_actual`, `decision.confidence_pct`, `probability.confidence_pct`).
+- For stock analysis, if those fields are missing but section scores are present, confidence is deterministically derived from scoring data:
+   - Prefer `scoring.weighted_total * 10`
+   - Otherwise, use the average of available section scores (`catalyst`, `environment`, `technical`, `fundamental`, `sentiment`) multiplied by 10.
+- If confidence still cannot be calculated, confidence is set to `0`.
 - The previous baseline fallback value of `50` is obsolete.
+
+Rationale output rules:
+- Stock analysis writes top-level `rationale` from synthesized summary narrative.
+- UI parsers also apply fallback resolution to avoid empty rationale display for legacy rows.
 
 Stock-analysis validation rules (v2.7):
 - `bull_case_analysis.strength` is required in `[1, 10]`

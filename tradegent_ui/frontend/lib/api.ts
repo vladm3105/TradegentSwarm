@@ -828,6 +828,9 @@ export interface Schedule {
   next_run_at: string | null;
   last_run_at: string | null;
   last_run_status: string | null;
+  active_started_at?: string | null;
+  active_task_label?: string | null;
+  active_heartbeat_at?: string | null;
 }
 
 export interface CreateSchedulePayload {

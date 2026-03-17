@@ -415,6 +415,10 @@ Notes:
 - The default auto-generated list is `Analysis Signals`.
 - Watchlist entry payloads include optional enrichment fields such as `last_analysis_at` and `days_until_expiry`.
 - Schedule status badges are driven by `nexus.schedules.last_run_status`.
+- `GET /api/schedules` responses include three optional live-execution fields populated only while `last_run_status = 'running'`:
+  - `active_task_label` — current task description from `nexus.service_status.current_task` (e.g. `schedule 2 watchlist 22/27 OWLT`)
+  - `active_started_at` — run start time from `nexus.run_history.started_at`
+  - `active_heartbeat_at` — last daemon heartbeat from `nexus.service_status.last_heartbeat`
 - If a historical failure remains visible after remediation, operators can clear stale status fields (`last_run_status`, `fail_count`, `consecutive_fails`) without deleting `run_history` records.
 - Scanner results normalize `scanner_code` from either `run_history.ticker` or `run_history.raw_output.scanner` to ensure API responses always return a valid string.
 
@@ -445,7 +449,7 @@ Connect to `ws://localhost:8081/ws/agent` for real-time communication.
 | `PositionCard` | Portfolio position with P&L |
 | `TradeCard` | Trade journal entry |
 | `WatchlistCard` | Watchlist entry with trigger |
-| `GateResult` | Do Nothing Gate result |
+| `GateResult` | Open-Trade Gate result (PASS / MARGINAL / FAIL) |
 | `ScenarioChart` | Scenario probability visualization |
 | `MetricsRow` | Key metrics display |
 | `ChartCard` | Price/data chart |

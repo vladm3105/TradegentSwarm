@@ -29,6 +29,11 @@ interface AnalysisRowProps {
 }
 
 function AnalysisRow({ analysis, onView, isLoading }: AnalysisRowProps) {
+  const recommendationLabel =
+    typeof analysis.recommendation === 'string'
+      ? analysis.recommendation.replace(/_/g, ' ')
+      : null;
+
   return (
     <tr className="border-b hover:bg-muted/50 transition-colors">
       <td className="p-4">
@@ -45,9 +50,9 @@ function AnalysisRow({ analysis, onView, isLoading }: AnalysisRowProps) {
         </Badge>
       </td>
       <td className="p-4">
-        {analysis.recommendation ? (
-          <Badge className={getRecommendationClass(analysis.recommendation)}>
-            {analysis.recommendation.replace('_', ' ')}
+        {recommendationLabel ? (
+          <Badge className={getRecommendationClass(recommendationLabel)}>
+            {recommendationLabel}
           </Badge>
         ) : (
           <span className="text-muted-foreground text-sm">-</span>
@@ -119,6 +124,11 @@ function AnalysisDetailDialog({
   isLoading,
   error,
 }: AnalysisDetailDialogProps) {
+  const recommendationLabel =
+    typeof apiResponse?.recommendation === 'string'
+      ? apiResponse.recommendation.replace(/_/g, ' ')
+      : null;
+
   // Loading state
   if (isLoading) {
     return (
@@ -174,9 +184,9 @@ function AnalysisDetailDialog({
             <Badge variant="outline" className="text-xs">
               v{apiResponse.schema_version}
             </Badge>
-            {apiResponse.recommendation && (
-              <Badge className={getRecommendationClass(apiResponse.recommendation)}>
-                {apiResponse.recommendation.replace('_', ' ')}
+            {recommendationLabel && (
+              <Badge className={getRecommendationClass(recommendationLabel)}>
+                {recommendationLabel}
               </Badge>
             )}
           </DialogTitle>
@@ -539,7 +549,7 @@ export default function AnalysisPage() {
                     <th className="p-4 font-medium text-muted-foreground">Status</th>
                     <th className="p-4 font-medium text-muted-foreground">Recommendation</th>
                     <th className="p-4 font-medium text-muted-foreground">Confidence</th>
-                    <th className="p-4 font-medium text-muted-foreground">Gate</th>
+                    <th className="p-4 font-medium text-muted-foreground">Open-Trade Gate</th>
                     <th className="p-4 font-medium text-muted-foreground">EV</th>
                     <th className="p-4 font-medium text-muted-foreground">Date</th>
                     <th className="p-4 font-medium text-muted-foreground">Actions</th>
