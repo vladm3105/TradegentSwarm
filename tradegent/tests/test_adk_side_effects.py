@@ -207,9 +207,14 @@ def test_critique_score_gate_blocks_when_scores_below_threshold(monkeypatch) -> 
                 "status": "ok",
                 "payload": {
                     "section_scores": {
-                        "evidence": 8.0,
-                        "consistency": 6.5,
-                        "actionability": 8.0,
+                        "catalyst": 8.0,
+                        "technical": 6.5,
+                        "fundamental": 8.0,
+                        "liquidity": 8.0,
+                        "sentiment": 8.0,
+                        "scenarios": 8.0,
+                        "risk_management": 8.0,
+                        "summary": 8.0,
                     }
                 },
             },
@@ -244,9 +249,14 @@ def test_critique_score_gate_allows_when_all_scores_meet_threshold(monkeypatch) 
                 "status": "ok",
                 "payload": {
                     "section_scores": {
-                        "evidence": 8.0,
-                        "consistency": 7.1,
-                        "actionability": 7.0,
+                        "catalyst": 8.0,
+                        "technical": 7.1,
+                        "fundamental": 7.0,
+                        "liquidity": 7.2,
+                        "sentiment": 7.4,
+                        "scenarios": 7.6,
+                        "risk_management": 7.5,
+                        "summary": 7.3,
                     }
                 },
             },
@@ -278,12 +288,17 @@ def test_critique_score_gate_non_active_mode_persists_inactive_artifact(monkeypa
                 "status": "ok",
                 "payload": {
                     "section_scores": {
-                        "evidence": 6.9,
-                        "consistency": 8.2,
-                        "actionability": 8.0,
+                        "catalyst": 6.9,
+                        "technical": 8.2,
+                        "fundamental": 8.0,
+                        "liquidity": 8.0,
+                        "sentiment": 8.0,
+                        "scenarios": 8.0,
+                        "risk_management": 8.0,
+                        "summary": 8.0,
                     },
-                    "failed_sections": ["evidence"],
-                    "failed_section_reasons": {"evidence": "insufficient numeric support"},
+                    "failed_sections": ["catalyst"],
+                    "failed_section_reasons": {"catalyst": "insufficient numeric support"},
                 },
             },
             "repair": {"status": "ok", "payload": {"notes": "repair attempted"}},
@@ -317,9 +332,14 @@ def test_critique_score_gate_disabled_default_path_allows_low_scores(monkeypatch
                 "status": "ok",
                 "payload": {
                     "section_scores": {
-                        "evidence": 2.0,
-                        "consistency": 2.0,
-                        "actionability": 2.0,
+                        "catalyst": 2.0,
+                        "technical": 2.0,
+                        "fundamental": 2.0,
+                        "liquidity": 2.0,
+                        "sentiment": 2.0,
+                        "scenarios": 2.0,
+                        "risk_management": 2.0,
+                        "summary": 2.0,
                     }
                 },
             },
@@ -351,12 +371,17 @@ def test_draft_critique_repair_flow_blocks_then_allows_with_score_semantics(monk
                 "status": "ok",
                 "payload": {
                     "section_scores": {
-                        "evidence": 6.0,
-                        "consistency": 8.0,
-                        "actionability": 8.0,
+                        "catalyst": 6.0,
+                        "technical": 8.0,
+                        "fundamental": 8.0,
+                        "liquidity": 8.0,
+                        "sentiment": 8.0,
+                        "scenarios": 8.0,
+                        "risk_management": 8.0,
+                        "summary": 8.0,
                     },
-                    "failed_sections": ["evidence"],
-                    "failed_section_reasons": {"evidence": "missing numeric derivations"},
+                    "failed_sections": ["catalyst"],
+                    "failed_section_reasons": {"catalyst": "missing numeric derivations"},
                 },
             },
             "repair": {
@@ -385,9 +410,14 @@ def test_draft_critique_repair_flow_blocks_then_allows_with_score_semantics(monk
                 "status": "ok",
                 "payload": {
                     "section_scores": {
-                        "evidence": 7.1,
-                        "consistency": 8.0,
-                        "actionability": 8.0,
+                        "catalyst": 7.1,
+                        "technical": 8.0,
+                        "fundamental": 8.0,
+                        "liquidity": 8.0,
+                        "sentiment": 8.0,
+                        "scenarios": 8.0,
+                        "risk_management": 8.0,
+                        "summary": 8.0,
                     }
                 },
             },

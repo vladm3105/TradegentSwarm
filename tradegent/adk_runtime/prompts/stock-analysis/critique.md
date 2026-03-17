@@ -18,9 +18,14 @@ Hard checks:
 Return JSON payload with this exact shape:
 
 - section_scores: object
-  - evidence: number (0-10)
-  - consistency: number (0-10)
-  - actionability: number (0-10)
+  - catalyst: number (0-10)
+  - technical: number (0-10)
+  - fundamental: number (0-10)
+  - liquidity: number (0-10)
+  - sentiment: number (0-10)
+  - scenarios: number (0-10)
+  - risk_management: number (0-10)
+  - summary: number (0-10)
 - failed_sections: array of section names where score < 7.0
 - failed_section_reasons: object mapping failed section name -> concise reason
 - issues: array of issue objects

@@ -12,9 +12,13 @@ Hard checks:
 Return JSON payload with this exact shape:
 
 - section_scores: object
-  - evidence: number (0-10)
-  - consistency: number (0-10)
-  - actionability: number (0-10)
+  - catalyst_matrix: number (0-10)
+  - news_age_decay: number (0-10)
+  - priced_in_logic: number (0-10)
+  - watchlist_thresholds: number (0-10)
+  - scenario_engine: number (0-10)
+  - bias_check: number (0-10)
+  - summary: number (0-10)
 - failed_sections: array of section names where score < 7.0
 - failed_section_reasons: object mapping failed section name -> concise reason
 - issues: array of issue objects

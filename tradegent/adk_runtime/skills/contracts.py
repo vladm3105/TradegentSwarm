@@ -7,6 +7,27 @@ from typing import Any
 
 _PHASES = ("draft", "critique", "repair", "risk_gate", "summarize")
 _CRITIQUE_MIN_SCORE = 7.0
+_REQUIRED_SECTION_SCORES: dict[str, tuple[str, ...]] = {
+    "stock-analysis": (
+        "catalyst",
+        "technical",
+        "fundamental",
+        "liquidity",
+        "sentiment",
+        "scenarios",
+        "risk_management",
+        "summary",
+    ),
+    "earnings-analysis": (
+        "catalyst_matrix",
+        "news_age_decay",
+        "priced_in_logic",
+        "watchlist_thresholds",
+        "scenario_engine",
+        "bias_check",
+        "summary",
+    ),
+}
 
 ANALYSIS_ACTIVE_STATUS = "active"
 ANALYSIS_INACTIVE_STATUSES = (
@@ -79,6 +100,11 @@ def validate_skill_phase_outputs(*, skill_name: str, outputs: dict[str, Any]) ->
             else:
                 if not section_scores_raw:
                     violations.append("critique_section_scores_empty")
+
+                required_sections = _REQUIRED_SECTION_SCORES.get(skill_name, ())
+                for section in required_sections:
+                    if section not in section_scores_raw:
+                        violations.append(f"critique_section_score_missing_{section}")
 
                 low_score_sections: list[str] = []
                 for section, score in section_scores_raw.items():

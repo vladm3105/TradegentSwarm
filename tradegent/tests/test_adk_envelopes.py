@@ -535,13 +535,17 @@ def test_validate_skill_phase_outputs_accepts_valid_critique_scores_with_reasons
         "critique": {
             "payload": {
                 "section_scores": {
-                    "evidence": 8.2,
-                    "consistency": 6.9,
-                    "actionability": 7.4,
+                    "catalyst_matrix": 8.2,
+                    "news_age_decay": 7.5,
+                    "priced_in_logic": 7.4,
+                    "watchlist_thresholds": 7.2,
+                    "scenario_engine": 7.1,
+                    "bias_check": 7.3,
+                    "summary": 6.9,
                 },
-                "failed_sections": ["consistency"],
+                "failed_sections": ["summary"],
                 "failed_section_reasons": {
-                    "consistency": "Scenario weights conflict with gate narrative.",
+                    "summary": "Scenario weights conflict with gate narrative.",
                 },
                 "issues": [],
             }

@@ -2302,8 +2302,20 @@ def _phase4_synthesize(
     # Update result object with adjusted values
     result.confidence = adjusted_confidence
     if result.parsed_json:
+        result.parsed_json["confidence"] = adjusted_confidence
+        recommendation = result.parsed_json.get("recommendation")
+        if isinstance(recommendation, dict):
+            recommendation["confidence"] = adjusted_confidence
         result.parsed_json["adjusted_confidence"] = adjusted_confidence
         result.parsed_json["confidence_modifiers"] = modifiers_applied
+
+    # Best-effort sync to latest persisted knowledge YAML for the same ticker/type.
+    # This keeps persisted artifacts aligned with Phase 4 confidence shown in logs/CLI.
+    _sync_latest_knowledge_confidence(
+        ticker=result.ticker,
+        analysis_type=result.type,
+        adjusted_confidence=adjusted_confidence,
+    )
 
     # Generate synthesis section
     synthesis = _format_synthesis_section(
@@ -2331,6 +2343,61 @@ def _phase4_synthesize(
         f"[P4] Synthesis complete: {result.ticker} confidence {original_confidence}% → {adjusted_confidence}% "
         f"(modifiers: {list(modifiers_applied.keys())})"
     )
+
+
+def _sync_latest_knowledge_confidence(
+    *,
+    ticker: str,
+    analysis_type: AnalysisType,
+    adjusted_confidence: int,
+) -> None:
+    """Best-effort sync of Phase 4 confidence into newest knowledge YAML artifact."""
+    try:
+        if analysis_type == AnalysisType.STOCK:
+            knowledge_dir = Path("/opt/data/tradegent_swarm/tradegent_knowledge/knowledge/analysis/stock")
+        elif analysis_type == AnalysisType.EARNINGS:
+            knowledge_dir = Path("/opt/data/tradegent_swarm/tradegent_knowledge/knowledge/analysis/earnings")
+        else:
+            return
+
+        if not knowledge_dir.exists():
+            return
+
+        candidates = sorted(
+            knowledge_dir.glob(f"{ticker.upper()}_*.yaml"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        if not candidates:
+            return
+
+        latest = candidates[0]
+        doc = yaml.safe_load(latest.read_text(encoding="utf-8"))
+        if not isinstance(doc, dict):
+            return
+
+        changed = False
+
+        recommendation = doc.get("recommendation")
+        if isinstance(recommendation, dict):
+            recommendation["confidence"] = int(adjusted_confidence)
+            changed = True
+
+        gate = doc.get("do_nothing_gate")
+        if isinstance(gate, dict):
+            gate["confidence_actual"] = int(adjusted_confidence)
+            changed = True
+
+        decision = doc.get("decision")
+        if isinstance(decision, dict) and "confidence_pct" in decision:
+            decision["confidence_pct"] = int(adjusted_confidence)
+            changed = True
+
+        if changed:
+            latest.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
+            log.info("[P4] Synced persisted confidence to %s", latest.name)
+    except Exception as exc:
+        log.debug("[P4] Confidence sync skipped: %s", exc)
 
 
 def _update_analysis_confidence(

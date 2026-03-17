@@ -25,6 +25,9 @@ class _FakeSubagents:
             "section_scores": {
                 "catalyst": 8.5,
                 "technical": 8.0,
+                "fundamental": 8.0,
+                "liquidity": 8.0,
+                "sentiment": 8.0,
                 "risk_management": 8.0,
                 "scenarios": 8.0,
                 "summary": 8.0,
@@ -80,6 +83,9 @@ def test_stock_adapter_backfills_data_quality_from_context() -> None:
                 "section_scores": {
                     "catalyst": 8.5,
                     "technical": 8.0,
+                    "fundamental": 8.0,
+                    "liquidity": 8.0,
+                    "sentiment": 8.0,
                     "risk_management": 8.0,
                     "scenarios": 8.0,
                     "summary": 8.0,
