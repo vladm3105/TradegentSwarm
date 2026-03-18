@@ -7,7 +7,7 @@ Equivalent to orchestrator.py (legacy name).
 
 Usage:
     python tradegent.py --help
-    python tradegent.py analyze NVDA --type stock
+    python tradegent.py pipeline NVDA --type stock --no-execute
     python tradegent.py status
 """
 

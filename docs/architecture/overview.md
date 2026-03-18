@@ -105,7 +105,7 @@ Two complementary systems provide historical context:
 ```
 1. TRIGGER
    │
-   ├─ Manual: orchestrator.py analyze MSFT
+   ├─ Manual: orchestrator.py pipeline MSFT --type stock --no-execute
    ├─ Schedule: service.py tick loop
    └─ Scanner: auto-analyze top results
    │

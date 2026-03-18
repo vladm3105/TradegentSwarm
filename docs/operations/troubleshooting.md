@@ -61,9 +61,9 @@ sudo systemctl status tradegent tradegent-ib-mcp
    python orchestrator.py settings set skill_use_claude_code false
    ```
 
-3. Re-run analysis:
+3. Re-run pipeline:
    ```bash
-   python orchestrator.py analyze NVDA --type stock
+   python orchestrator.py pipeline NVDA --type stock --no-execute
    ```
 
 ### Metabase Fails to Start (Port 3001 In Use)
@@ -316,7 +316,7 @@ PY
 1. Run fresh stock analysis:
    ```bash
    cd tradegent
-   python tradegent.py analyze MSFT --type stock
+   python tradegent.py pipeline MSFT --type stock --no-execute
    ```
 
 2. Validate produced YAML:

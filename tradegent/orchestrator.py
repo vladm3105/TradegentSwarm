@@ -7,7 +7,6 @@ All configuration (stocks, scanners, schedules) lives in PostgreSQL.
 RAG embeddings stored in pgvector, knowledge graph in Neo4j.
 
 Usage:
-    python orchestrator.py analyze NFLX --type earnings
     python orchestrator.py execute analyses/NFLX_earnings_20260217.md
     python orchestrator.py pipeline NFLX --type earnings
     python orchestrator.py scan                              # run all enabled IB scanners
@@ -41,17 +40,22 @@ import yaml  # type: ignore[import-untyped]
 try:
     # Package import path (entrypoint: tradegent.orchestrator:main)
     from tradegent.adk_runtime.env import load_runtime_env
+    from tradegent.cli_runtime.engine_guard import (
+        coerce_bool as runtime_coerce_bool,
+        validate_agent_engine as runtime_validate_agent_engine,
+    )
 except ImportError:
     # Script mode fallback (entrypoint: python orchestrator.py)
     from adk_runtime.env import load_runtime_env
+    from cli_runtime.engine_guard import (
+        coerce_bool as runtime_coerce_bool,
+        validate_agent_engine as runtime_validate_agent_engine,
+    )
 
 # Load .env file before any database connections
 _env_path = load_runtime_env(Path(__file__).parent / ".env")
 
-SUPPORTED_AGENT_ENGINES = {"legacy", "adk"}
-MANUAL_CLI_INVOCATION_SOURCE = "cli_manual"
 PRODUCTION_GUARDED_COMMANDS = {
-    "analyze",
     "execute",
     "pipeline",
     "watchlist",
@@ -64,41 +68,13 @@ PRODUCTION_GUARDED_COMMANDS = {
 
 
 def validate_agent_engine() -> str:
-    """Validate runtime engine configuration and required dependencies."""
-    engine = os.getenv("AGENT_ENGINE", "adk").strip().lower()
-    adk_required = os.getenv("ADK_REQUIRED", "false").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-    }
-
-    if engine not in SUPPORTED_AGENT_ENGINES:
-        raise RuntimeError(
-            f"Unsupported AGENT_ENGINE='{engine}'. Allowed: {sorted(SUPPORTED_AGENT_ENGINES)}"
-        )
-
-    if adk_required and engine != "adk":
-        raise RuntimeError("ADK_REQUIRED=true requires AGENT_ENGINE=adk")
-
-    if engine == "adk":
-        try:
-            import google.adk  # noqa: F401
-        except Exception as exc:
-            raise RuntimeError(
-                "AGENT_ENGINE=adk requires Google ADK. "
-                "Install with: pip install '.[adk]'"
-            ) from exc
-
-    return engine
+    """Compatibility wrapper for CLI runtime engine validation."""
+    return runtime_validate_agent_engine()
 
 
 def _coerce_bool(value: Any) -> bool:
-    """Normalize mixed settings value types to bool."""
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return value.strip().lower() in {"1", "true", "yes", "on"}
-    return bool(value)
+    """Compatibility wrapper for runtime boolean coercion."""
+    return runtime_coerce_bool(value)
 
 
 def enforce_production_adk_guard(settings: "Settings", context: str) -> None:
@@ -288,10 +264,10 @@ def _run_adk_analysis_generation(
     prompt: str,
     allowed_tools: str,
 ) -> str:
-    """Run analysis via ADK coordinator and emit legacy-compatible markdown payload."""
+    """Run analysis via ADK coordinator and emit markdown payload for downstream parsing."""
     if analysis_type not in {AnalysisType.STOCK, AnalysisType.EARNINGS}:
         log.info(
-            "[%s] ADK engine active but analysis_type=%s is not supported; falling back to legacy CLI",
+            "[%s] ADK engine active but analysis_type=%s is not supported; using direct Claude subprocess path",
             entrypoint,
             analysis_type.value,
         )
@@ -538,32 +514,15 @@ def _generate_analysis_output(
     phase_name: str | None = None,
     invocation_source: str = "runtime",
 ) -> str:
-    """Dispatch analysis generation to selected engine while preserving legacy output contract."""
-    engine = validate_agent_engine()
-    if engine == "adk":
-        return _run_adk_analysis_generation(
-            db,
-            ticker,
-            analysis_type,
-            label,
-            prompt=prompt,
-            allowed_tools=allowed_tools,
-        )
-
-    if invocation_source != MANUAL_CLI_INVOCATION_SOURCE:
-        raise RuntimeError(
-            "AGENT_ENGINE=legacy is allowed only for manual CLI analyze command "
-            f"(invocation_source={invocation_source})"
-        )
-
-    return call_claude_code(
-        prompt,
-        allowed_tools,
+    """Dispatch analysis generation through ADK runtime only."""
+    validate_agent_engine()
+    return _run_adk_analysis_generation(
+        db,
+        ticker,
+        analysis_type,
         label,
-        timeout=timeout,
-        phase=phase,
-        phase_name=phase_name,
-        analysis_type=analysis_type.value,
+        prompt=prompt,
+        allowed_tools=allowed_tools,
     )
 
 # Add shared module to path for observability
@@ -2738,15 +2697,13 @@ def run_analysis(
     """
     Stage 1: Generate analysis via ADK runtime (default).
 
-    Legacy Claude Code path is allowed only for manual CLI `analyze` invocation.
-
     Uses 4-phase workflow when four_phase_analysis_enabled=True:
         Phase 1: Fresh analysis (no KB context)
         Phase 2: Dual ingest (Graph + RAG)
         Phase 3: Retrieve historical context
         Phase 4: Synthesize (compare, adjust confidence, append)
 
-    Otherwise uses legacy workflow (KB context before analysis).
+    Otherwise uses the legacy 1-pass workflow (KB context before analysis).
     """
     if cfg.four_phase_analysis_enabled:
         return _run_analysis_4phase(db, ticker, analysis_type, schedule_id, invocation_source)
@@ -3100,7 +3057,7 @@ def _legacy_run_analysis(
     Legacy analysis workflow (pre-4-phase).
 
     Gets KB context BEFORE analysis, then indexes to RAG only.
-    Kept for backward compatibility when four_phase_analysis_enabled=False.
+    Retained for compatibility when four_phase_analysis_enabled=False.
     """
     timestamp = datetime.now().strftime("%Y%m%dT%H%M")
     filepath = cfg.analyses_dir / f"{ticker}_{analysis_type.value}_{timestamp}.md"
@@ -5259,9 +5216,6 @@ def main():
     parser = argparse.ArgumentParser(description="Nexus Light v2.2")
     sub = parser.add_subparsers(dest="cmd")
 
-    p = sub.add_parser("analyze")
-    p.add_argument("ticker")
-    p.add_argument("--type", default="stock", choices=["earnings", "stock", "postmortem"])
     p = sub.add_parser("execute")
     p.add_argument("analysis_file")
     p = sub.add_parser("pipeline")
@@ -5520,18 +5474,6 @@ def main():
         if args.cmd == "db-init":
             db.init_schema()
             print("✅ Schema initialized")
-
-        elif args.cmd == "analyze":
-            r = run_analysis(
-                db,
-                args.ticker.upper(),
-                AnalysisType(args.type),
-                invocation_source=MANUAL_CLI_INVOCATION_SOURCE,
-            )
-            if r:
-                print(
-                    f"File: {r.filepath}\nGate: {r.gate_result}\nRec: {r.recommendation} ({r.confidence}%)"
-                )
 
         elif args.cmd == "execute":
             p = Path(args.analysis_file)

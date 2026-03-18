@@ -128,11 +128,11 @@ Dry run mode: true
 
 ---
 
-## First Analysis
+## First Single-Ticker Pipeline
 
 ### 1. Run Preflight Check
 
-Before running your first analysis, verify all services are healthy:
+Before running your first pipeline, verify all services are healthy:
 
 ```bash
 cd tradegent && python preflight.py --full
@@ -174,10 +174,10 @@ By default, the system runs in dry run mode (no Claude Code calls). Disable it:
 python orchestrator.py settings set dry_run_mode false
 ```
 
-### 3. Run Your First Analysis
+### 3. Run Your First Pipeline
 
 ```bash
-python orchestrator.py analyze MSFT --type stock
+python orchestrator.py pipeline MSFT --type stock --no-execute
 ```
 
 This will:

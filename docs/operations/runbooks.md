@@ -130,8 +130,8 @@ python orchestrator.py stock add PLTR \
   --earnings-date "2025-02-15" \
   --comment "Palantir Technologies - AI/defense"
 
-# 3. Run initial analysis
-python orchestrator.py analyze PLTR --type stock
+# 3. Run initial pipeline (Stage 1 only)
+python orchestrator.py pipeline PLTR --type stock --no-execute
 
 # 4. Verify indexing
 python -c "
@@ -146,9 +146,9 @@ python orchestrator.py stock enable PLTR
 
 ---
 
-## Running Manual Analysis
+## Running Single-Ticker Pipeline
 
-**When:** Need immediate analysis outside scheduled runs
+**When:** Need immediate single-ticker execution outside scheduled runs
 
 ```bash
 # 1. Quick preflight check
@@ -164,8 +164,8 @@ python orchestrator.py settings set dry_run_mode false
 python orchestrator.py settings get skill_use_claude_code
 echo "$AGENT_ENGINE"
 
-# 3. Run analysis
-python orchestrator.py analyze NVDA --type earnings
+# 3. Run single-ticker pipeline (Stage 1 only)
+python orchestrator.py pipeline NVDA --type earnings --no-execute
 
 # 4. Verify output
 # Accepted artifacts
@@ -202,8 +202,8 @@ python orchestrator.py settings set auto_execute_enabled true
 # 4. Set stock to paper state
 python orchestrator.py stock set-state NVDA paper
 
-# 5. Run analysis (will execute if gate passes)
-python orchestrator.py analyze NVDA
+# 5. Run pipeline (will execute if gate passes)
+python orchestrator.py pipeline NVDA --type stock
 
 # 6. Check execution
 python orchestrator.py status
@@ -339,8 +339,8 @@ sudo journalctl -u tradegent -n 50 | grep -i error
 # - API error: Check API keys
 # - Timeout: Increase timeouts or retry
 
-# 4. Retry analysis
-python orchestrator.py analyze TICKER --force
+# 4. Retry single-ticker pipeline
+python orchestrator.py pipeline TICKER --type stock --no-execute
 ```
 
 ---

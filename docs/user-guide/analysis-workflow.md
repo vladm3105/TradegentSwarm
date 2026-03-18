@@ -58,7 +58,7 @@ Version context:
 ### Via CLI
 
 ```bash
-python orchestrator.py analyze NVDA --type stock
+python orchestrator.py pipeline NVDA --type stock --no-execute
 ```
 
 ### Via Claude Code
@@ -82,7 +82,7 @@ tradegent_knowledge/knowledge/analysis/stock/NVDA_{YYYYMMDDTHHMM}.yaml
 ### Via CLI
 
 ```bash
-python orchestrator.py analyze NVDA --type earnings
+python orchestrator.py pipeline NVDA --type earnings --no-execute
 ```
 
 ### Via Claude Code
@@ -286,7 +286,7 @@ PYTHONPATH=src python -m ibmcp --transport sse --port 8100
 
 ### "No context available"
 
-First analysis for ticker. Will proceed without historical context.
+First pipeline run for ticker. Will proceed without historical context.
 
 ### "Gate failed"
 

@@ -14,8 +14,9 @@ python orchestrator.py <command> [options]
 | Command | Purpose |
 |---------|---------|
 | `status` | System status |
-| `analyze` | Run analysis |
+| `pipeline` | Run full single-ticker pipeline |
 | `watchlist` | Analyze enabled stocks |
+| `run-due` | Run due scheduled tasks |
 | `stock` | Stock management |
 | `settings` | Configuration |
 | `db-init` | Initialize database |
@@ -53,32 +54,21 @@ python orchestrator.py db-init
 
 ## Analysis Commands
 
-### analyze
+### analyze (deprecated)
 
-Run analysis for a single ticker.
+Direct CLI `analyze` is disabled.
 
-```bash
-python orchestrator.py analyze <TICKER> [options]
-```
-
-**Options:**
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--type` | stock | Analysis type: `stock`, `earnings` |
-| `--force` | false | Skip recent analysis check |
-
-**Examples:**
+Use one of the supported paths:
 
 ```bash
-# Stock analysis
-python orchestrator.py analyze NVDA --type stock
+# Single ticker pipeline
+python orchestrator.py pipeline NVDA --type stock --no-execute
 
-# Earnings analysis
-python orchestrator.py analyze MSFT --type earnings
+# Bulk enabled stocks
+python orchestrator.py watchlist
 
-# Force re-analysis
-python orchestrator.py analyze AAPL --force
+# Scheduled due tasks
+python orchestrator.py run-due
 ```
 
 ### watchlist
@@ -319,7 +309,7 @@ python orchestrator.py status
 
 ## Common Workflows
 
-### First Analysis
+### First Single-Ticker Pipeline
 
 ```bash
 # 1. Disable dry run
@@ -328,8 +318,8 @@ python orchestrator.py settings set dry_run_mode false
 # 2. Add stock
 python orchestrator.py stock add NVDA --priority 10 --comment "NVIDIA - AI/GPU leader"
 
-# 3. Run analysis
-python orchestrator.py analyze NVDA --type stock
+# 3. Run single-ticker pipeline (Stage 1 only)
+python orchestrator.py pipeline NVDA --type stock --no-execute
 ```
 
 ### Enable Paper Trading
@@ -344,8 +334,8 @@ python orchestrator.py settings set auto_execute_enabled true
 # 3. Set stock to paper state
 python orchestrator.py stock set-state NVDA paper
 
-# 4. Run analysis (will execute if gate passes)
-python orchestrator.py analyze NVDA
+# 4. Run pipeline (will execute if gate passes)
+python orchestrator.py pipeline NVDA --type stock
 ```
 
 ### Batch Operations

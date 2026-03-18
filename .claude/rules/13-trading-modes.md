@@ -76,7 +76,7 @@ export OPENAI_API_KEY=<key>
 
 ```bash
 python tradegent.py --help
-python tradegent.py analyze NVDA --type stock
+python tradegent.py pipeline NVDA --type stock --no-execute
 python tradegent.py watchlist
 python tradegent.py run-scanners
 python service.py  # Start daemon

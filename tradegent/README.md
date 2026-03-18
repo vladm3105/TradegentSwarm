@@ -159,9 +159,9 @@ python3 tradegent.py status
 python3 tradegent.py stock list
 python3 tradegent.py settings list
 
-# 6. Run a single analysis (dry run mode is ON by default)
+# 6. Run pipeline for a single ticker (dry run mode is ON by default)
 python3 tradegent.py settings set dry_run_mode false
-python3 tradegent.py analyze NFLX --type earnings
+python3 tradegent.py pipeline NFLX --type earnings --no-execute
 
 # 7. Start the service
 python3 service.py
@@ -256,7 +256,7 @@ IB market scanner configurations. Scanners discover opportunities and can auto-p
 | num_results | INT | Max results from IB (default 25) |
 | filters | JSONB | Flexible filter parameters |
 | auto_add_to_watchlist | BOOLEAN | Auto-add discoveries to stocks table |
-| auto_analyze | BOOLEAN | Auto-run analysis on top results |
+| auto_analyze | BOOLEAN | Auto-run Stage 1 pipeline on top results |
 | analysis_type | VARCHAR | earnings or stock |
 | max_candidates | INT | How many to auto-process |
 
@@ -304,7 +304,7 @@ Cron-like task definitions. The service checks `v_due_schedules` view every tick
 
 | Type | Description |
 |------|-------------|
-| `analyze_stock` | Run analysis on a single ticker |
+| `analyze_stock` | Run single-ticker Stage 1 pipeline |
 | `analyze_watchlist` | Analyze all enabled stocks |
 | `pipeline` | Full Stage 1 → Stage 2 for a ticker |
 | `run_scanner` | Execute a specific IB scanner |
@@ -659,9 +659,9 @@ All commands connect to PostgreSQL and read settings from the database.
 ### Analysis
 
 ```bash
-# Single stock analysis
-python3 tradegent.py analyze NFLX --type earnings
-python3 tradegent.py analyze NVDA --type stock
+# Single ticker pipeline (Stage 1 only)
+python3 tradegent.py pipeline NFLX --type earnings --no-execute
+python3 tradegent.py pipeline NVDA --type stock --no-execute
 
 # Execute a previous analysis (Stage 2 only)
 python3 tradegent.py execute analyses/NFLX_earnings_20260217_0630.md

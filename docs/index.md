@@ -9,7 +9,7 @@ AI-driven trading platform using Claude Code CLI, Interactive Brokers, and a hyb
 | I want to... | Go to |
 |--------------|-------|
 | Set up the platform | [Getting Started](getting-started.md) |
-| Run my first analysis | [Analysis Workflow](user-guide/analysis-workflow.md) |
+| Run my first single-ticker pipeline | [Analysis Workflow](user-guide/analysis-workflow.md) |
 | Understand the architecture | [Architecture Overview](architecture/overview.md) |
 | Use the CLI | [CLI Reference](user-guide/cli-reference.md) |
 | Fix a problem | [Troubleshooting](operations/troubleshooting.md) |

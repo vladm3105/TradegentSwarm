@@ -40,13 +40,12 @@ def _load_orchestrator_module():
     return importlib.import_module("orchestrator")
 
 
-def test_validate_agent_engine_requires_adk_when_strict(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_validate_agent_engine_rejects_legacy(monkeypatch: pytest.MonkeyPatch) -> None:
     module = _load_orchestrator_module()
 
-    monkeypatch.setenv("ADK_REQUIRED", "true")
     monkeypatch.setenv("AGENT_ENGINE", "legacy")
 
-    with pytest.raises(RuntimeError, match="ADK_REQUIRED=true requires AGENT_ENGINE=adk"):
+    with pytest.raises(RuntimeError, match="Unsupported AGENT_ENGINE"):
         module.validate_agent_engine()
 
 
@@ -117,36 +116,14 @@ def test_generate_analysis_output_uses_adk_without_cli(monkeypatch: pytest.Monke
     assert result == "adk-output"
 
 
-def test_generate_analysis_output_uses_legacy_cli(monkeypatch: pytest.MonkeyPatch) -> None:
-    module = _load_orchestrator_module()
-
-    monkeypatch.setattr("orchestrator.validate_agent_engine", lambda: "legacy")
-    monkeypatch.setattr(
-        "orchestrator.call_claude_code",
-        lambda *args, **kwargs: "legacy-output",
-    )
-
-    result = module._generate_analysis_output(
-        db=MagicMock(),
-        ticker="NVDA",
-        analysis_type=module.AnalysisType.STOCK,
-        prompt="analyze",
-        allowed_tools="mcp__ib-mcp__*",
-        label="ANALYZE-NVDA",
-        invocation_source=module.MANUAL_CLI_INVOCATION_SOURCE,
-    )
-
-    assert result == "legacy-output"
-
-
-def test_generate_analysis_output_blocks_legacy_outside_manual_cli(
+def test_generate_analysis_output_rejects_legacy_engine_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _load_orchestrator_module()
 
-    monkeypatch.setattr("orchestrator.validate_agent_engine", lambda: "legacy")
+    monkeypatch.setenv("AGENT_ENGINE", "legacy")
 
-    with pytest.raises(RuntimeError, match="allowed only for manual CLI analyze command"):
+    with pytest.raises(RuntimeError, match="Unsupported AGENT_ENGINE"):
         module._generate_analysis_output(
             db=MagicMock(),
             ticker="NVDA",
@@ -154,7 +131,6 @@ def test_generate_analysis_output_blocks_legacy_outside_manual_cli(
             prompt="analyze",
             allowed_tools="mcp__ib-mcp__*",
             label="ANALYZE-NVDA",
-            invocation_source="runtime",
         )
 
 

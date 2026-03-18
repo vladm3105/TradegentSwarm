@@ -49,7 +49,7 @@ Complete documentation of the Tradegent trading workflow phases, skills, automat
 - INVALIDATE result → removes watchlist entry, may trigger new analysis
 - Post-trade review lessons → improve future analysis quality
 - Confidence calibration → adjusts forecast confidence levels
-- Monitoring alerts → may trigger manual re-analysis
+- Monitoring alerts → may trigger a manual single-ticker pipeline rerun
 
 ---
 
@@ -930,8 +930,8 @@ Full YAML content storage for queryable indexing alongside files.
 
 ### Analysis
 ```bash
-python tradegent.py analyze NVDA --type stock
-python tradegent.py analyze NVDA --type earnings
+python tradegent.py pipeline NVDA --type stock --no-execute
+python tradegent.py pipeline NVDA --type earnings --no-execute
 python tradegent.py watchlist              # Analyze all enabled stocks
 python tradegent.py run-due                # Run due schedules
 ```
