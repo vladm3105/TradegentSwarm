@@ -54,6 +54,7 @@ def test_write_scan_yaml_has_required_sections_and_path() -> None:
         payload={
             "scanner_name": "premarket-gap",
             "scan_summary": {"scored_candidates": 1, "watchlist_count": 1},
+            "candidates": [{"ticker": "NVDA", "score": 8.5, "rank": 1}],
         },
     )
 

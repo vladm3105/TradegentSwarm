@@ -16,9 +16,21 @@ class _FakeSubagents:
             "scoring": {"catalyst_score": 6, "technical_score": 5, "fundamental_score": 6, "sentiment_score": 5},
             "do_nothing_gate": {"gate_result": "MARGINAL"},
         }
+        critique_payload = {
+            **base_payload,
+            "section_scores": {
+                "catalyst_matrix": 8,
+                "news_age_decay": 8,
+                "priced_in_logic": 7,
+                "watchlist_thresholds": 8,
+                "scenario_engine": 8,
+                "bias_check": 7,
+                "summary": 8,
+            },
+        }
         return {
             "draft": {"status": "ok", "payload": base_payload, "routing": {"role_alias": "reasoning_standard", "model": "openai/gpt-4o-mini", "provider": "openai"}},
-            "critique": {"status": "ok", "payload": base_payload, "routing": {"role_alias": "critic_model", "model": "openai/gpt-4o-mini", "provider": "openai"}},
+            "critique": {"status": "ok", "payload": critique_payload, "routing": {"role_alias": "critic_model", "model": "openai/gpt-4o-mini", "provider": "openai"}},
             "repair": {"status": "ok", "payload": base_payload, "routing": {"role_alias": "reasoning_standard", "model": "openai/gpt-4o-mini", "provider": "openai"}},
             "risk_gate": {"status": "ok", "payload": base_payload, "routing": {"role_alias": "reasoning_premium", "model": "openai/gpt-4o", "provider": "openai"}},
             "summarize": {"status": "ok", "payload": base_payload, "routing": {"role_alias": "summarizer_fast", "model": "openai/gpt-4o-mini", "provider": "openai"}},

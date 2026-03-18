@@ -40,20 +40,14 @@ import yaml  # type: ignore[import-untyped]
 try:
     # Package import path (entrypoint: tradegent.orchestrator:main)
     from tradegent.adk_runtime.env import load_runtime_env
-    from tradegent.cli_runtime.engine_guard import (
-        coerce_bool as runtime_coerce_bool,
-        validate_agent_engine as runtime_validate_agent_engine,
-    )
 except ImportError:
     # Script mode fallback (entrypoint: python orchestrator.py)
     from adk_runtime.env import load_runtime_env
-    from cli_runtime.engine_guard import (
-        coerce_bool as runtime_coerce_bool,
-        validate_agent_engine as runtime_validate_agent_engine,
-    )
 
 # Load .env file before any database connections
 _env_path = load_runtime_env(Path(__file__).parent / ".env")
+
+SUPPORTED_AGENT_ENGINES = {"adk"}
 
 PRODUCTION_GUARDED_COMMANDS = {
     "execute",
@@ -68,13 +62,33 @@ PRODUCTION_GUARDED_COMMANDS = {
 
 
 def validate_agent_engine() -> str:
-    """Compatibility wrapper for CLI runtime engine validation."""
-    return runtime_validate_agent_engine()
+    """Validate runtime engine configuration and required dependencies."""
+    engine = os.getenv("AGENT_ENGINE", "adk").strip().lower()
+
+    if engine not in SUPPORTED_AGENT_ENGINES:
+        raise RuntimeError(
+            f"Unsupported AGENT_ENGINE='{engine}'. Allowed: {sorted(SUPPORTED_AGENT_ENGINES)}"
+        )
+
+    if engine == "adk":
+        try:
+            import google.adk  # noqa: F401
+        except Exception as exc:
+            raise RuntimeError(
+                "AGENT_ENGINE=adk requires Google ADK. "
+                "Install with: pip install '.[adk]'"
+            ) from exc
+
+    return engine
 
 
 def _coerce_bool(value: Any) -> bool:
-    """Compatibility wrapper for runtime boolean coercion."""
-    return runtime_coerce_bool(value)
+    """Normalize mixed settings value types to bool."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
 
 
 def enforce_production_adk_guard(settings: "Settings", context: str) -> None:

@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +43,18 @@ def _get_config_value(key: str, default: Any, env_var: str | None = None) -> Any
                 return float(val)
             except ValueError:
                 return val
+    # Parse shell-style template strings like "${VAR:-150}" from YAML config
+    if isinstance(default, str):
+        m = re.match(r'^\$\{[^:}]+:-([^}]+)\}$', default)
+        if m:
+            fallback = m.group(1)
+            try:
+                return int(fallback)
+            except ValueError:
+                try:
+                    return float(fallback)
+                except ValueError:
+                    return fallback
     return default
 
 

@@ -396,7 +396,7 @@ class TestNotificationIntegration:
         # Send 5 notifications rapidly
         for i in range(5):
             n = Notification(
-                event_type="test",
+                event_type=f"test_{i}",
                 title=f"Test {i}",
                 message="Test",
                 priority=NotificationPriority.HIGH,

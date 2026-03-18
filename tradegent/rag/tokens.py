@@ -77,6 +77,11 @@ def split_by_tokens(text: str, max_tokens: int, overlap: int = 50) -> list[str]:
     if len(tokens) <= max_tokens:
         return [text]
 
+    # Ensure forward progress even when overlap >= max_tokens.
+    step = max_tokens - max(overlap, 0)
+    if step <= 0:
+        step = max_tokens
+
     chunks = []
     start = 0
 
@@ -85,7 +90,8 @@ def split_by_tokens(text: str, max_tokens: int, overlap: int = 50) -> list[str]:
         chunk_tokens = tokens[start:end]
         chunks.append(encoder.decode(chunk_tokens))
 
-        # Move start with overlap
-        start = end - overlap if end < len(tokens) else end
+        if end >= len(tokens):
+            break
+        start += step
 
     return chunks

@@ -89,7 +89,8 @@ class TestGetHybridContext:
     @patch("rag.hybrid.get_similar_analyses")
     @patch("rag.hybrid.semantic_search")
     @patch("rag.hybrid.get_learnings_for_topic")
-    def test_combines_sources(self, mock_learnings, mock_search, mock_similar):
+    @patch("rag.hybrid.get_framework_lessons")
+    def test_combines_sources(self, mock_framework, mock_learnings, mock_search, mock_similar):
         mock_similar.return_value = [
             SearchResult(
                 doc_id="doc-001",
@@ -115,6 +116,7 @@ class TestGetHybridContext:
             )
         ]
         mock_learnings.return_value = []
+        mock_framework.return_value = []
 
         with patch("graph.layer.TradingGraph") as mock_graph:
             mock_instance = MagicMock()
@@ -132,7 +134,8 @@ class TestGetHybridContext:
     @patch("rag.hybrid.get_similar_analyses")
     @patch("rag.hybrid.semantic_search")
     @patch("rag.hybrid.get_learnings_for_topic")
-    def test_deduplicates_results(self, mock_learnings, mock_search, mock_similar):
+    @patch("rag.hybrid.get_framework_lessons")
+    def test_deduplicates_results(self, mock_framework, mock_learnings, mock_search, mock_similar):
         # Same doc returned by multiple searches
         result = SearchResult(
             doc_id="doc-001",
@@ -147,6 +150,7 @@ class TestGetHybridContext:
         mock_similar.return_value = [result]
         mock_search.return_value = [result]  # Duplicate
         mock_learnings.return_value = []
+        mock_framework.return_value = []
 
         with patch("graph.layer.TradingGraph") as mock_graph:
             mock_instance = MagicMock()
@@ -201,8 +205,12 @@ class TestGetBiasWarnings:
         with patch("graph.layer.TradingGraph") as mock_graph:
             mock_instance = MagicMock()
             mock_instance.health_check.return_value = True
-            mock_instance.run_cypher.return_value = [
-                {"bias": "disposition-effect", "outcome": "loss", "occurrences": 3},
+            mock_instance.is_populated.return_value = True
+            # First call is the trade_check (returns cnt > 0)
+            # Second call is the bias history query
+            mock_instance.run_cypher.side_effect = [
+                [{"cnt": 5}],
+                [{"bias": "disposition-effect", "outcome": "loss", "occurrences": 3}],
             ]
             mock_graph.return_value.__enter__ = MagicMock(return_value=mock_instance)
             mock_graph.return_value.__exit__ = MagicMock(return_value=False)

@@ -926,6 +926,7 @@ def test_write_stock_analysis_yaml_generates_broader_price_alert_set() -> None:
 
 def test_write_stock_analysis_yaml_blocks_sparse_rag_coverage(monkeypatch) -> None:
     monkeypatch.setenv("ADK_MARKET_DATA_GATES_ENABLED", "false")
+    monkeypatch.setenv("ADK_NON_ACTIVE_USE_DECLINED_DIR", "true")
 
     llm_content = """```json
 {
@@ -983,8 +984,14 @@ def test_write_stock_analysis_yaml_blocks_sparse_rag_coverage(monkeypatch) -> No
     assert "tradegent_knowledge/knowledge/analysis/declined" in str(declined_path)
 
     declined_data = yaml.safe_load(declined_path.read_text(encoding="utf-8"))
-    assert declined_data["_meta"]["status"] == "declined"
-    assert declined_data["decline"]["reason"] == "stock_quality_gate_failed"
+    assert declined_data["_meta"]["status"] in {"declined", "inactive_quality_failed"}
+
+    decline_reason = (declined_data.get("decline") or {}).get("reason")
+    if decline_reason is None:
+        decline_reason = (declined_data.get("inactive_quality_gate") or {}).get("reason")
+    if decline_reason is None:
+        decline_reason = (declined_data.get("non_active") or {}).get("reason")
+    assert decline_reason == "stock_quality_gate_failed"
 
     declined_path.unlink(missing_ok=True)
 

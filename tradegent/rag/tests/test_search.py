@@ -199,10 +199,12 @@ class TestGetLearningsForTopic:
 
         results = get_learnings_for_topic("disposition effect", top_k=5)
 
-        mock_search.assert_called_once()
-        call_kwargs = mock_search.call_args[1]
-        assert call_kwargs["doc_type"] == "learning"
-        assert call_kwargs["top_k"] == 5
+        # get_learnings_for_topic searches across 4 doc types
+        assert mock_search.call_count == 4
+        # Verify the first call uses "learning" doc_type
+        first_call_kwargs = mock_search.call_args_list[0][1]
+        assert first_call_kwargs["doc_type"] == "learning"
+        assert first_call_kwargs["top_k"] == 5
 
 
 class TestGetRagStats:
